@@ -1,0 +1,70 @@
+use crate::ast::{Expr, Statement, Token, Literal, BinaryOp, Place};
+
+grammar;
+
+extern {
+	type Location = usize;
+	type Error = crate::ast::UnknownToken;
+
+	enum Token {
+		number => Token::Number(<i64>),
+		ident => Token::Identifier(<String>),
+		"&" => Token::And,
+		"|" => Token::Pipe,
+		"|>" => Token::Redirect,
+		"\n" => Token::Newline,
+		"(" => Token::LParen,
+		")" => Token::RParen,
+		"." => Token::Dot,
+		"=" => Token::Equal,
+	}
+}
+
+Literal: Literal = {
+	number => Literal::Number(<>),
+};
+
+Expr: Expr = {
+	<lhs:Expr> "|>" <rhs:BOrExpr> => {
+		Expr::Binary(BinaryOp::Redirect, Box::new(lhs), Box::new(rhs))
+	},
+	<BOrExpr> => <>,
+};
+
+BOrExpr: Expr = {
+	<lhs:BAndExpr> "|" <rhs:BOrExpr> => {
+		Expr::Binary(BinaryOp::BitwiseOr, Box::new(lhs), Box::new(rhs))
+	},
+	<BAndExpr> => <>,
+};
+
+BAndExpr: Expr = {
+	<lhs:LiteralExpr> "&" <rhs:BAndExpr> => {
+		Expr::Binary(BinaryOp::BitwiseAnd, Box::new(lhs), Box::new(rhs))
+	},
+	<LiteralExpr> => <>,
+
+};
+
+LiteralExpr: Expr = {
+	<Literal> => Expr::Literal(<>),
+	ident => Expr::Ident(<>),
+	"(" <Expr> ")" => <>,
+};
+
+Place: Place = {
+	ident => Place::Ident(<>),
+	<e:ident> "." <r:Place> => Place::Deref(e, Box::new(r)),
+};
+
+pub Statement: Statement = {
+	<Expr> => Statement::Expr(<>),
+	<p:Place> "=" <e:Expr> => Statement::Assign(p, e),
+};
+
+pub File: Vec<Statement> = <mut r:(<Statement> "\n")*> <l:Statement?> => {
+	match l {
+		None => r,
+		Some(v) => { r.push(v); r },
+	}
+};
