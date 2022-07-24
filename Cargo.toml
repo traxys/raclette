@@ -11,6 +11,7 @@ color-eyre = "0.6.2"
 derive_more = { version = "0.99.17", default-features = false, features = ["display"] }
 dirs-next = "2.0.0"
 gc = { version = "0.4.1", features = ["derive"] }
+itertools = "0.10.3"
 lalrpop-util = "0.19.8"
 logos = "0.12.1"
 regex = "1.6.0"

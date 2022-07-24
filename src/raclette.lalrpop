@@ -1,4 +1,5 @@
 use crate::ast::{Expr, Statement, Token, Literal, BinaryOp, Place};
+use std::collections::HashMap;
 
 grammar;
 
@@ -15,8 +16,11 @@ extern {
 		"\n" => Token::Newline,
 		"(" => Token::LParen,
 		")" => Token::RParen,
+		"{" => Token::LBrace,
+		"}" => Token::RBrace,
 		"." => Token::Dot,
 		"=" => Token::Equal,
+		"," => Token::Comma,
 	}
 }
 
@@ -39,11 +43,41 @@ BOrExpr: Expr = {
 };
 
 BAndExpr: Expr = {
-	<lhs:LiteralExpr> "&" <rhs:BAndExpr> => {
+	<lhs:NamedCallExpr> "&" <rhs:BAndExpr> => {
 		Expr::Binary(BinaryOp::BitwiseAnd, Box::new(lhs), Box::new(rhs))
 	},
-	<LiteralExpr> => <>,
+	<CallExpr> => <>,
+};
 
+Named: (String, Expr) = <ident> "=" <Expr> => (<>);
+
+NamedArgs: HashMap<String,Expr> = <args:(<Named> ",")*> <last:Named?> => {
+	let mut named: HashMap<_, _> = args.into_iter().collect();
+	if let Some(last) = last {
+		named.insert(last.0, last.1);
+	}
+	named
+};
+
+PosArgs: Vec<Expr> = <mut args:(<Expr> ",")*> <last:Expr?> => match last {
+	None => args,
+	Some(a) => {args.push(a); args},
+};
+
+CallExpr: Expr = {
+	<func:CallExpr> "(" <args:PosArgs> ")" => Expr::Call {
+		func: Box::new(func),
+		args,
+	},
+	<NamedCallExpr> => <>,
+};
+
+NamedCallExpr: Expr = {
+	<func:NamedCallExpr> "{" <named:NamedArgs> "}" => Expr::NamedCall {
+		func: Box::new(func),
+		named,
+	},
+	<LiteralExpr> => <>,
 };
 
 LiteralExpr: Expr = {

@@ -16,6 +16,7 @@ struct Scope {
 pub enum RuntimeError {
     CastError { into: String, from: String },
     ArgumentCountMismatch { expected: usize, got: usize },
+    InvalidNamedArgument { name: String },
     UndefinedIdentifier(String),
     ParseIntError,
 }
@@ -37,7 +38,11 @@ pub struct FunctionValue {
 
 #[derive(Trace, Finalize, Clone, Debug)]
 pub enum FunctionKind {
-    Builtin(fn(Vec<Val>) -> Result<Val>),
+    Builtin(fn(Vec<Val>, HashMap<String, Val>) -> Result<Val>),
+    SpecifyNamed {
+        func: Box<FunctionValue>,
+        named: HashMap<String, Val>,
+    },
 }
 
 impl Value {
@@ -97,7 +102,7 @@ impl Value {
 }
 
 impl FunctionValue {
-    pub fn call(&self, args: Vec<Val>) -> Result<Val> {
+    pub fn call(&self, args: Vec<Val>, mut named: HashMap<String, Val>) -> Result<Val> {
         if args.len() != self.arity {
             return Err(RuntimeError::ArgumentCountMismatch {
                 expected: self.arity,
@@ -106,7 +111,18 @@ impl FunctionValue {
         }
 
         match &self.action {
-            FunctionKind::Builtin(f) => f(args),
+            FunctionKind::Builtin(f) => f(args, named),
+            FunctionKind::SpecifyNamed {
+                func,
+                named: already_specified,
+            } => {
+                for (key, val) in already_specified {
+                    if !named.contains_key(key) {
+                        named.insert(key.clone(), val.clone());
+                    }
+                }
+                func.call(args, named)
+            }
         }
     }
 }
@@ -192,10 +208,35 @@ impl Interpreter {
                 ast::BinaryOp::Redirect => {
                     let input = self.run_expr(*lhs)?;
                     let func = self.run_expr(*rhs)?.borrow().cast_function()?;
-                    func.call(vec![input])
+                    func.call(vec![input], HashMap::new())
                 }
             },
             ast::Expr::Ident(n) => self.resolve(&n),
+            ast::Expr::Call { func, args } => {
+                let func = self.run_expr(*func)?.borrow().cast_function()?;
+
+                if func.arity != 0 && args.is_empty() {
+                    todo!("Short hand for defining a new function")
+                } else {
+                    let args = args
+                        .into_iter()
+                        .map(|e| self.run_expr(e))
+                        .collect::<Result<_>>()?;
+                    func.call(args, HashMap::new())
+                }
+            }
+            ast::Expr::NamedCall { func, named } => {
+                let func = Box::new(self.run_expr(*func)?.borrow().cast_function()?);
+                let named = named
+                    .into_iter()
+                    .map(|(key, val)| Ok((key, self.run_expr(val)?)))
+                    .collect::<Result<_>>()?;
+
+                Ok(Value::new_function(FunctionValue {
+                    arity: func.arity,
+                    action: FunctionKind::SpecifyNamed { func, named },
+                }))
+            }
         }
     }
 

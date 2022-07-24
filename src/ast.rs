@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use logos::Logos;
 
 #[derive(Logos, Debug, PartialEq, Clone, derive_more::Display)]
@@ -7,13 +9,13 @@ pub enum Token {
         i64::from_str_radix(
             lex.slice().trim_start_matches("0x").trim_start_matches('x'),
             16,
-        ).unwrap()
+        )
     )]
     #[regex("0?b[0-1][0-1_]*", |lex| 
         i64::from_str_radix(
             lex.slice().trim_start_matches("0b").trim_start_matches('b'),
             2,
-        ).unwrap()
+        )
     )]
     #[display(fmt = "<number:{}>", _0)]
     Number(i64),
@@ -38,9 +40,18 @@ pub enum Token {
     #[token(")")]
     #[display(fmt = ")")]
     RParen,
+    #[token("{")]
+    #[display(fmt = "{{")]
+    LBrace,
+    #[token("}")]
+    #[display(fmt = "}}")]
+    RBrace,
     #[token(".")]
     #[display(fmt = ".")]
     Dot,
+    #[token(",")]
+    #[display(fmt = ",")]
+    Comma,
     #[token("=")]
     #[display(fmt = "=")]
     Equal,
@@ -60,6 +71,14 @@ pub enum Expr {
     Literal(Literal),
     Ident(String),
     Binary(BinaryOp, Box<Expr>, Box<Expr>),
+    NamedCall {
+        func: Box<Expr>,
+        named: HashMap<String, Expr>,
+    },
+    Call {
+        func: Box<Expr>,
+        args: Vec<Expr>,
+    }
 }
 
 #[derive(Debug)]
