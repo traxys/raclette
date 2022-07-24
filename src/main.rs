@@ -65,11 +65,11 @@ fn main() -> color_eyre::Result<()> {
                         };
                         match parsed {
                             ast::Statement::Expr(exp) => {
-                                match interpreter.run_expr(exp).map(|v| interpreter.display(v)) {
-                                    Ok(Ok(v)) => {
+                                match interpreter.run_expr(exp).map(|v| v.borrow().to_string()) {
+                                    Ok(v) => {
                                         println!("{}", v);
                                     }
-                                    Err(e) | Ok(Err(e)) => {
+                                    Err(e) => {
                                         println!("Error: {:?}", e);
                                         continue;
                                     }

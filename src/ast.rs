@@ -2,16 +2,43 @@ use std::collections::HashMap;
 
 use logos::Logos;
 
+fn escape_string(input: &str) -> String {
+    if !input.contains('\\') {
+        input.into()
+    } else {
+        let mut val = Vec::new();
+        let mut escape = false;
+        for x in input.bytes() {
+            if x == b'\\' {
+                escape = true;
+            } else if escape {
+                match x {
+                    b't' => val.push(b'\t'),
+                    b'n' => val.push(b'\n'),
+                    _ => {
+                        val.push(b'\\');
+                        val.push(x);
+                    }
+                }
+                escape = false;
+            } else {
+                val.push(x);
+            }
+        }
+        String::from_utf8(val).expect("should not produce garbage")
+    }
+}
+
 #[derive(Logos, Debug, PartialEq, Clone, derive_more::Display)]
 pub enum Token {
     #[regex("(-)?[0-9][0-9_]*", |lex| lex.slice().parse())]
-    #[regex("0?x[0-9a-fA-F][0-9a-fA-F_]*", |lex| 
+    #[regex("0?x[0-9a-fA-F][0-9a-fA-F_]*", |lex|
         i64::from_str_radix(
             lex.slice().trim_start_matches("0x").trim_start_matches('x'),
             16,
         )
     )]
-    #[regex("0?b[0-1][0-1_]*", |lex| 
+    #[regex("0?b[0-1][0-1_]*", |lex|
         i64::from_str_radix(
             lex.slice().trim_start_matches("0b").trim_start_matches('b'),
             2,
@@ -40,6 +67,15 @@ pub enum Token {
     #[token(")")]
     #[display(fmt = ")")]
     RParen,
+    #[token("~")]
+    #[display(fmt = "~")]
+    Tilde,
+    #[regex(r#""(\\[^\n]|[^"\n])*""#, |lex| {
+        let s = lex.slice();
+        escape_string(&s[1..s.len() - 1])
+    })]
+    #[display(fmt = "'{}'", _0)]
+    String(String),
     #[token("{")]
     #[display(fmt = "{{")]
     LBrace,
@@ -64,6 +100,7 @@ pub enum Token {
 #[derive(Debug)]
 pub enum Literal {
     Number(i64),
+    String(String),
 }
 
 #[derive(Debug)]
@@ -71,6 +108,8 @@ pub enum Expr {
     Literal(Literal),
     Ident(String),
     Binary(BinaryOp, Box<Expr>, Box<Expr>),
+    Map(Vec<(Expr, Expr)>),
+    Tilde(Box<Expr>),
     NamedCall {
         func: Box<Expr>,
         named: HashMap<String, Expr>,
@@ -78,7 +117,7 @@ pub enum Expr {
     Call {
         func: Box<Expr>,
         args: Vec<Expr>,
-    }
+    },
 }
 
 #[derive(Debug)]

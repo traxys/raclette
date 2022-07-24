@@ -1,7 +1,7 @@
 use itertools::Itertools;
 
-use crate::interpeter::{FunctionKind, FunctionValue, RuntimeError, Val, Value};
-use std::collections::HashMap;
+use crate::interpeter::{FunctionKind, FunctionValue, HashableValue, RuntimeError, Val, Value};
+use std::{collections::HashMap, fs::File, io::BufReader};
 
 macro_rules! define_builtin {
     ($(
@@ -91,8 +91,43 @@ fn parse_int(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, Runtime
     Ok(Value::new_number(n))
 }
 
+fn open_file(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError> {
+    if let Some(name) = named.keys().find(|key| ![].contains(&key.as_str())) {
+        return Err(RuntimeError::InvalidNamedArgument { name: name.into() });
+    }
+
+    let v = args[0].borrow().cast_str()?;
+    let f = File::open(&*v)?;
+
+    Ok(Value::new_file(f))
+}
+
+fn parse_json_value(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError> {
+    if let Some(name) = named.keys().find(|key| ![].contains(&key.as_str())) {
+        return Err(RuntimeError::InvalidNamedArgument { name: name.into() });
+    }
+
+    let parsed: Value = match &mut *args[0].borrow_mut() {
+        Value::File(f) => {
+            let mut buf_reader = BufReader::new(f);
+            serde_json::from_reader(&mut buf_reader)?
+        }
+        Value::Hashable(HashableValue::Str(s)) => serde_json::from_str(s)?,
+        v => {
+            return Err(RuntimeError::CastError {
+                into: "str-like".into(),
+                from: v.name().into(),
+            })
+        }
+    };
+
+    Ok(Value::new(parsed))
+}
+
 define_builtin! {
     X(1) => hex;
     B(1) => bin;
     int(1) => parse_int;
+    open(1) => open_file;
+    json(1) => parse_json_value;
 }

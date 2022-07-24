@@ -10,6 +10,7 @@ extern {
 	enum Token {
 		number => Token::Number(<i64>),
 		ident => Token::Identifier(<String>),
+		str => Token::String(<String>),
 		"&" => Token::And,
 		"|" => Token::Pipe,
 		"|>" => Token::Redirect,
@@ -21,11 +22,23 @@ extern {
 		"." => Token::Dot,
 		"=" => Token::Equal,
 		"," => Token::Comma,
+		"~" => Token::Tilde,
 	}
 }
 
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};
+
 Literal: Literal = {
 	number => Literal::Number(<>),
+	str => Literal::String(<>),
 };
 
 Expr: Expr = {
@@ -43,9 +56,28 @@ BOrExpr: Expr = {
 };
 
 BAndExpr: Expr = {
-	<lhs:NamedCallExpr> "&" <rhs:BAndExpr> => {
+	<lhs:MapExpr> "&" <rhs:BAndExpr> => {
 		Expr::Binary(BinaryOp::BitwiseAnd, Box::new(lhs), Box::new(rhs))
 	},
+	<MapExpr> => <>,
+};
+
+MapField: (Expr, Expr) = {
+	<Expr> "=" <Expr> => (<>),
+};
+
+StringMap: (Expr, Expr) = {
+	<k:ident> "=" <v:Expr> => (Expr::Literal(Literal::String(k)), v)
+};
+
+MapExpr: Expr = {
+	"~" "{" <Comma<StringMap>> "}" => Expr::Map(<>),
+	"{" <Comma<MapField>> "}" => Expr::Map(<>),
+	<TildeExpr> => <>,
+};
+
+TildeExpr: Expr = {
+	"~" <CallExpr> => Expr::Tilde(Box::new(<>)),
 	<CallExpr> => <>,
 };
 
@@ -59,10 +91,7 @@ NamedArgs: HashMap<String,Expr> = <args:(<Named> ",")*> <last:Named?> => {
 	named
 };
 
-PosArgs: Vec<Expr> = <mut args:(<Expr> ",")*> <last:Expr?> => match last {
-	None => args,
-	Some(a) => {args.push(a); args},
-};
+PosArgs: Vec<Expr> = Comma<Expr> => <>;
 
 CallExpr: Expr = {
 	<func:CallExpr> "(" <args:PosArgs> ")" => Expr::Call {
