@@ -11,6 +11,8 @@ extern {
 		number => Token::Number(<i64>),
 		ident => Token::Identifier(<String>),
 		str => Token::String(<String>),
+		"->" => Token::Arrow,
+		"\\" => Token::Backslash,
 		"&" => Token::And,
 		"|" => Token::Pipe,
 		"|>" => Token::Redirect,
@@ -46,10 +48,21 @@ Literal: Literal = {
 };
 
 Expr: Expr = {
+	<lhs:Expr> "|>" <rhs:FuncDef> => {
+		Expr::Binary(BinaryOp::Redirect, Box::new(lhs), Box::new(rhs))
+	},
 	<lhs:Expr> "|>" <rhs:BOrExpr> => {
 		Expr::Binary(BinaryOp::Redirect, Box::new(lhs), Box::new(rhs))
 	},
+	<FuncDef> => <>,
 	<BOrExpr> => <>,
+};
+
+FuncDef: Expr = {
+	"\\" <args:Comma<ident>> "=" <ret:BOrExpr> => Expr::FuncDef {
+		args,
+		ret: Box::new(ret),
+	},
 };
 
 BOrExpr: Expr = {
@@ -125,6 +138,7 @@ LiteralExpr: Expr = {
 		Folder::Args{func: Box::new(func), def: Box::new(def)}
 	),
 	"@" <LiteralExpr> => Expr::Mapper(Box::new(<>)),
+	<FuncDef> "@" => Expr::Mapper(Box::new(<>)),
 	<Literal> => Expr::Literal(<>),
 	ident => Expr::Ident(<>),
 	"[" <Comma<Expr>> "]" => Expr::Array(<>),

@@ -103,25 +103,31 @@ pub enum Token {
     #[token("=")]
     #[display(fmt = "=")]
     Equal,
+    #[token("->")]
+    #[display(fmt = "->")]
+    Arrow,
+    #[token("\\")]
+    #[display(fmt = "\\")]
+    Backslash,
     #[error]
     #[regex(r"[ \t\f]+", logos::skip)]
     #[display(fmt = "<error>")]
     Error,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Literal {
     Number(i64),
     String(String),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Folder {
     Operator(BinaryOp),
     Args { func: Box<Expr>, def: Box<Expr> },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr {
     Literal(Literal),
     Ident(String),
@@ -131,6 +137,10 @@ pub enum Expr {
     Tilde(Box<Expr>),
     Fold(Folder),
     Mapper(Box<Expr>),
+    FuncDef {
+        args: Vec<String>,
+        ret: Box<Expr>,
+    },
     NamedCall {
         func: Box<Expr>,
         named: HashMap<String, Expr>,
@@ -141,7 +151,7 @@ pub enum Expr {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum BinaryOp {
     BitwiseOr,
     BitwiseAnd,

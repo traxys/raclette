@@ -216,10 +216,32 @@ pub struct FunctionValue {
     pub(crate) action: FunctionKind,
 }
 
-#[derive(Trace, Finalize, Clone, Debug)]
+pub type FolderFn = fn(Val, Val, &mut Interpreter) -> Result<Val>;
+
+#[derive(Trace, Finalize, Clone)]
 pub enum Folder {
-    Op(fn(Val, Val) -> Result<Val>, Val),
+    Op(
+        #[unsafe_ignore_trace]
+        FolderFn,
+        Val,
+    ),
     User(Val, Val),
+}
+
+impl std::fmt::Debug for Folder {
+    fn fmt<'a>(&'a self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Op(arg0, arg1) => f
+                .debug_tuple("Op")
+                .field(
+                    &(*arg0 as fn(Val, Val, &'a mut Interpreter) -> Result<Val>)
+                        as &dyn std::fmt::Debug,
+                )
+                .field(arg1)
+                .finish(),
+            Self::User(arg0, arg1) => f.debug_tuple("User").field(arg0).field(arg1).finish(),
+        }
+    }
 }
 
 #[derive(Trace, Finalize, Clone, Debug)]
@@ -227,6 +249,11 @@ pub enum FunctionKind {
     Builtin(fn(Vec<Val>, HashMap<String, Val>) -> Result<Val>),
     Folder(Folder),
     Mapper(Val),
+    User {
+        args: Vec<String>,
+        #[unsafe_ignore_trace]
+        ret: ast::Expr,
+    },
     SpecifyNamed {
         func: Box<FunctionValue>,
         named: HashMap<String, Val>,
@@ -324,7 +351,12 @@ impl Value {
 }
 
 impl FunctionValue {
-    pub fn call(&self, args: Vec<Val>, mut named: HashMap<String, Val>) -> Result<Val> {
+    pub fn call(
+        &self,
+        args: Vec<Val>,
+        mut named: HashMap<String, Val>,
+        scope: &mut Interpreter,
+    ) -> Result<Val> {
         if args.len() != self.arity {
             return Err(RuntimeError::ArgumentCountMismatch {
                 expected: self.arity,
@@ -343,17 +375,17 @@ impl FunctionValue {
                         named.insert(key.clone(), val.clone());
                     }
                 }
-                func.call(args, named)
+                func.call(args, named, scope)
             }
             FunctionKind::Folder(folder) => {
                 let iter = args[0].borrow();
                 let mut iter = iter.cast_iterable()?;
                 match folder {
-                    Folder::Op(f, def) => iter.try_fold(def.clone(), f),
+                    Folder::Op(f, def) => iter.try_fold(def.clone(), |acc, e| f(acc, e, scope)),
                     Folder::User(f, def) => {
                         let func = f.borrow().cast_function()?;
                         iter.try_fold(def.clone(), |acc, e| {
-                            func.call(vec![acc, e], HashMap::new())
+                            func.call(vec![acc, e], HashMap::new(), scope)
                         })
                     }
                 }
@@ -365,14 +397,14 @@ impl FunctionValue {
                     Value::Map(map) => {
                         let mut new_map = map.clone();
                         for (_, v) in new_map.iter_mut() {
-                            *v = mapper.call(vec![v.clone()], HashMap::new())?;
+                            *v = mapper.call(vec![v.clone()], HashMap::new(), scope)?;
                         }
 
                         Ok(Value::new_map(new_map))
                     }
                     Value::Array(a) => Ok(Value::new_array(
                         a.iter()
-                            .map(|e| mapper.call(vec![e.clone()], HashMap::new()))
+                            .map(|e| mapper.call(vec![e.clone()], HashMap::new(), scope))
                             .collect::<Result<_>>()?,
                     )),
                     _ => Err(RuntimeError::NotIterable {
@@ -380,6 +412,16 @@ impl FunctionValue {
                     }),
                 }
             }
+            FunctionKind::User { args: names, ret } => {
+                let s = Scope {
+                    vars: names.iter().cloned().zip(args).collect()
+                };
+
+                scope.push_scope(s);
+                let ret = scope.run_expr(ret.clone());
+                scope.pop_scope();
+                ret
+            },
         }
     }
 
@@ -390,7 +432,7 @@ impl FunctionValue {
         })
     }
 
-    pub fn op_folder(f: fn(Val, Val) -> Result<Val>, def: Val) -> Val {
+    pub fn op_folder(f: FolderFn, def: Val) -> Val {
         Value::new_function(FunctionValue {
             arity: 1,
             action: FunctionKind::Folder(Folder::Op(f, def)),
@@ -400,24 +442,24 @@ impl FunctionValue {
 
 pub type Val = Gc<GcCell<Value>>;
 
-fn bitwise_or(a: Val, b: Val) -> Result<Val> {
+fn bitwise_or(a: Val, b: Val, _: &mut Interpreter) -> Result<Val> {
     let a = a.borrow().cast_number()?;
     let b = b.borrow().cast_number()?;
 
     Ok(Value::new_number(a | b))
 }
 
-fn bitwise_and(a: Val, b: Val) -> Result<Val> {
+fn bitwise_and(a: Val, b: Val, _: &mut Interpreter) -> Result<Val> {
     let a = a.borrow().cast_number()?;
     let b = b.borrow().cast_number()?;
 
     Ok(Value::new_number(a & b))
 }
 
-fn redirect(a: Val, b: Val) -> Result<Val> {
+fn redirect(a: Val, b: Val, scope: &mut Interpreter) -> Result<Val> {
     let b = b.borrow().cast_function()?;
 
-    b.call(vec![a], HashMap::new())
+    b.call(vec![a], HashMap::new(), scope)
 }
 
 impl Interpreter {
@@ -452,6 +494,14 @@ impl Interpreter {
                     .insert(name.to_owned(), val);
             }
         }
+    }
+
+    fn push_scope(&mut self, s: Scope) {
+        self.scopes.push(s);
+    }
+
+    fn pop_scope(&mut self) {
+        self.scopes.pop();
     }
 
     pub fn new() -> Self {
@@ -499,7 +549,7 @@ impl Interpreter {
                 ast::BinaryOp::Redirect => {
                     let input = self.run_expr(*lhs)?;
                     let func = self.run_expr(*rhs)?.borrow().cast_function()?;
-                    func.call(vec![input], HashMap::new())
+                    func.call(vec![input], HashMap::new(), self)
                 }
             },
             ast::Expr::Ident(n) => self.resolve(&n),
@@ -513,7 +563,7 @@ impl Interpreter {
                         .into_iter()
                         .map(|e| self.run_expr(e))
                         .collect::<Result<_>>()?;
-                    func.call(args, HashMap::new())
+                    func.call(args, HashMap::new(), self)
                 }
             }
             ast::Expr::NamedCall { func, named } => {
@@ -558,7 +608,7 @@ impl Interpreter {
             }
             ast::Expr::Fold(folder) => match folder {
                 ast::Folder::Operator(op) => {
-                    let (f, def): (fn(Val, Val) -> Result<Val>, _) = match op {
+                    let (f, def): (FolderFn, _) = match op {
                         ast::BinaryOp::BitwiseOr => (bitwise_or, Value::new_number(0)),
                         ast::BinaryOp::BitwiseAnd => (bitwise_and, Value::new_number(-1)),
                         ast::BinaryOp::Redirect => (redirect, Value::new_number(0)),
@@ -578,6 +628,10 @@ impl Interpreter {
                     action: FunctionKind::Mapper(mapper),
                 }))
             }
+            ast::Expr::FuncDef { args, ret } => Ok(Value::new_function(FunctionValue {
+                arity: args.len(),
+                action: FunctionKind::User { args, ret: *ret },
+            })),
         }
     }
 
