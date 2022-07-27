@@ -82,6 +82,12 @@ pub enum Token {
     #[token("}")]
     #[display(fmt = "}}")]
     RBrace,
+    #[token("[")]
+    #[display(fmt = "[")]
+    LBracket,
+    #[token("]")]
+    #[display(fmt = "]")]
+    RBracket,
     #[token(".")]
     #[display(fmt = ".")]
     Dot,
@@ -109,6 +115,7 @@ pub enum Expr {
     Ident(String),
     Binary(BinaryOp, Box<Expr>, Box<Expr>),
     Map(Vec<(Expr, Expr)>),
+    Array(Vec<Expr>),
     Tilde(Box<Expr>),
     NamedCall {
         func: Box<Expr>,

@@ -17,6 +17,8 @@ extern {
 		"\n" => Token::Newline,
 		"(" => Token::LParen,
 		")" => Token::RParen,
+		"[" => Token::LBracket,
+		"]" => Token::RBracket,
 		"{" => Token::LBrace,
 		"}" => Token::RBrace,
 		"." => Token::Dot,
@@ -77,7 +79,7 @@ MapExpr: Expr = {
 };
 
 TildeExpr: Expr = {
-	"~" <CallExpr> => Expr::Tilde(Box::new(<>)),
+	"~" <TildeExpr> => Expr::Tilde(Box::new(<>)),
 	<CallExpr> => <>,
 };
 
@@ -112,6 +114,7 @@ NamedCallExpr: Expr = {
 LiteralExpr: Expr = {
 	<Literal> => Expr::Literal(<>),
 	ident => Expr::Ident(<>),
+	"[" <Comma<Expr>> "]" => Expr::Array(<>),
 	"(" <Expr> ")" => <>,
 };
 

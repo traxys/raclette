@@ -46,6 +46,7 @@ type Result<T> = std::result::Result<T, RuntimeError>;
 pub enum Value {
     Func(FunctionValue),
     Map(HashMap<HashableValue, Val>),
+    Array(Vec<Val>),
     File(#[unsafe_ignore_trace] File),
     Hashable(HashableValue),
 }
@@ -82,6 +83,19 @@ impl<'de> Deserialize<'de> for Value {
                 Ok(Value::Hashable(HashableValue::Str(Rc::new(value))))
             }
 
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::SeqAccess<'de>,
+            {
+                let mut vec = Vec::new();
+
+                while let Some(v) = seq.next_element()? {
+                    vec.push(Value::new(v))
+                }
+
+                Ok(Value::Array(vec))
+            }
+
             fn visit_map<V>(self, mut visitor: V) -> Result<Value, V::Error>
             where
                 V: MapAccess<'de>,
@@ -112,6 +126,20 @@ impl Display for Value {
             Value::Func(_) => write!(f, "<function>"),
             Value::File(_) => write!(f, "<file>"),
             Value::Hashable(h) => write!(f, "{}", h),
+            Value::Array(a) => {
+                write!(f, "[")?;
+
+                let mut iter = a.iter();
+                if let Some(v) = iter.next() {
+                    write!(f, "{}", v.borrow())?;
+                }
+
+                for v in iter {
+                    write!(f, ", {}", v.borrow())?;
+                }
+
+                write!(f, "]")
+            }
             Value::Map(m) => {
                 write!(f, "{{")?;
                 let mut iter = m.iter();
@@ -255,6 +283,10 @@ impl Value {
         Self::new(Self::Map(v))
     }
 
+    pub fn new_array(v: Vec<Val>) -> Val {
+        Self::new(Self::Array(v))
+    }
+
     pub(crate) fn new(v: Value) -> Val {
         Gc::new(GcCell::new(v))
     }
@@ -266,6 +298,7 @@ impl Value {
             Value::Map(_) => "map",
             Value::Func(_) => "function",
             Value::File(_) => "file",
+            Value::Array(_) => "array",
         }
     }
 }
@@ -429,6 +462,10 @@ impl Interpreter {
                     any => any.to_string(),
                 };
                 Ok(Value::new_str(str))
+            }
+            ast::Expr::Array(a) => {
+                let vec: Result<_> = a.into_iter().map(|a| self.run_expr(a)).collect();
+                Ok(Value::new_array(vec?))
             }
         }
     }
