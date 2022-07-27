@@ -97,6 +97,9 @@ pub enum Token {
     #[token(",")]
     #[display(fmt = ",")]
     Comma,
+    #[token("@")]
+    #[display(fmt = "@")]
+    At,
     #[token("=")]
     #[display(fmt = "=")]
     Equal,
@@ -127,6 +130,7 @@ pub enum Expr {
     Array(Vec<Expr>),
     Tilde(Box<Expr>),
     Fold(Folder),
+    Mapper(Box<Expr>),
     NamedCall {
         func: Box<Expr>,
         named: HashMap<String, Expr>,

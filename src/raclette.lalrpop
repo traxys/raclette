@@ -15,6 +15,7 @@ extern {
 		"|" => Token::Pipe,
 		"|>" => Token::Redirect,
 		"%" => Token::Percent,
+		"@" => Token::At,
 		"\n" => Token::Newline,
 		"(" => Token::LParen,
 		")" => Token::RParen,
@@ -120,9 +121,10 @@ BinaryOp: BinaryOp = {
 
 LiteralExpr: Expr = {
 	"%" <BinaryOp> => Expr::Fold(Folder::Operator(<>)),
-	"%" "(" <func:Expr> "," <def:Expr> <comma:(",")?> ")" => Expr::Fold(
+	"%" "(" <func:Expr> "," <def:Expr> <_comma:(",")?> ")" => Expr::Fold(
 		Folder::Args{func: Box::new(func), def: Box::new(def)}
 	),
+	"@" <LiteralExpr> => Expr::Mapper(Box::new(<>)),
 	<Literal> => Expr::Literal(<>),
 	ident => Expr::Ident(<>),
 	"[" <Comma<Expr>> "]" => Expr::Array(<>),

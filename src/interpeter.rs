@@ -226,6 +226,7 @@ pub enum Folder {
 pub enum FunctionKind {
     Builtin(fn(Vec<Val>, HashMap<String, Val>) -> Result<Val>),
     Folder(Folder),
+    Mapper(Val),
     SpecifyNamed {
         func: Box<FunctionValue>,
         named: HashMap<String, Val>,
@@ -355,6 +356,28 @@ impl FunctionValue {
                             func.call(vec![acc, e], HashMap::new())
                         })
                     }
+                }
+            }
+            FunctionKind::Mapper(m) => {
+                let iter = args[0].borrow();
+                let mapper = m.borrow().cast_function()?;
+                match &*iter {
+                    Value::Map(map) => {
+                        let mut new_map = map.clone();
+                        for (_, v) in new_map.iter_mut() {
+                            *v = mapper.call(vec![v.clone()], HashMap::new())?;
+                        }
+
+                        Ok(Value::new_map(new_map))
+                    }
+                    Value::Array(a) => Ok(Value::new_array(
+                        a.iter()
+                            .map(|e| mapper.call(vec![e.clone()], HashMap::new()))
+                            .collect::<Result<_>>()?,
+                    )),
+                    _ => Err(RuntimeError::NotIterable {
+                        ty: iter.name().into(),
+                    }),
                 }
             }
         }
@@ -548,6 +571,13 @@ impl Interpreter {
                     Ok(FunctionValue::user_folder(func, def))
                 }
             },
+            ast::Expr::Mapper(m) => {
+                let mapper = self.run_expr(*m)?;
+                Ok(Value::new_function(FunctionValue {
+                    arity: 1,
+                    action: FunctionKind::Mapper(mapper),
+                }))
+            }
         }
     }
 
