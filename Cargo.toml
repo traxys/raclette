@@ -10,6 +10,7 @@ clap = { version = "3.2.11", features = ["derive"] }
 color-eyre = "0.6.2"
 derive_more = { version = "0.99.17", default-features = false, features = ["display"] }
 dirs-next = "2.0.0"
+either = "1.7.0"
 gc = { version = "0.4.1", features = ["derive"] }
 itertools = "0.10.3"
 lalrpop-util = "0.19.8"

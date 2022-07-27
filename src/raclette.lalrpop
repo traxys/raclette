@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Statement, Token, Literal, BinaryOp, Place};
+use crate::ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder};
 use std::collections::HashMap;
 
 grammar;
@@ -14,6 +14,7 @@ extern {
 		"&" => Token::And,
 		"|" => Token::Pipe,
 		"|>" => Token::Redirect,
+		"%" => Token::Percent,
 		"\n" => Token::Newline,
 		"(" => Token::LParen,
 		")" => Token::RParen,
@@ -111,7 +112,17 @@ NamedCallExpr: Expr = {
 	<LiteralExpr> => <>,
 };
 
+BinaryOp: BinaryOp = {
+	"|" => BinaryOp::BitwiseOr,
+	"&" => BinaryOp::BitwiseAnd,
+	"|>" => BinaryOp::Redirect,
+};
+
 LiteralExpr: Expr = {
+	"%" <BinaryOp> => Expr::Fold(Folder::Operator(<>)),
+	"%" "(" <func:Expr> "," <def:Expr> <comma:(",")?> ")" => Expr::Fold(
+		Folder::Args{func: Box::new(func), def: Box::new(def)}
+	),
 	<Literal> => Expr::Literal(<>),
 	ident => Expr::Ident(<>),
 	"[" <Comma<Expr>> "]" => Expr::Array(<>),

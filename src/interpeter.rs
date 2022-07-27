@@ -1,6 +1,7 @@
 use std::{collections::HashMap, fmt::Display, fs::File, io::Read, rc::Rc};
 
 use crate::ast;
+use either::Either;
 use gc::{Finalize, Gc, GcCell, Trace};
 use serde::{
     de::{MapAccess, Visitor},
@@ -22,6 +23,7 @@ pub enum RuntimeError {
     ArgumentCountMismatch { expected: usize, got: usize },
     InvalidNamedArgument { name: String },
     NotHashable { ty: String },
+    NotIterable { ty: String },
     UndefinedIdentifier(String),
     IoError(std::io::Error),
     JsonError(serde_json::Error),
@@ -215,8 +217,15 @@ pub struct FunctionValue {
 }
 
 #[derive(Trace, Finalize, Clone, Debug)]
+pub enum Folder {
+    Op(fn(Val, Val) -> Result<Val>, Val),
+    User(Val, Val),
+}
+
+#[derive(Trace, Finalize, Clone, Debug)]
 pub enum FunctionKind {
     Builtin(fn(Vec<Val>, HashMap<String, Val>) -> Result<Val>),
+    Folder(Folder),
     SpecifyNamed {
         func: Box<FunctionValue>,
         named: HashMap<String, Val>,
@@ -258,6 +267,16 @@ impl Value {
         match self {
             Value::Hashable(h) => Ok(h.clone()),
             _ => Err(RuntimeError::NotHashable {
+                ty: self.name().into(),
+            }),
+        }
+    }
+
+    pub fn cast_iterable(&self) -> Result<impl Iterator<Item = Val> + '_> {
+        match self {
+            Value::Map(v) => Ok(Either::Left(v.values().cloned())),
+            Value::Array(a) => Ok(Either::Right(a.iter().cloned())),
+            _ => Err(RuntimeError::NotIterable {
                 ty: self.name().into(),
             }),
         }
@@ -325,11 +344,58 @@ impl FunctionValue {
                 }
                 func.call(args, named)
             }
+            FunctionKind::Folder(folder) => {
+                let iter = args[0].borrow();
+                let mut iter = iter.cast_iterable()?;
+                match folder {
+                    Folder::Op(f, def) => iter.try_fold(def.clone(), f),
+                    Folder::User(f, def) => {
+                        let func = f.borrow().cast_function()?;
+                        iter.try_fold(def.clone(), |acc, e| {
+                            func.call(vec![acc, e], HashMap::new())
+                        })
+                    }
+                }
+            }
         }
+    }
+
+    pub fn user_folder(f: Val, def: Val) -> Val {
+        Value::new_function(FunctionValue {
+            arity: 1,
+            action: FunctionKind::Folder(Folder::User(f, def)),
+        })
+    }
+
+    pub fn op_folder(f: fn(Val, Val) -> Result<Val>, def: Val) -> Val {
+        Value::new_function(FunctionValue {
+            arity: 1,
+            action: FunctionKind::Folder(Folder::Op(f, def)),
+        })
     }
 }
 
 pub type Val = Gc<GcCell<Value>>;
+
+fn bitwise_or(a: Val, b: Val) -> Result<Val> {
+    let a = a.borrow().cast_number()?;
+    let b = b.borrow().cast_number()?;
+
+    Ok(Value::new_number(a | b))
+}
+
+fn bitwise_and(a: Val, b: Val) -> Result<Val> {
+    let a = a.borrow().cast_number()?;
+    let b = b.borrow().cast_number()?;
+
+    Ok(Value::new_number(a & b))
+}
+
+fn redirect(a: Val, b: Val) -> Result<Val> {
+    let b = b.borrow().cast_function()?;
+
+    b.call(vec![a], HashMap::new())
+}
 
 impl Interpreter {
     pub fn resolve(&self, name: &str) -> Result<Val> {
@@ -467,6 +533,21 @@ impl Interpreter {
                 let vec: Result<_> = a.into_iter().map(|a| self.run_expr(a)).collect();
                 Ok(Value::new_array(vec?))
             }
+            ast::Expr::Fold(folder) => match folder {
+                ast::Folder::Operator(op) => {
+                    let (f, def): (fn(Val, Val) -> Result<Val>, _) = match op {
+                        ast::BinaryOp::BitwiseOr => (bitwise_or, Value::new_number(0)),
+                        ast::BinaryOp::BitwiseAnd => (bitwise_and, Value::new_number(-1)),
+                        ast::BinaryOp::Redirect => (redirect, Value::new_number(0)),
+                    };
+                    Ok(FunctionValue::op_folder(f, def))
+                }
+                ast::Folder::Args { func, def } => {
+                    let func = self.run_expr(*func)?;
+                    let def = self.run_expr(*def)?;
+                    Ok(FunctionValue::user_folder(func, def))
+                }
+            },
         }
     }
 

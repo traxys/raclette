@@ -91,6 +91,9 @@ pub enum Token {
     #[token(".")]
     #[display(fmt = ".")]
     Dot,
+    #[token("%")]
+    #[display(fmt = "%")]
+    Percent,
     #[token(",")]
     #[display(fmt = ",")]
     Comma,
@@ -110,6 +113,12 @@ pub enum Literal {
 }
 
 #[derive(Debug)]
+pub enum Folder {
+    Operator(BinaryOp),
+    Args { func: Box<Expr>, def: Box<Expr> },
+}
+
+#[derive(Debug)]
 pub enum Expr {
     Literal(Literal),
     Ident(String),
@@ -117,6 +126,7 @@ pub enum Expr {
     Map(Vec<(Expr, Expr)>),
     Array(Vec<Expr>),
     Tilde(Box<Expr>),
+    Fold(Folder),
     NamedCall {
         func: Box<Expr>,
         named: HashMap<String, Expr>,
