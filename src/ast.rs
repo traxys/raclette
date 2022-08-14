@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, ops::Deref, rc::Rc};
 
 use logos::Logos;
 
@@ -116,6 +116,46 @@ pub enum Token {
 }
 
 #[derive(Debug, Clone)]
+pub struct SpannedValue<T> {
+    pub start: usize,
+    pub end: usize,
+    pub value: T,
+}
+
+impl<T> SpannedValue<T> {
+    pub fn map<F, U>(self, f: F) -> SpannedValue<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        let SpannedValue { start, end, value } = self;
+        SpannedValue {
+            value: f(value),
+            start,
+            end,
+        }
+    }
+
+    pub fn wrap<F, U>(self, f: F) -> SpannedValue<U>
+    where
+        F: FnOnce(Self) -> U,
+    {
+        SpannedValue {
+            start: self.start,
+            end: self.end,
+            value: f(self),
+        }
+    }
+}
+
+impl<T> Deref for SpannedValue<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum Literal {
     Number(i64),
     String(String),
@@ -124,30 +164,33 @@ pub enum Literal {
 #[derive(Debug, Clone)]
 pub enum Folder {
     Operator(BinaryOp),
-    Args { func: Box<Expr>, def: Box<Expr> },
+    Args {
+        func: Box<SpannedValue<Expr>>,
+        def: Box<SpannedValue<Expr>>,
+    },
 }
 
 #[derive(Debug, Clone)]
 pub enum Expr {
-    Literal(Literal),
-    Place(Place),
-    Binary(BinaryOp, Box<Expr>, Box<Expr>),
-    Map(Vec<(Expr, Expr)>),
-    Array(Vec<Expr>),
-    Tilde(Box<Expr>),
-    Fold(Folder),
-    Mapper(Box<Expr>),
+    Literal(SpannedValue<Literal>),
+    Place(SpannedValue<Place>),
+    Binary(BinaryOp, Box<SpannedValue<Expr>>, Box<SpannedValue<Expr>>),
+    Map(Vec<(SpannedValue<Expr>, SpannedValue<Expr>)>),
+    Array(Vec<SpannedValue<Expr>>),
+    Tilde(Box<SpannedValue<Expr>>),
+    Fold(SpannedValue<Folder>),
+    Mapper(Box<SpannedValue<Expr>>),
     FuncDef {
         args: Vec<String>,
-        ret: Box<Expr>,
+        ret: Box<SpannedValue<Expr>>,
     },
     NamedCall {
-        func: Box<Expr>,
-        named: HashMap<String, Expr>,
+        func: Box<SpannedValue<Expr>>,
+        named: HashMap<String, SpannedValue<Expr>>,
     },
     Call {
-        func: Box<Expr>,
-        args: Vec<Expr>,
+        func: Box<SpannedValue<Expr>>,
+        args: Vec<SpannedValue<Expr>>,
     },
 }
 
@@ -160,14 +203,14 @@ pub enum BinaryOp {
 
 #[derive(Debug, Clone)]
 pub enum Place {
-    Ident(String),
-    Deref(Box<Expr>, Rc<String>),
+    Ident(SpannedValue<String>),
+    Deref(Box<SpannedValue<Expr>>, SpannedValue<Rc<String>>),
 }
 
 #[derive(Debug)]
 pub enum Statement {
-    Expr(Expr),
-    Assign(Place, Expr),
+    Expr(SpannedValue<Expr>),
+    Assign(SpannedValue<Place>, SpannedValue<Expr>),
 }
 
 #[derive(Debug, thiserror::Error)]

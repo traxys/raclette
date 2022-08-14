@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder};
+use crate::ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder, SpannedValue};
 use std::rc::Rc;
 use std::collections::HashMap;
 
@@ -43,16 +43,20 @@ Comma<T>: Vec<T> = {
     }
 };
 
+Spn<T>: SpannedValue<T> = {
+	<start:@L> <value:T> <end:@R> => SpannedValue {start, value, end}
+};
+
 Literal: Literal = {
 	number => Literal::Number(<>),
 	str => Literal::String(<>),
 };
 
 Expr: Expr = {
-	<lhs:Expr> "|>" <rhs:FuncDef> => {
+	<lhs:Spn<Expr>> "|>" <rhs:Spn<FuncDef>> => {
 		Expr::Binary(BinaryOp::Redirect, Box::new(lhs), Box::new(rhs))
 	},
-	<lhs:Expr> "|>" <rhs:BOrExpr> => {
+	<lhs:Spn<Expr>> "|>" <rhs:Spn<BOrExpr>> => {
 		Expr::Binary(BinaryOp::Redirect, Box::new(lhs), Box::new(rhs))
 	},
 	<FuncDef> => <>,
@@ -60,32 +64,32 @@ Expr: Expr = {
 };
 
 FuncDef: Expr = {
-	"\\" <args:Comma<ident>> "=" <ret:BOrExpr> => Expr::FuncDef {
+	"\\" <args:Comma<ident>> "=" <ret:Spn<BOrExpr>> => Expr::FuncDef {
 		args,
 		ret: Box::new(ret),
 	},
 };
 
 BOrExpr: Expr = {
-	<lhs:BAndExpr> "|" <rhs:BOrExpr> => {
+	<lhs:Spn<BAndExpr>> "|" <rhs:Spn<BOrExpr>> => {
 		Expr::Binary(BinaryOp::BitwiseOr, Box::new(lhs), Box::new(rhs))
 	},
 	<BAndExpr> => <>,
 };
 
 BAndExpr: Expr = {
-	<lhs:MapExpr> "&" <rhs:BAndExpr> => {
+	<lhs:Spn<MapExpr>> "&" <rhs:Spn<BAndExpr>> => {
 		Expr::Binary(BinaryOp::BitwiseAnd, Box::new(lhs), Box::new(rhs))
 	},
 	<MapExpr> => <>,
 };
 
-MapField: (Expr, Expr) = {
-	<Expr> "=" <Expr> => (<>),
+MapField: (SpannedValue<Expr>, SpannedValue<Expr>) = {
+	<Spn<Expr>> "=" <Spn<Expr>> => (<>),
 };
 
-StringMap: (Expr, Expr) = {
-	<k:ident> "=" <v:Expr> => (Expr::Literal(Literal::String(k)), v)
+StringMap: (SpannedValue<Expr>, SpannedValue<Expr>) = {
+	<k:Spn<ident>> "=" <v:Spn<Expr>> => (k.map(Literal::String).wrap(Expr::Literal), v)
 };
 
 MapExpr: Expr = {
@@ -95,13 +99,13 @@ MapExpr: Expr = {
 };
 
 TildeExpr: Expr = {
-	"~" <TildeExpr> => Expr::Tilde(Box::new(<>)),
+	"~" <Spn<TildeExpr>> => Expr::Tilde(Box::new(<>)),
 	<CallExpr> => <>,
 };
 
-Named: (String, Expr) = <ident> "=" <Expr> => (<>);
+Named: (String, SpannedValue<Expr>) = <ident> "=" <Spn<Expr>> => (<>);
 
-NamedArgs: HashMap<String,Expr> = <args:(<Named> ",")*> <last:Named?> => {
+NamedArgs: HashMap<String, SpannedValue<Expr>> = <args:(<Named> ",")*> <last:Named?> => {
 	let mut named: HashMap<_, _> = args.into_iter().collect();
 	if let Some(last) = last {
 		named.insert(last.0, last.1);
@@ -109,10 +113,10 @@ NamedArgs: HashMap<String,Expr> = <args:(<Named> ",")*> <last:Named?> => {
 	named
 };
 
-PosArgs: Vec<Expr> = Comma<Expr> => <>;
+PosArgs: Vec<SpannedValue<Expr>> = Comma<Spn<Expr>> => <>;
 
 CallExpr: Expr = {
-	<func:CallExpr> "(" <args:PosArgs> ")" => Expr::Call {
+	<func:Spn<CallExpr>> "(" <args:PosArgs> ")" => Expr::Call {
 		func: Box::new(func),
 		args,
 	},
@@ -120,7 +124,7 @@ CallExpr: Expr = {
 };
 
 NamedCallExpr: Expr = {
-	<func:NamedCallExpr> "{" <named:NamedArgs> "}" => Expr::NamedCall {
+	<func:Spn<NamedCallExpr>> "{" <named:NamedArgs> "}" => Expr::NamedCall {
 		func: Box::new(func),
 		named,
 	},
@@ -134,30 +138,38 @@ BinaryOp: BinaryOp = {
 };
 
 PrefixMapperExpr: Expr = {
-	"@" <LiteralExpr> => Expr::Mapper(Box::new(<>)),
+	"@" <Spn<LiteralExpr>> => Expr::Mapper(Box::new(<>)),
 	<LiteralExpr> => <>,
 };
 
 LiteralExpr: Expr = {
-	"%" <BinaryOp> => Expr::Fold(Folder::Operator(<>)),
-	"%" "(" <func:Expr> "," <def:Expr> <_comma:(",")?> ")" => Expr::Fold(
-		Folder::Args{func: Box::new(func), def: Box::new(def)}
+	<start:@L> "%" <op:BinaryOp> <end:@R> => Expr::Fold(SpannedValue {
+		start,
+		end,
+		value: Folder::Operator(op)
+	}),
+	<start:@L> "%" "(" <func:Spn<Expr>> "," <def:Spn<Expr>> <_comma:(",")?> ")" <end:@R> => Expr::Fold(
+		SpannedValue {
+			start,
+			end,
+			value: Folder::Args{func: Box::new(func), def: Box::new(def)}
+		}
 	),
-	<FuncDef> "@" => Expr::Mapper(Box::new(<>)),
-	<Literal> => Expr::Literal(<>),
-	<p:Place> => Expr::Place(<>),
-	"[" <Comma<Expr>> "]" => Expr::Array(<>),
+	<Spn<FuncDef>> "@" => Expr::Mapper(Box::new(<>)),
+	<Spn<Literal>> => Expr::Literal(<>),
+	<p:Spn<Place>> => Expr::Place(<>),
+	"[" <Comma<Spn<Expr>>> "]" => Expr::Array(<>),
 	"(" <Expr> ")" => <>,
 };
 
 Place: Place = {
-	ident => Place::Ident(<>),
-	<e:LiteralExpr> "." <f:ident> => Place::Deref(Box::new(e), Rc::new(f)),
+	Spn<ident> => Place::Ident(<>),
+	<e:Spn<LiteralExpr>> "." <f:Spn<ident>> => Place::Deref(Box::new(e), f.map(Rc::new)),
 };
 
 pub Statement: Statement = {
-	<Expr> => Statement::Expr(<>),
-	<p:Place> "=" <e:Expr> => Statement::Assign(p, e),
+	<Spn<Expr>> => Statement::Expr(<>),
+	<p:Spn<Place>> "=" <e:Spn<Expr>> => Statement::Assign(p, e),
 };
 
 pub File: Vec<Statement> = <mut r:(<Statement> "\n")*> <l:Statement?> => {

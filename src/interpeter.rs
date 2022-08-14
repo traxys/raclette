@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt::Display, fs::File, io::Read, rc::Rc};
 
-use crate::ast;
+use crate::ast::{self, SpannedValue};
 use either::Either;
 use gc::{Finalize, Gc, GcCell, Trace};
 use serde::{
@@ -250,7 +250,7 @@ pub enum FunctionKind {
     User {
         args: Vec<String>,
         #[unsafe_ignore_trace]
-        ret: ast::Expr,
+        ret: SpannedValue<ast::Expr>,
     },
     SpecifyNamed {
         func: Box<FunctionValue>,
@@ -537,13 +537,13 @@ impl Interpreter {
             }
             ast::Statement::Assign(place, expr) => {
                 let e = self.run_expr(expr)?;
-                match place {
+                match place.value {
                     ast::Place::Ident(ident) => {
                         self.set(&ident, e);
                     }
                     ast::Place::Deref(p, field) => {
                         let p = self.run_expr(*p)?;
-                        p.borrow_mut().set_field(field, e)?;
+                        p.borrow_mut().set_field(field.value, e)?;
                     }
                 }
             }
@@ -552,9 +552,9 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn run_expr(&mut self, expr: ast::Expr) -> Result<Val> {
-        match expr {
-            ast::Expr::Literal(l) => self.run_literal(l),
+    pub fn run_expr(&mut self, expr: SpannedValue<ast::Expr>) -> Result<Val> {
+        match expr.value {
+            ast::Expr::Literal(l) => self.run_literal(l.value),
             ast::Expr::Binary(op, lhs, rhs) => match op {
                 ast::BinaryOp::BitwiseOr | ast::BinaryOp::BitwiseAnd => {
                     let lhs = self.run_expr(*lhs)?.borrow().cast_number()?;
@@ -572,12 +572,12 @@ impl Interpreter {
                     func.call(vec![input], HashMap::new(), self)
                 }
             },
-            ast::Expr::Place(p) => match p {
+            ast::Expr::Place(p) => match p.value {
                 ast::Place::Ident(n) => self.resolve(&n),
                 ast::Place::Deref(e, f) => {
                     let e = self.run_expr(*e)?;
                     let e = e.borrow();
-                    e.field(f.clone()).ok_or_else(|| RuntimeError::NoSuchField {
+                    e.field(f.value.clone()).ok_or_else(|| RuntimeError::NoSuchField {
                         field: f.to_string(),
                     })
                 }
@@ -635,7 +635,7 @@ impl Interpreter {
                 let vec: Result<_> = a.into_iter().map(|a| self.run_expr(a)).collect();
                 Ok(Value::new_array(vec?))
             }
-            ast::Expr::Fold(folder) => match folder {
+            ast::Expr::Fold(folder) => match folder.value {
                 ast::Folder::Operator(op) => {
                     let (f, def): (FolderFn, _) = match op {
                         ast::BinaryOp::BitwiseOr => (bitwise_or, Value::new_number(0)),
