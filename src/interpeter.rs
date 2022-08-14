@@ -24,6 +24,8 @@ pub enum RuntimeError {
     InvalidNamedArgument { name: String },
     NotHashable { ty: String },
     NotIterable { ty: String },
+    NoSuchField { field: String },
+    FieldNotAssignable { field: String },
     UndefinedIdentifier(String),
     IoError(std::io::Error),
     JsonError(serde_json::Error),
@@ -220,11 +222,7 @@ pub type FolderFn = fn(Val, Val, &mut Interpreter) -> Result<Val>;
 
 #[derive(Trace, Finalize, Clone)]
 pub enum Folder {
-    Op(
-        #[unsafe_ignore_trace]
-        FolderFn,
-        Val,
-    ),
+    Op(#[unsafe_ignore_trace] FolderFn, Val),
     User(Val, Val),
 }
 
@@ -261,6 +259,25 @@ pub enum FunctionKind {
 }
 
 impl Value {
+    pub fn field(&self, f: Rc<String>) -> Option<Val> {
+        match self {
+            Value::Map(m) => m.get(&HashableValue::Str(f)).cloned(),
+            _ => None,
+        }
+    }
+
+    pub fn set_field(&mut self, field: Rc<String>, value: Val) -> Result<()> {
+        match self {
+            Value::Map(m) => {
+                m.insert(HashableValue::Str(field), value);
+                Ok(())
+            }
+            _ => Err(RuntimeError::FieldNotAssignable {
+                field: field.to_string(),
+            }),
+        }
+    }
+
     pub fn cast_number(&self) -> Result<i64> {
         match self {
             &Value::Hashable(HashableValue::Number(n)) => Ok(n),
@@ -414,14 +431,14 @@ impl FunctionValue {
             }
             FunctionKind::User { args: names, ret } => {
                 let s = Scope {
-                    vars: names.iter().cloned().zip(args).collect()
+                    vars: names.iter().cloned().zip(args).collect(),
                 };
 
                 scope.push_scope(s);
                 let ret = scope.run_expr(ret.clone());
                 scope.pop_scope();
                 ret
-            },
+            }
         }
     }
 
@@ -524,7 +541,10 @@ impl Interpreter {
                     ast::Place::Ident(ident) => {
                         self.set(&ident, e);
                     }
-                    ast::Place::Deref(_, _) => todo!(),
+                    ast::Place::Deref(p, field) => {
+                        let p = self.run_expr(*p)?;
+                        p.borrow_mut().set_field(field, e)?;
+                    }
                 }
             }
         };
@@ -552,7 +572,16 @@ impl Interpreter {
                     func.call(vec![input], HashMap::new(), self)
                 }
             },
-            ast::Expr::Ident(n) => self.resolve(&n),
+            ast::Expr::Place(p) => match p {
+                ast::Place::Ident(n) => self.resolve(&n),
+                ast::Place::Deref(e, f) => {
+                    let e = self.run_expr(*e)?;
+                    let e = e.borrow();
+                    e.field(f.clone()).ok_or_else(|| RuntimeError::NoSuchField {
+                        field: f.to_string(),
+                    })
+                }
+            },
             ast::Expr::Call { func, args } => {
                 let func = self.run_expr(*func)?.borrow().cast_function()?;
 

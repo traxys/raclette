@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use logos::Logos;
 
@@ -130,7 +130,7 @@ pub enum Folder {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Literal(Literal),
-    Ident(String),
+    Place(Place),
     Binary(BinaryOp, Box<Expr>, Box<Expr>),
     Map(Vec<(Expr, Expr)>),
     Array(Vec<Expr>),
@@ -158,10 +158,10 @@ pub enum BinaryOp {
     Redirect,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Place {
     Ident(String),
-    Deref(String, Box<Place>),
+    Deref(Box<Expr>, Rc<String>),
 }
 
 #[derive(Debug)]

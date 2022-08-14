@@ -1,4 +1,5 @@
 use crate::ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder};
+use std::rc::Rc;
 use std::collections::HashMap;
 
 grammar;
@@ -123,7 +124,7 @@ NamedCallExpr: Expr = {
 		func: Box::new(func),
 		named,
 	},
-	<LiteralExpr> => <>,
+	<PrefixMapperExpr> => <>,
 };
 
 BinaryOp: BinaryOp = {
@@ -132,22 +133,26 @@ BinaryOp: BinaryOp = {
 	"|>" => BinaryOp::Redirect,
 };
 
+PrefixMapperExpr: Expr = {
+	"@" <LiteralExpr> => Expr::Mapper(Box::new(<>)),
+	<LiteralExpr> => <>,
+};
+
 LiteralExpr: Expr = {
 	"%" <BinaryOp> => Expr::Fold(Folder::Operator(<>)),
 	"%" "(" <func:Expr> "," <def:Expr> <_comma:(",")?> ")" => Expr::Fold(
 		Folder::Args{func: Box::new(func), def: Box::new(def)}
 	),
-	"@" <LiteralExpr> => Expr::Mapper(Box::new(<>)),
 	<FuncDef> "@" => Expr::Mapper(Box::new(<>)),
 	<Literal> => Expr::Literal(<>),
-	ident => Expr::Ident(<>),
+	<p:Place> => Expr::Place(<>),
 	"[" <Comma<Expr>> "]" => Expr::Array(<>),
 	"(" <Expr> ")" => <>,
 };
 
 Place: Place = {
 	ident => Place::Ident(<>),
-	<e:ident> "." <r:Place> => Place::Deref(e, Box::new(r)),
+	<e:LiteralExpr> "." <f:ident> => Place::Deref(Box::new(e), Rc::new(f)),
 };
 
 pub Statement: Statement = {
