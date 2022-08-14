@@ -8,6 +8,37 @@ use serde::{
     Deserialize,
 };
 
+trait SpannedResult {
+    type Ok;
+
+    fn with_span<U>(self, span: &SpannedValue<U>) -> Result<Self::Ok>;
+}
+
+impl<T> SpannedResult for Result<T> {
+    type Ok = T;
+
+    fn with_span<U>(self, span: &SpannedValue<U>) -> Result<T> {
+        match self {
+            Err(e) => match e {
+                RuntimeError::Unspanned(e) => Err(e.add_span(span)),
+                v => Err(v),
+            },
+            v => v,
+        }
+    }
+}
+
+impl<T> SpannedResult for std::result::Result<T, RuntimeErrorKind> {
+    type Ok = T;
+
+    fn with_span<U>(self, span: &SpannedValue<U>) -> Result<T> {
+        match self {
+            Err(e) => Err(e.add_span(span)),
+            Ok(v) => Ok(v),
+        }
+    }
+}
+
 pub struct Interpreter {
     scopes: Vec<Scope>,
     global: Scope,
@@ -18,7 +49,7 @@ struct Scope {
 }
 
 #[derive(Debug)]
-pub enum RuntimeError {
+pub enum RuntimeErrorKind {
     CastError { into: String, from: String },
     ArgumentCountMismatch { expected: usize, got: usize },
     InvalidNamedArgument { name: String },
@@ -32,15 +63,38 @@ pub enum RuntimeError {
     ParseIntError,
 }
 
-impl From<std::io::Error> for RuntimeError {
-    fn from(v: std::io::Error) -> Self {
-        Self::IoError(v)
+impl RuntimeErrorKind {
+    fn add_span<T>(self, span: &SpannedValue<T>) -> RuntimeError {
+        RuntimeError::with_span(span, self)
     }
 }
 
-impl From<serde_json::Error> for RuntimeError {
-    fn from(v: serde_json::Error) -> Self {
-        Self::JsonError(v)
+#[derive(Debug)]
+pub enum RuntimeError {
+    Spanned(SpannedValue<RuntimeErrorKind>),
+    Unspanned(RuntimeErrorKind),
+}
+
+impl From<SpannedValue<RuntimeErrorKind>> for RuntimeError {
+    fn from(v: SpannedValue<RuntimeErrorKind>) -> Self {
+        Self::Spanned(v)
+    }
+}
+
+impl From<RuntimeErrorKind> for RuntimeError {
+    fn from(v: RuntimeErrorKind) -> Self {
+        Self::Unspanned(v)
+    }
+}
+
+impl RuntimeError {
+    fn with_span<T>(span: &SpannedValue<T>, error: RuntimeErrorKind) -> Self {
+        SpannedValue {
+            start: span.start,
+            end: span.end,
+            value: error,
+        }
+        .into()
     }
 }
 
@@ -53,6 +107,12 @@ pub enum Value {
     Array(Vec<Val>),
     File(#[unsafe_ignore_trace] File),
     Hashable(HashableValue),
+}
+
+#[derive(Trace, Finalize, Debug)]
+struct Span {
+    start: usize,
+    end: usize,
 }
 
 impl<'de> Deserialize<'de> for Value {
@@ -266,54 +326,59 @@ impl Value {
         }
     }
 
-    pub fn set_field(&mut self, field: Rc<String>, value: Val) -> Result<()> {
+    pub fn set_field(&mut self, field: SpannedValue<Rc<String>>, value: Val) -> Result<()> {
         match self {
             Value::Map(m) => {
-                m.insert(HashableValue::Str(field), value);
+                m.insert(HashableValue::Str(field.value), value);
                 Ok(())
             }
-            _ => Err(RuntimeError::FieldNotAssignable {
-                field: field.to_string(),
-            }),
+            _ => Err(RuntimeErrorKind::FieldNotAssignable {
+                field: field.value.to_string(),
+            }
+            .add_span(&field)),
         }
     }
 
     pub fn cast_number(&self) -> Result<i64> {
         match self {
             &Value::Hashable(HashableValue::Number(n)) => Ok(n),
-            v => Err(RuntimeError::CastError {
+            v => Err(RuntimeErrorKind::CastError {
                 into: "number".into(),
                 from: v.name().into(),
-            }),
+            }
+            .into()),
         }
     }
 
     pub fn cast_function(&self) -> Result<FunctionValue> {
         match self {
             Value::Func(f) => Ok(f.clone()),
-            v => Err(RuntimeError::CastError {
+            v => Err(RuntimeErrorKind::CastError {
                 into: "function".into(),
                 from: v.name().into(),
-            }),
+            }
+            .into()),
         }
     }
 
     pub fn cast_str(&self) -> Result<Rc<String>> {
         match self {
             Value::Hashable(HashableValue::Str(f)) => Ok(f.clone()),
-            v => Err(RuntimeError::CastError {
+            v => Err(RuntimeErrorKind::CastError {
                 into: "str".into(),
                 from: v.name().into(),
-            }),
+            }
+            .into()),
         }
     }
 
     pub fn cast_hashable(&self) -> Result<HashableValue> {
         match self {
             Value::Hashable(h) => Ok(h.clone()),
-            _ => Err(RuntimeError::NotHashable {
+            _ => Err(RuntimeErrorKind::NotHashable {
                 ty: self.name().into(),
-            }),
+            }
+            .into()),
         }
     }
 
@@ -321,9 +386,10 @@ impl Value {
         match self {
             Value::Map(v) => Ok(Either::Left(v.values().cloned())),
             Value::Array(a) => Ok(Either::Right(a.iter().cloned())),
-            _ => Err(RuntimeError::NotIterable {
+            _ => Err(RuntimeErrorKind::NotIterable {
                 ty: self.name().into(),
-            }),
+            }
+            .into()),
         }
     }
 
@@ -375,10 +441,11 @@ impl FunctionValue {
         scope: &mut Interpreter,
     ) -> Result<Val> {
         if args.len() != self.arity {
-            return Err(RuntimeError::ArgumentCountMismatch {
+            return Err(RuntimeErrorKind::ArgumentCountMismatch {
                 expected: self.arity,
                 got: args.len(),
-            });
+            }
+            .into());
         }
 
         match &self.action {
@@ -424,9 +491,10 @@ impl FunctionValue {
                             .map(|e| mapper.call(vec![e.clone()], HashMap::new(), scope))
                             .collect::<Result<_>>()?,
                     )),
-                    _ => Err(RuntimeError::NotIterable {
+                    _ => Err(RuntimeErrorKind::NotIterable {
                         ty: iter.name().into(),
-                    }),
+                    }
+                    .into()),
                 }
             }
             FunctionKind::User { args: names, ret } => {
@@ -489,7 +557,7 @@ impl Interpreter {
 
         match self.global.vars.get(name) {
             Some(v) => Ok(v.clone()),
-            None => Err(RuntimeError::UndefinedIdentifier(name.into())),
+            None => Err(RuntimeErrorKind::UndefinedIdentifier(name.into()).into()),
         }
     }
 
@@ -543,7 +611,7 @@ impl Interpreter {
                     }
                     ast::Place::Deref(p, field) => {
                         let p = self.run_expr(*p)?;
-                        p.borrow_mut().set_field(field.value, e)?;
+                        p.borrow_mut().set_field(field, e)?;
                     }
                 }
             }
@@ -557,8 +625,10 @@ impl Interpreter {
             ast::Expr::Literal(l) => self.run_literal(l.value),
             ast::Expr::Binary(op, lhs, rhs) => match op {
                 ast::BinaryOp::BitwiseOr | ast::BinaryOp::BitwiseAnd => {
-                    let lhs = self.run_expr(*lhs)?.borrow().cast_number()?;
-                    let rhs = self.run_expr(*rhs)?.borrow().cast_number()?;
+                    let ls = lhs.span();
+                    let lhs = self.run_expr(*lhs)?.borrow().cast_number().with_span(&ls)?;
+                    let rs = rhs.span();
+                    let rhs = self.run_expr(*rhs)?.borrow().cast_number().with_span(&rs)?;
                     let v = match op {
                         ast::BinaryOp::BitwiseOr => lhs | rhs,
                         ast::BinaryOp::BitwiseAnd => lhs & rhs,
@@ -567,23 +637,36 @@ impl Interpreter {
                     Ok(Value::new_number(v))
                 }
                 ast::BinaryOp::Redirect => {
-                    let input = self.run_expr(*lhs)?;
-                    let func = self.run_expr(*rhs)?.borrow().cast_function()?;
+                    let ls = lhs.span();
+                    let input = self.run_expr(*lhs).with_span(&ls)?;
+                    let f = rhs.span();
+                    let func = self
+                        .run_expr(*rhs)?
+                        .borrow()
+                        .cast_function()
+                        .with_span(&f)?;
                     func.call(vec![input], HashMap::new(), self)
                 }
             },
             ast::Expr::Place(p) => match p.value {
-                ast::Place::Ident(n) => self.resolve(&n),
+                ast::Place::Ident(n) => self.resolve(&n).with_span(&n),
                 ast::Place::Deref(e, f) => {
                     let e = self.run_expr(*e)?;
                     let e = e.borrow();
-                    e.field(f.value.clone()).ok_or_else(|| RuntimeError::NoSuchField {
-                        field: f.to_string(),
-                    })
+                    e.field(f.value.clone())
+                        .ok_or_else(|| RuntimeErrorKind::NoSuchField {
+                            field: f.to_string(),
+                        })
+                        .with_span(&f)
                 }
             },
             ast::Expr::Call { func, args } => {
-                let func = self.run_expr(*func)?.borrow().cast_function()?;
+                let f = func.span();
+                let func = self
+                    .run_expr(*func)?
+                    .borrow()
+                    .cast_function()
+                    .with_span(&f)?;
 
                 if func.arity != 0 && args.is_empty() {
                     todo!("Short hand for defining a new function")
@@ -592,11 +675,17 @@ impl Interpreter {
                         .into_iter()
                         .map(|e| self.run_expr(e))
                         .collect::<Result<_>>()?;
-                    func.call(args, HashMap::new(), self)
+                    func.call(args, HashMap::new(), self).with_span(&f)
                 }
             }
             ast::Expr::NamedCall { func, named } => {
-                let func = Box::new(self.run_expr(*func)?.borrow().cast_function()?);
+                let f = func.span();
+                let func = Box::new(
+                    self.run_expr(*func)?
+                        .borrow()
+                        .cast_function()
+                        .with_span(&f)?,
+                );
                 let named = named
                     .into_iter()
                     .map(|(key, val)| Ok((key, self.run_expr(val)?)))
@@ -611,20 +700,24 @@ impl Interpreter {
                 let map: Result<_> = m
                     .into_iter()
                     .map(|(k, v)| -> Result<_> {
+                        let ks = k.span();
                         Ok((
-                            self.run_expr(k)?.borrow().cast_hashable()?,
+                            self.run_expr(k)?.borrow().cast_hashable().with_span(&ks)?,
                             self.run_expr(v)?,
                         ))
                     })
                     .collect();
                 Ok(Value::new_map(map?))
             }
-            ast::Expr::Tilde(v) => {
-                let v = self.run_expr(*v)?;
+            ast::Expr::Tilde(e) => {
+                let span = e.span();
+                let v = self.run_expr(*e)?;
                 let str = match &mut *v.borrow_mut() {
                     Value::File(ref mut f) => {
                         let mut s = String::new();
-                        f.read_to_string(&mut s)?;
+                        f.read_to_string(&mut s)
+                            .map_err(RuntimeErrorKind::IoError)
+                            .with_span(&span)?;
                         s
                     }
                     any => any.to_string(),

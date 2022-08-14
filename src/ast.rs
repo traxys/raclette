@@ -122,7 +122,21 @@ pub struct SpannedValue<T> {
     pub value: T,
 }
 
+type Span = SpannedValue<()>;
+
 impl<T> SpannedValue<T> {
+    pub fn span(&self) -> Span {
+        SpannedValue::with_span((), self)
+    }
+
+    pub fn with_span<U>(value: T, other: &SpannedValue<U>) -> Self {
+        Self {
+            start: other.start,
+            end: other.end,
+            value,
+        }
+    }
+
     pub fn map<F, U>(self, f: F) -> SpannedValue<U>
     where
         F: FnOnce(T) -> U,
