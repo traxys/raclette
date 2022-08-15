@@ -1,6 +1,9 @@
 use itertools::Itertools;
 
-use crate::interpeter::{FunctionKind, FunctionValue, HashableValue, RuntimeError, Val, Value};
+use crate::interpeter::{
+    FunctionKind, FunctionValue, HashableValue, RuntimeError, SpannedResult, Val, Value,
+};
+use crate::span::{Span, Spanning, SpanningExt, UNKNOWN_SPAN};
 use std::{collections::HashMap, fs::File, io::BufReader};
 
 macro_rules! define_builtin {
@@ -15,7 +18,7 @@ macro_rules! define_builtin {
                     Value::new_function(FunctionValue {
                         arity: $arity,
                         action: FunctionKind::Builtin($func),
-                    })
+                    }, UNKNOWN_SPAN)
                 );
             )*
             map
@@ -41,7 +44,7 @@ fn separate_string(s: String, sep: i64) -> String {
     new
 }
 
-fn hex(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError> {
+fn hex(args: Vec<Val>, named: HashMap<String, Val>, span: Span) -> Result<Val, RuntimeError> {
     if let Some(name) = named.keys().find(|key| !["sep"].contains(&key.as_str())) {
         return Err(RuntimeError::InvalidNamedArgument {
             name: name.into(),
@@ -49,18 +52,21 @@ fn hex(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError>
         });
     }
 
-    let v = args[0].borrow().cast_number()?;
+    let v = args[0]
+        .borrow()
+        .cast_number()
+        .with_span(&*args[0].borrow())?;
     let str = format!("{v:#x}");
     match named.get("sep") {
-        None => Ok(Value::new_str(str)),
-        Some(v) => Ok(Value::new_str(separate_string(
-            str,
-            v.borrow().cast_number()?,
-        ))),
+        None => Ok(Value::new_str(str, &span)),
+        Some(v) => Ok(Value::new_str(
+            separate_string(str, v.borrow().cast_number()?),
+            &span,
+        )),
     }
 }
 
-fn bin(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError> {
+fn bin(args: Vec<Val>, named: HashMap<String, Val>, span: Span) -> Result<Val, RuntimeError> {
     if let Some(name) = named.keys().find(|key| !["sep"].contains(&key.as_str())) {
         return Err(RuntimeError::InvalidNamedArgument {
             name: name.into(),
@@ -68,18 +74,21 @@ fn bin(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError>
         });
     }
 
-    let v = args[0].borrow().cast_number()?;
+    let v = args[0]
+        .borrow()
+        .cast_number()
+        .with_span(&*args[0].borrow())?;
     let str = format!("{v:#b}");
     match named.get("sep") {
-        None => Ok(Value::new_str(str)),
-        Some(v) => Ok(Value::new_str(separate_string(
-            str,
-            v.borrow().cast_number()?,
-        ))),
+        None => Ok(Value::new_str(str, &span)),
+        Some(v) => Ok(Value::new_str(
+            separate_string(str, v.borrow().cast_number().with_span(&*v.borrow())?),
+            &span,
+        )),
     }
 }
 
-fn parse_int(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError> {
+fn parse_int(args: Vec<Val>, named: HashMap<String, Val>, span: Span) -> Result<Val, RuntimeError> {
     if let Some(name) = named.keys().find(|key| ![].contains(key)) {
         return Err(RuntimeError::InvalidNamedArgument {
             name: name.into(),
@@ -87,7 +96,7 @@ fn parse_int(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, Runtime
         });
     }
 
-    let v = args[0].borrow().cast_str()?;
+    let v = args[0].borrow().cast_str().with_span(&*args[0].borrow())?;
     let n = if v.starts_with("0x") {
         i64::from_str_radix(v.trim_start_matches("0x"), 16)
     } else if v.starts_with("0b") {
@@ -97,10 +106,10 @@ fn parse_int(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, Runtime
     }
     .map_err(|_| RuntimeError::ParseIntError)?;
 
-    Ok(Value::new_number(n))
+    Ok(Value::new_number(n, &span))
 }
 
-fn open_file(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError> {
+fn open_file(args: Vec<Val>, named: HashMap<String, Val>, span: Span) -> Result<Val, RuntimeError> {
     if let Some(name) = named.keys().find(|key| ![].contains(&key.as_str())) {
         return Err(RuntimeError::InvalidNamedArgument {
             name: name.into(),
@@ -108,13 +117,17 @@ fn open_file(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, Runtime
         });
     }
 
-    let v = args[0].borrow().cast_str()?;
+    let v = args[0].borrow().cast_str().with_span(&*args[0].borrow())?;
     let f = File::open(&*v).map_err(RuntimeError::IoError)?;
 
-    Ok(Value::new_file(f))
+    Ok(Value::new_file(f, &span))
 }
 
-fn parse_json_value(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError> {
+fn parse_json_value(
+    args: Vec<Val>,
+    named: HashMap<String, Val>,
+    span: Span,
+) -> Result<Val, RuntimeError> {
     if let Some(name) = named.keys().find(|key| ![].contains(&key.as_str())) {
         return Err(RuntimeError::InvalidNamedArgument {
             name: name.into(),
@@ -122,7 +135,8 @@ fn parse_json_value(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, 
         });
     }
 
-    let parsed: Value = match &mut *args[0].borrow_mut() {
+    let arg_span = args[0].borrow().span();
+    let parsed: Value = match &mut **args[0].borrow_mut() {
         Value::File(f) => {
             let mut buf_reader = BufReader::new(f);
             serde_json::from_reader(&mut buf_reader).map_err(RuntimeError::JsonError)?
@@ -135,12 +149,12 @@ fn parse_json_value(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, 
                 into: "str-like".into(),
                 from: v.name().into(),
                 location: None,
-            }
-            .into())
+            })
+            .with_span(&arg_span)
         }
     };
 
-    Ok(Value::new(parsed))
+    Ok(Value::new(parsed.spanned_gc(&span)))
 }
 
 define_builtin! {

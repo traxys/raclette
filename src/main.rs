@@ -8,6 +8,7 @@ use rustyline::{error::ReadlineError, Editor};
 pub mod ast;
 pub mod builtins;
 pub mod interpeter;
+pub mod span;
 
 #[derive(Parser, Debug)]
 struct Args {

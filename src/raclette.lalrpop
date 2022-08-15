@@ -1,4 +1,4 @@
-use crate::ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder, SpannedValue};
+use crate::{ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder}, span::SpannedValue};
 use std::rc::Rc;
 use std::collections::HashMap;
 

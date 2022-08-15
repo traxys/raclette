@@ -1,6 +1,8 @@
-use std::{collections::HashMap, ops::{Deref, Range}, rc::Rc};
+use std::{collections::HashMap, ops::Range, rc::Rc};
 
 use logos::Logos;
+
+use crate::span::SpannedValue;
 
 fn escape_string(input: &str) -> String {
     if !input.contains('\\') {
@@ -113,60 +115,6 @@ pub enum Token {
     #[regex(r"[ \t\f]+", logos::skip)]
     #[display(fmt = "<error>")]
     Error,
-}
-
-#[derive(Debug, Clone)]
-pub struct SpannedValue<T> {
-    pub start: usize,
-    pub end: usize,
-    pub value: T,
-}
-
-type Span = SpannedValue<()>;
-
-impl<T> SpannedValue<T> {
-    pub fn span(&self) -> Span {
-        SpannedValue::with_span((), self)
-    }
-
-    pub fn with_span<U>(value: T, other: &SpannedValue<U>) -> Self {
-        Self {
-            start: other.start,
-            end: other.end,
-            value,
-        }
-    }
-
-    pub fn map<F, U>(self, f: F) -> SpannedValue<U>
-    where
-        F: FnOnce(T) -> U,
-    {
-        let SpannedValue { start, end, value } = self;
-        SpannedValue {
-            value: f(value),
-            start,
-            end,
-        }
-    }
-
-    pub fn wrap<F, U>(self, f: F) -> SpannedValue<U>
-    where
-        F: FnOnce(Self) -> U,
-    {
-        SpannedValue {
-            start: self.start,
-            end: self.end,
-            value: f(self),
-        }
-    }
-}
-
-impl<T> Deref for SpannedValue<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.value
-    }
 }
 
 #[derive(Debug, Clone)]
