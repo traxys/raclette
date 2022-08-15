@@ -135,7 +135,8 @@ fn main() -> Result<()> {
                 match rl.readline(">> ") {
                     Ok(line) => {
                         rl.add_history_entry(&line);
-                        let parsed = match parser.parse(ast::lexer(&line)).into_report(line) {
+                        let parsed = match parser.parse(ast::lexer(&line)).into_report(line.clone())
+                        {
                             Ok(p) => p,
                             Err(e) => {
                                 println!("Parsing error: {:?}", e);
@@ -149,7 +150,8 @@ fn main() -> Result<()> {
                                         println!("{}", v);
                                     }
                                     Err(e) => {
-                                        println!("Error: {:?}", e);
+                                        let report: miette::Report = e.into();
+                                        println!("Error: {:?}", report.with_source_code(line));
                                         continue;
                                     }
                                 };

@@ -3,6 +3,7 @@ use std::{collections::HashMap, fmt::Display, fs::File, io::Read, rc::Rc};
 use crate::ast::{self, SpannedValue};
 use either::Either;
 use gc::{Finalize, Gc, GcCell, Trace};
+use miette::{Diagnostic, SourceSpan};
 use serde::{
     de::{MapAccess, Visitor},
     Deserialize,
@@ -19,22 +20,8 @@ impl<T> SpannedResult for Result<T> {
 
     fn with_span<U>(self, span: &SpannedValue<U>) -> Result<T> {
         match self {
-            Err(e) => match e {
-                RuntimeError::Unspanned(e) => Err(e.add_span(span)),
-                v => Err(v),
-            },
-            v => v,
-        }
-    }
-}
-
-impl<T> SpannedResult for std::result::Result<T, RuntimeErrorKind> {
-    type Ok = T;
-
-    fn with_span<U>(self, span: &SpannedValue<U>) -> Result<T> {
-        match self {
             Err(e) => Err(e.add_span(span)),
-            Ok(v) => Ok(v),
+            v => v,
         }
     }
 }
@@ -48,53 +35,96 @@ struct Scope {
     vars: HashMap<String, Val>,
 }
 
-#[derive(Debug)]
-pub enum RuntimeErrorKind {
-    CastError { into: String, from: String },
-    ArgumentCountMismatch { expected: usize, got: usize },
-    InvalidNamedArgument { name: String },
-    NotHashable { ty: String },
-    NotIterable { ty: String },
-    NoSuchField { field: String },
-    FieldNotAssignable { field: String },
-    UndefinedIdentifier(String),
-    IoError(std::io::Error),
-    JsonError(serde_json::Error),
+#[derive(Debug, thiserror::Error, Diagnostic)]
+pub enum RuntimeError {
+    #[error("Invalid Type. Expected `{into}` got `{from}`")]
+    CastError {
+        into: String,
+        from: String,
+        #[label("this value is of type {from}")]
+        location: Option<SourceSpan>,
+    },
+    #[error("Invalid Argument count. Expected {expected} got {got}")]
+    ArgumentCountMismatch {
+        expected: usize,
+        got: usize,
+        #[label("this call supplies {got} arguments")]
+        location: Option<SourceSpan>,
+    },
+    #[error("Named argument {name} does not exist")]
+    InvalidNamedArgument {
+        name: String,
+        #[label("this named argument is not valid")]
+        location: Option<SourceSpan>,
+    },
+    #[error("{ty} is not hashable")]
+    NotHashable {
+        ty: String,
+        #[label("value is not hashable")]
+        location: Option<SourceSpan>,
+    },
+    #[error("{ty} is not iterable")]
+    NotIterable {
+        ty: String,
+        #[label("value is not iterable")]
+        location: Option<SourceSpan>,
+    },
+    #[error("Field {field} does not exist")]
+    NoSuchField {
+        field: String,
+        #[label("this field does not exist")]
+        location: Option<SourceSpan>,
+    },
+    #[error("Field {field} is not assignable")]
+    FieldNotAssignable {
+        field: String,
+        #[label("this field can't be assigned")]
+        location: Option<SourceSpan>,
+    },
+    #[error("{ident} is not defined")]
+    UndefinedIdentifier {
+        ident: String,
+        #[label("identifier is not defined")]
+        location: Option<SourceSpan>,
+    },
+    #[error("Io error")]
+    IoError(#[source] std::io::Error),
+    #[error("JSON error")]
+    JsonError(#[source] serde_json::Error),
+    #[error("Could not parse integer")]
     ParseIntError,
 }
 
-impl RuntimeErrorKind {
-    fn add_span<T>(self, span: &SpannedValue<T>) -> RuntimeError {
-        RuntimeError::with_span(span, self)
-    }
-}
-
-#[derive(Debug)]
-pub enum RuntimeError {
-    Spanned(SpannedValue<RuntimeErrorKind>),
-    Unspanned(RuntimeErrorKind),
-}
-
-impl From<SpannedValue<RuntimeErrorKind>> for RuntimeError {
-    fn from(v: SpannedValue<RuntimeErrorKind>) -> Self {
-        Self::Spanned(v)
-    }
-}
-
-impl From<RuntimeErrorKind> for RuntimeError {
-    fn from(v: RuntimeErrorKind) -> Self {
-        Self::Unspanned(v)
-    }
+macro_rules! impl_add_span {
+    ($($spanning:ident),* $(,)?) => {
+        fn add_span<U>(self, span: &SpannedValue<U>) -> Self {
+            match self {
+                $(
+                    mut v @ RuntimeError::$spanning {..} => {
+                        if let RuntimeError::$spanning { ref mut location, .. } = &mut v {
+                            if location.is_none() {
+                                *location = Some((span.start..span.end).into());
+                            }
+                        };
+                        v
+                    }
+                )*
+                _ => self,
+            }
+        }
+    };
 }
 
 impl RuntimeError {
-    fn with_span<T>(span: &SpannedValue<T>, error: RuntimeErrorKind) -> Self {
-        SpannedValue {
-            start: span.start,
-            end: span.end,
-            value: error,
-        }
-        .into()
+    impl_add_span! {
+        CastError,
+        ArgumentCountMismatch,
+        InvalidNamedArgument,
+        NotHashable,
+        NotIterable,
+        NoSuchField,
+        FieldNotAssignable,
+        UndefinedIdentifier,
     }
 }
 
@@ -332,8 +362,9 @@ impl Value {
                 m.insert(HashableValue::Str(field.value), value);
                 Ok(())
             }
-            _ => Err(RuntimeErrorKind::FieldNotAssignable {
+            _ => Err(RuntimeError::FieldNotAssignable {
                 field: field.value.to_string(),
+                location: None,
             }
             .add_span(&field)),
         }
@@ -342,43 +373,43 @@ impl Value {
     pub fn cast_number(&self) -> Result<i64> {
         match self {
             &Value::Hashable(HashableValue::Number(n)) => Ok(n),
-            v => Err(RuntimeErrorKind::CastError {
+            v => Err(RuntimeError::CastError {
                 into: "number".into(),
                 from: v.name().into(),
-            }
-            .into()),
+                location: None,
+            }),
         }
     }
 
     pub fn cast_function(&self) -> Result<FunctionValue> {
         match self {
             Value::Func(f) => Ok(f.clone()),
-            v => Err(RuntimeErrorKind::CastError {
+            v => Err(RuntimeError::CastError {
                 into: "function".into(),
                 from: v.name().into(),
-            }
-            .into()),
+                location: None,
+            }),
         }
     }
 
     pub fn cast_str(&self) -> Result<Rc<String>> {
         match self {
             Value::Hashable(HashableValue::Str(f)) => Ok(f.clone()),
-            v => Err(RuntimeErrorKind::CastError {
+            v => Err(RuntimeError::CastError {
                 into: "str".into(),
                 from: v.name().into(),
-            }
-            .into()),
+                location: None,
+            }),
         }
     }
 
     pub fn cast_hashable(&self) -> Result<HashableValue> {
         match self {
             Value::Hashable(h) => Ok(h.clone()),
-            _ => Err(RuntimeErrorKind::NotHashable {
+            _ => Err(RuntimeError::NotHashable {
                 ty: self.name().into(),
-            }
-            .into()),
+                location: None,
+            }),
         }
     }
 
@@ -386,10 +417,10 @@ impl Value {
         match self {
             Value::Map(v) => Ok(Either::Left(v.values().cloned())),
             Value::Array(a) => Ok(Either::Right(a.iter().cloned())),
-            _ => Err(RuntimeErrorKind::NotIterable {
+            _ => Err(RuntimeError::NotIterable {
                 ty: self.name().into(),
-            }
-            .into()),
+                location: None,
+            }),
         }
     }
 
@@ -441,11 +472,11 @@ impl FunctionValue {
         scope: &mut Interpreter,
     ) -> Result<Val> {
         if args.len() != self.arity {
-            return Err(RuntimeErrorKind::ArgumentCountMismatch {
+            return Err(RuntimeError::ArgumentCountMismatch {
                 expected: self.arity,
                 got: args.len(),
-            }
-            .into());
+                location: None,
+            });
         }
 
         match &self.action {
@@ -491,10 +522,10 @@ impl FunctionValue {
                             .map(|e| mapper.call(vec![e.clone()], HashMap::new(), scope))
                             .collect::<Result<_>>()?,
                     )),
-                    _ => Err(RuntimeErrorKind::NotIterable {
+                    _ => Err(RuntimeError::NotIterable {
                         ty: iter.name().into(),
-                    }
-                    .into()),
+                        location: None,
+                    }),
                 }
             }
             FunctionKind::User { args: names, ret } => {
@@ -557,7 +588,10 @@ impl Interpreter {
 
         match self.global.vars.get(name) {
             Some(v) => Ok(v.clone()),
-            None => Err(RuntimeErrorKind::UndefinedIdentifier(name.into()).into()),
+            None => Err(RuntimeError::UndefinedIdentifier {
+                ident: name.into(),
+                location: None,
+            }),
         }
     }
 
@@ -654,8 +688,9 @@ impl Interpreter {
                     let e = self.run_expr(*e)?;
                     let e = e.borrow();
                     e.field(f.value.clone())
-                        .ok_or_else(|| RuntimeErrorKind::NoSuchField {
+                        .ok_or_else(|| RuntimeError::NoSuchField {
                             field: f.to_string(),
+                            location: None,
                         })
                         .with_span(&f)
                 }
@@ -716,7 +751,7 @@ impl Interpreter {
                     Value::File(ref mut f) => {
                         let mut s = String::new();
                         f.read_to_string(&mut s)
-                            .map_err(RuntimeErrorKind::IoError)
+                            .map_err(RuntimeError::IoError)
                             .with_span(&span)?;
                         s
                     }

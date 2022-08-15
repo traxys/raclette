@@ -1,8 +1,6 @@
 use itertools::Itertools;
 
-use crate::interpeter::{
-    FunctionKind, FunctionValue, HashableValue, RuntimeError, RuntimeErrorKind, Val, Value,
-};
+use crate::interpeter::{FunctionKind, FunctionValue, HashableValue, RuntimeError, Val, Value};
 use std::{collections::HashMap, fs::File, io::BufReader};
 
 macro_rules! define_builtin {
@@ -45,7 +43,10 @@ fn separate_string(s: String, sep: i64) -> String {
 
 fn hex(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError> {
     if let Some(name) = named.keys().find(|key| !["sep"].contains(&key.as_str())) {
-        return Err(RuntimeErrorKind::InvalidNamedArgument { name: name.into() }.into());
+        return Err(RuntimeError::InvalidNamedArgument {
+            name: name.into(),
+            location: None,
+        });
     }
 
     let v = args[0].borrow().cast_number()?;
@@ -61,7 +62,10 @@ fn hex(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError>
 
 fn bin(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError> {
     if let Some(name) = named.keys().find(|key| !["sep"].contains(&key.as_str())) {
-        return Err(RuntimeErrorKind::InvalidNamedArgument { name: name.into() }.into());
+        return Err(RuntimeError::InvalidNamedArgument {
+            name: name.into(),
+            location: None,
+        });
     }
 
     let v = args[0].borrow().cast_number()?;
@@ -77,7 +81,10 @@ fn bin(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError>
 
 fn parse_int(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError> {
     if let Some(name) = named.keys().find(|key| ![].contains(key)) {
-        return Err(RuntimeErrorKind::InvalidNamedArgument { name: name.into() }.into());
+        return Err(RuntimeError::InvalidNamedArgument {
+            name: name.into(),
+            location: None,
+        });
     }
 
     let v = args[0].borrow().cast_str()?;
@@ -88,39 +95,46 @@ fn parse_int(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, Runtime
     } else {
         v.parse()
     }
-    .map_err(|_| RuntimeErrorKind::ParseIntError)?;
+    .map_err(|_| RuntimeError::ParseIntError)?;
 
     Ok(Value::new_number(n))
 }
 
 fn open_file(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError> {
     if let Some(name) = named.keys().find(|key| ![].contains(&key.as_str())) {
-        return Err(RuntimeErrorKind::InvalidNamedArgument { name: name.into() }.into());
+        return Err(RuntimeError::InvalidNamedArgument {
+            name: name.into(),
+            location: None,
+        });
     }
 
     let v = args[0].borrow().cast_str()?;
-    let f = File::open(&*v).map_err(RuntimeErrorKind::IoError)?;
+    let f = File::open(&*v).map_err(RuntimeError::IoError)?;
 
     Ok(Value::new_file(f))
 }
 
 fn parse_json_value(args: Vec<Val>, named: HashMap<String, Val>) -> Result<Val, RuntimeError> {
     if let Some(name) = named.keys().find(|key| ![].contains(&key.as_str())) {
-        return Err(RuntimeErrorKind::InvalidNamedArgument { name: name.into() }.into());
+        return Err(RuntimeError::InvalidNamedArgument {
+            name: name.into(),
+            location: None,
+        });
     }
 
     let parsed: Value = match &mut *args[0].borrow_mut() {
         Value::File(f) => {
             let mut buf_reader = BufReader::new(f);
-            serde_json::from_reader(&mut buf_reader).map_err(RuntimeErrorKind::JsonError)?
+            serde_json::from_reader(&mut buf_reader).map_err(RuntimeError::JsonError)?
         }
         Value::Hashable(HashableValue::Str(s)) => {
-            serde_json::from_str(s).map_err(RuntimeErrorKind::JsonError)?
+            serde_json::from_str(s).map_err(RuntimeError::JsonError)?
         }
         v => {
-            return Err(RuntimeErrorKind::CastError {
+            return Err(RuntimeError::CastError {
                 into: "str-like".into(),
                 from: v.name().into(),
+                location: None,
             }
             .into())
         }
