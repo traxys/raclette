@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::Deref, rc::Rc};
+use std::{collections::HashMap, ops::{Deref, Range}, rc::Rc};
 
 use logos::Logos;
 
@@ -228,8 +228,11 @@ pub enum Statement {
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("unknown token: {0}")]
-pub struct UnknownToken(String);
+#[error("unknown token: {token}")]
+pub struct UnknownToken {
+    pub token: String,
+    pub span: Range<usize>,
+}
 
 pub type Spanned<Tok, Loc, Error> = Result<(Loc, Tok, Loc), Error>;
 
@@ -237,7 +240,10 @@ pub fn lexer(input: &str) -> impl Iterator<Item = Spanned<Token, usize, UnknownT
     Token::lexer(input)
         .spanned()
         .map(move |(token, span)| match token {
-            Token::Error => Err(UnknownToken(input[span].to_owned())),
+            Token::Error => Err(UnknownToken {
+                token: input[span.clone()].to_owned(),
+                span,
+            }),
             v => Ok((span.start, v, span.end)),
         })
 }
