@@ -1,6 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use gc::{Finalize, Trace};
+use miette::SourceSpan;
 
 #[derive(Debug, Clone, Trace, Finalize)]
 pub struct GcSpannedValue<T> {
@@ -38,6 +39,12 @@ where
     }
 }
 
+impl<T> From<SpannedValue<T>> for SourceSpan {
+    fn from(s: SpannedValue<T>) -> Self {
+        (s.start..s.end).into()
+    }
+}
+
 pub trait Spanning<T> {
     fn span(&self) -> Span;
     fn with_span_unit(value: T, s: &Span) -> Self;
@@ -49,6 +56,10 @@ pub trait Spanning<T> {
     {
         let other = other.span();
         Self::with_span_unit(value, &other)
+    }
+
+    fn source_span(&self) -> SourceSpan {
+        self.span().into()
     }
 
     /* fn update_span<U, S>(mut self, span: &S) -> Self

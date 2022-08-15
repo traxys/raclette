@@ -80,6 +80,8 @@ pub enum RuntimeError {
     #[error("Field {field} does not exist")]
     NoSuchField {
         field: String,
+        #[label("in this expression")]
+        expr_location: SourceSpan,
         #[label("this field does not exist")]
         location: Option<SourceSpan>,
     },
@@ -368,8 +370,8 @@ impl Value {
             _ => Err(RuntimeError::FieldNotAssignable {
                 field: field.value.to_string(),
                 location: None,
-            }
-            .add_span(&field)),
+            })
+            .with_span(&field),
         }
     }
 
@@ -721,11 +723,13 @@ impl Interpreter {
             ast::Expr::Place(p) => match p.value {
                 ast::Place::Ident(n) => self.resolve(&n).with_span(&n),
                 ast::Place::Deref(e, f) => {
+                    let e_span = e.span();
                     let e = self.run_expr(*e)?;
                     let e = e.borrow();
                     e.field(f.value.clone())
                         .ok_or_else(|| RuntimeError::NoSuchField {
                             field: f.to_string(),
+                            expr_location: e_span.into(),
                             location: None,
                         })
                         .with_span(&f)

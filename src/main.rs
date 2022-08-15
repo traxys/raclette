@@ -159,7 +159,8 @@ fn main() -> Result<()> {
                             }
                             _ => {
                                 if let Err(e) = interpreter.run_statement(parsed) {
-                                    println!("Error: {:?}", e);
+                                    let report: miette::Report = e.into();
+                                    println!("Error: {:?}", report.with_source_code(line));
                                     continue;
                                 }
                             }
