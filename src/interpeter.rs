@@ -519,14 +519,16 @@ impl FunctionValue {
             FunctionKind::Folder(folder) => {
                 let iter = args[0].borrow();
                 let mut iter = iter.cast_iterable()?;
+                let first = iter.next();
                 match folder {
-                    Folder::Op(f, def) => {
-                        iter.try_fold(def.clone(), |acc, e| f(acc, e, scope, span))
-                    }
+                    Folder::Op(f, def) => iter
+                        .try_fold(first.unwrap_or_else(|| def.clone()), |acc, e| {
+                            f(acc, e, scope, span)
+                        }),
                     Folder::User(f, def) => {
                         let v = f.borrow();
                         let func = v.cast_function()?;
-                        iter.try_fold(def.clone(), |acc, e| {
+                        iter.try_fold(first.unwrap_or_else(|| def.clone()), |acc, e| {
                             func.call(vec![acc, e], HashMap::new(), scope, &v.span())
                         })
                     }
