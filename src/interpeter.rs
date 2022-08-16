@@ -148,6 +148,7 @@ pub enum Value {
     Array(Vec<Val>),
     File(#[unsafe_ignore_trace] File),
     Hashable(HashableValue),
+    Float(f64),
 }
 
 impl<'de> Deserialize<'de> for Value {
@@ -251,6 +252,7 @@ impl Display for Value {
                 }
                 write!(f, "}}")
             }
+            Value::Float(fl) => write!(f, "{}", fl),
         }
     }
 }
@@ -436,6 +438,13 @@ impl Value {
         Self::new(Self::File(v).spanned_gc(span))
     }
 
+    pub fn new_float<U, S>(v: f64, span: &S) -> Val
+    where
+        S: Spanning<U>,
+    {
+        Self::new(Self::Float(v).spanned_gc(span))
+    }
+
     pub fn new_number<U, S>(v: i64, span: &S) -> Val
     where
         S: Spanning<U>,
@@ -483,6 +492,7 @@ impl Value {
             Value::Func(_) => "function",
             Value::File(_) => "file",
             Value::Array(_) => "array",
+            Value::Float(_) => "float",
         }
     }
 }
