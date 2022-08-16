@@ -339,7 +339,7 @@ impl std::fmt::Debug for Folder {
 
 #[derive(Trace, Finalize, Clone, Debug)]
 pub enum FunctionKind {
-    Builtin(fn(Vec<Val>, HashMap<String, Val>, Span) -> Result<Val>),
+    Builtin(fn(Vec<Val>, HashMap<GcSpannedValue<Rc<str>>, Val>, Span) -> Result<Val>),
     Folder(Folder),
     Mapper(Val),
     User {
@@ -349,7 +349,7 @@ pub enum FunctionKind {
     },
     SpecifyNamed {
         func: Box<FunctionValue>,
-        named: HashMap<String, Val>,
+        named: HashMap<GcSpannedValue<Rc<str>>, Val>,
     },
 }
 
@@ -491,7 +491,7 @@ impl FunctionValue {
     pub fn call(
         &self,
         args: Vec<Val>,
-        mut named: HashMap<String, Val>,
+        mut named: HashMap<GcSpannedValue<Rc<str>>, Val>,
         scope: &mut Interpreter,
         span: &Span,
     ) -> Result<Val> {
@@ -510,7 +510,7 @@ impl FunctionValue {
                 named: already_specified,
             } => {
                 for (key, val) in already_specified {
-                    if !named.contains_key(key) {
+                    if !named.contains_key(&key) {
                         named.insert(key.clone(), val.clone());
                     }
                 }
@@ -764,7 +764,7 @@ impl Interpreter {
                 );
                 let named = named
                     .into_iter()
-                    .map(|(key, val)| Ok((key, self.run_expr(val)?)))
+                    .map(|(key, val)| Ok((key.into(), self.run_expr(val)?)))
                     .collect::<Result<_>>()?;
 
                 Ok(Value::new_function(

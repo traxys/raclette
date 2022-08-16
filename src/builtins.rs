@@ -3,8 +3,9 @@ use itertools::Itertools;
 use crate::interpeter::{
     FunctionKind, FunctionValue, HashableValue, RuntimeError, SpannedResult, Val, Value,
 };
-use crate::span::{Span, Spanning, SpanningExt, UNKNOWN_SPAN};
-use std::{collections::HashMap, fs::File, io::BufReader};
+use crate::span::{GcSpannedValue, Span, Spanning, SpanningExt, UNKNOWN_SPAN};
+use once_cell::unsync::Lazy;
+use std::{collections::HashMap, fs::File, io::BufReader, rc::Rc};
 
 macro_rules! define_builtin {
     ($(
@@ -44,57 +45,112 @@ fn separate_string(s: String, sep: i64) -> String {
     new
 }
 
-fn hex(args: Vec<Val>, named: HashMap<String, Val>, span: Span) -> Result<Val, RuntimeError> {
-    if let Some(name) = named.keys().find(|key| !["sep"].contains(&key.as_str())) {
-        return Err(RuntimeError::InvalidNamedArgument {
-            name: name.into(),
-            location: None,
-        });
+macro_rules! named_args {
+    (struct $name:ident {
+        $($field:ident with $caster:ident($ty:ty)),*
+        $(,)?
+    }) => {
+        struct $name {
+            $(
+                $field: Option<$ty>,
+            )*
+        }
+
+        thread_local! {
+            $(
+                #[allow(non_upper_case_globals)]
+                static $field: Lazy<GcSpannedValue<Rc<str>>> = Lazy::new(|| {
+                    let s: Rc<str> = Rc::from(stringify!($field));
+                    s.spanned_gc(UNKNOWN_SPAN)
+                });
+            )*
+        }
+
+
+        impl $name {
+            pub fn from_named(named: HashMap<GcSpannedValue<Rc<str>>, Val>) -> Result<$name, RuntimeError> {
+                if let Some(name) = named.keys().find(|key|
+                    ![$(stringify!($field))*].contains(&(***key).as_ref())
+                ) {
+                    return Err(RuntimeError::InvalidNamedArgument {
+                        location: Some(name.span().into()),
+                        name: name.value.to_string(),
+                    });
+                }
+
+
+                Ok($name {
+                    $(
+                        $field: $field.with(|field| match named.get(&*field) {
+                            None => Ok(None),
+                            Some(v) => {
+                                let v = v.borrow();
+                                Ok(Some(v.$caster().with_span(&*v)?))
+                            }
+                        })?
+                    )*
+                })
+            }
+        }
+    };
+}
+
+fn hex(
+    args: Vec<Val>,
+    named: HashMap<GcSpannedValue<Rc<str>>, Val>,
+    span: Span,
+) -> Result<Val, RuntimeError> {
+    named_args! {
+        struct Named {
+            sep with cast_number(i64)
+        }
     }
+    let named = Named::from_named(named)?;
 
     let v = args[0]
         .borrow()
         .cast_number()
         .with_span(&*args[0].borrow())?;
     let str = format!("{v:#x}");
-    match named.get("sep") {
+    match named.sep {
         None => Ok(Value::new_str(str, &span)),
-        Some(v) => Ok(Value::new_str(
-            separate_string(str, v.borrow().cast_number()?),
-            &span,
-        )),
+        Some(v) => Ok(Value::new_str(separate_string(str, v), &span)),
     }
 }
 
-fn bin(args: Vec<Val>, named: HashMap<String, Val>, span: Span) -> Result<Val, RuntimeError> {
-    if let Some(name) = named.keys().find(|key| !["sep"].contains(&key.as_str())) {
-        return Err(RuntimeError::InvalidNamedArgument {
-            name: name.into(),
-            location: None,
-        });
+fn bin(
+    args: Vec<Val>,
+    named: HashMap<GcSpannedValue<Rc<str>>, Val>,
+    span: Span,
+) -> Result<Val, RuntimeError> {
+    named_args! {
+        struct Named {
+            sep with cast_number(i64)
+        }
     }
+    let named = Named::from_named(named)?;
 
     let v = args[0]
         .borrow()
         .cast_number()
         .with_span(&*args[0].borrow())?;
     let str = format!("{v:#b}");
-    match named.get("sep") {
+    match named.sep {
         None => Ok(Value::new_str(str, &span)),
-        Some(v) => Ok(Value::new_str(
-            separate_string(str, v.borrow().cast_number().with_span(&*v.borrow())?),
-            &span,
-        )),
+        Some(v) => Ok(Value::new_str(separate_string(str, v), &span)),
     }
 }
 
-fn parse_int(args: Vec<Val>, named: HashMap<String, Val>, span: Span) -> Result<Val, RuntimeError> {
-    if let Some(name) = named.keys().find(|key| ![].contains(key)) {
-        return Err(RuntimeError::InvalidNamedArgument {
-            name: name.into(),
-            location: None,
-        });
+fn parse_int(
+    args: Vec<Val>,
+    named: HashMap<GcSpannedValue<Rc<str>>, Val>,
+    span: Span,
+) -> Result<Val, RuntimeError> {
+    named_args! {
+        struct Named {
+        }
     }
+    let _named = Named::from_named(named)?;
 
     let v = args[0].borrow().cast_str().with_span(&*args[0].borrow())?;
     let n = if v.starts_with("0x") {
@@ -109,13 +165,16 @@ fn parse_int(args: Vec<Val>, named: HashMap<String, Val>, span: Span) -> Result<
     Ok(Value::new_number(n, &span))
 }
 
-fn open_file(args: Vec<Val>, named: HashMap<String, Val>, span: Span) -> Result<Val, RuntimeError> {
-    if let Some(name) = named.keys().find(|key| ![].contains(&key.as_str())) {
-        return Err(RuntimeError::InvalidNamedArgument {
-            name: name.into(),
-            location: None,
-        });
+fn open_file(
+    args: Vec<Val>,
+    named: HashMap<GcSpannedValue<Rc<str>>, Val>,
+    span: Span,
+) -> Result<Val, RuntimeError> {
+    named_args! {
+        struct Named {
+        }
     }
+    let _named = Named::from_named(named)?;
 
     let v = args[0].borrow().cast_str().with_span(&*args[0].borrow())?;
     let f = File::open(&*v).map_err(RuntimeError::IoError)?;
@@ -125,15 +184,14 @@ fn open_file(args: Vec<Val>, named: HashMap<String, Val>, span: Span) -> Result<
 
 fn parse_json_value(
     args: Vec<Val>,
-    named: HashMap<String, Val>,
+    named: HashMap<GcSpannedValue<Rc<str>>, Val>,
     span: Span,
 ) -> Result<Val, RuntimeError> {
-    if let Some(name) = named.keys().find(|key| ![].contains(&key.as_str())) {
-        return Err(RuntimeError::InvalidNamedArgument {
-            name: name.into(),
-            location: None,
-        });
+    named_args! {
+        struct Named {
+        }
     }
+    let _named = Named::from_named(named)?;
 
     let arg_span = args[0].borrow().span();
     let parsed: Value = match &mut **args[0].borrow_mut() {
@@ -148,9 +206,8 @@ fn parse_json_value(
             return Err(RuntimeError::CastError {
                 into: "str-like".into(),
                 from: v.name().into(),
-                location: None,
+                location: Some(arg_span.into()),
             })
-            .with_span(&arg_span)
         }
     };
 

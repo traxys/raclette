@@ -148,7 +148,7 @@ pub enum Expr {
     },
     NamedCall {
         func: Box<SpannedValue<Expr>>,
-        named: HashMap<String, SpannedValue<Expr>>,
+        named: HashMap<SpannedValue<Rc<str>>, SpannedValue<Expr>>,
     },
     Call {
         func: Box<SpannedValue<Expr>>,

@@ -1,18 +1,25 @@
 use std::ops::{Deref, DerefMut};
 
+use derivative::Derivative;
 use gc::{Finalize, Trace};
 use miette::SourceSpan;
 
-#[derive(Debug, Clone, Trace, Finalize)]
+#[derive(Debug, Clone, Trace, Finalize, Derivative, Eq)]
+#[derivative(PartialEq, Hash)]
 pub struct GcSpannedValue<T> {
+    #[derivative(PartialEq = "ignore", Hash = "ignore")]
     pub start: usize,
+    #[derivative(PartialEq = "ignore", Hash = "ignore")]
     pub end: usize,
     pub value: T,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Derivative, Eq)]
+#[derivative(PartialEq, Hash)]
 pub struct SpannedValue<T> {
+    #[derivative(PartialEq = "ignore", Hash = "ignore")]
     pub start: usize,
+    #[derivative(PartialEq = "ignore", Hash = "ignore")]
     pub end: usize,
     pub value: T,
 }
@@ -24,6 +31,13 @@ pub const UNKNOWN_SPAN: &Span = &Span {
     end: 0,
     value: (),
 };
+
+impl<T> From<SpannedValue<T>> for GcSpannedValue<T> {
+    fn from(s: SpannedValue<T>) -> Self {
+        let SpannedValue { start, end, value } = s;
+        Self { start, end, value }
+    }
+}
 
 impl<T> From<GcSpannedValue<T>> for SpannedValue<T>
 where
@@ -133,6 +147,19 @@ impl<T> GcSpannedValue<T> {
             start: self.start,
             end: self.end,
             value: f(self),
+        }
+    }
+}
+
+impl<T> GcSpannedValue<T>
+where
+    T: Deref,
+{
+    pub fn as_deref(&self) -> GcSpannedValue<&T::Target> {
+        GcSpannedValue {
+            start: self.start,
+            end: self.end,
+            value: self.value.deref(),
         }
     }
 }

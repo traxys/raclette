@@ -103,9 +103,9 @@ TildeExpr: Expr = {
 	<CallExpr> => <>,
 };
 
-Named: (String, SpannedValue<Expr>) = <ident> "=" <Spn<Expr>> => (<>);
+Named: (SpannedValue<Rc<str>>, SpannedValue<Expr>) = <n:Spn<ident>> "=" <v:Spn<Expr>> => (n.map(Rc::from), v);
 
-NamedArgs: HashMap<String, SpannedValue<Expr>> = <args:(<Named> ",")*> <last:Named?> => {
+NamedArgs: HashMap<SpannedValue<Rc<str>>, SpannedValue<Expr>> = <args:(<Named> ",")*> <last:Named?> => {
 	let mut named: HashMap<_, _> = args.into_iter().collect();
 	if let Some(last) = last {
 		named.insert(last.0, last.1);
