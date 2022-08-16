@@ -138,7 +138,7 @@ fn main() -> Result<()> {
     match args.file {
         None => {
             let parser = raclette::StatementParser::new();
-            let mut rl = Editor::<()>::new();
+            let mut rl = Editor::<()>::new().into_diagnostic()?;
 
             let path = data_dir
                 .map(|mut p| {
