@@ -5,6 +5,8 @@ use lalrpop_util::lalrpop_mod;
 use miette::{Context, Diagnostic, IntoDiagnostic, NamedSource, Result, SourceCode, SourceSpan};
 use rustyline::{error::ReadlineError, Editor};
 
+use crate::span::{Span, SpanningExt};
+
 pub mod ast;
 pub mod builtins;
 pub mod interpeter;
@@ -14,6 +16,8 @@ pub mod span;
 struct Args {
     #[clap(short, long)]
     file: Option<PathBuf>,
+    #[clap(short, long, conflicts_with = "file")]
+    command: Option<String>,
 }
 
 lalrpop_mod!(pub raclette);
@@ -99,8 +103,6 @@ impl<T> ParseDiagnosticExt<T> for Result<T, LalrpopParseError> {
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    dbg!(&args);
-
     let data_dir = dirs_next::data_dir().map(|mut p| {
         p.push("raclette");
         p
@@ -112,12 +114,31 @@ fn main() -> Result<()> {
             .wrap_err("Could not create data directory")?;
     };
 
+    let mut interpreter = interpeter::Interpreter::new();
+
+    if let Some(command) = args.command {
+        let parser = raclette::ExprParser::new();
+        let expr = parser
+            .parse(ast::lexer(&command))
+            .into_report(command.clone())?;
+        let value = interpreter
+            .run_expr(expr.spanned(&Span {
+                start: 0,
+                end: command.len(),
+                value: (),
+            }))
+            .map_err(Into::into)
+            .map_err(|e: miette::Report| e.with_source_code(command))?;
+
+        println!("{}", **value.borrow());
+
+        return Ok(());
+    }
+
     match args.file {
         None => {
             let parser = raclette::StatementParser::new();
             let mut rl = Editor::<()>::new();
-
-            let mut interpreter = interpeter::Interpreter::new();
 
             let path = data_dir
                 .map(|mut p| {

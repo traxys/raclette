@@ -52,7 +52,7 @@ Literal: Literal = {
 	str => Literal::String(<>),
 };
 
-Expr: Expr = {
+pub Expr: Expr = {
 	<lhs:Spn<Expr>> "|>" <rhs:Spn<FuncDef>> => {
 		Expr::Binary(BinaryOp::Redirect, Box::new(lhs), Box::new(rhs))
 	},
