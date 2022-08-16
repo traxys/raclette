@@ -126,6 +126,9 @@ pub enum Token {
     #[token(">>")]
     #[display(fmt = ">>")]
     RShift,
+    #[token(":")]
+    #[display(fmt = ":")]
+    Colon,
     #[token("<<")]
     #[display(fmt = "<<")]
     LShift,
@@ -158,6 +161,11 @@ pub enum Folder {
 
 #[derive(Debug, Clone)]
 pub enum Expr {
+    Range {
+        start: Box<SpannedValue<Expr>>,
+        end: Option<Box<SpannedValue<Expr>>>,
+        step: Box<SpannedValue<Expr>>,
+    },
     Literal(SpannedValue<Literal>),
     Place(SpannedValue<Place>),
     Binary(BinaryOp, Box<SpannedValue<Expr>>, Box<SpannedValue<Expr>>),

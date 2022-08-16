@@ -140,8 +140,42 @@ impl RuntimeError {
 
 type Result<T> = std::result::Result<T, RuntimeError>;
 
+#[derive(Debug, Trace, Finalize, Clone)]
+pub struct RangeIterator {
+    start: i64,
+    end: Option<i64>,
+    step: i64,
+    current: i64,
+}
+
+impl RangeIterator {
+    fn new(start: i64, end: Option<i64>, step: i64) -> Self {
+        Self {
+            start,
+            end,
+            step,
+            current: start,
+        }
+    }
+}
+
+impl Iterator for RangeIterator {
+    type Item = i64;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.end {
+            Some(end) if self.current >= end => return None,
+            _ => (),
+        }
+        let v = self.current;
+        self.current += self.step;
+        Some(v)
+    }
+}
+
 #[derive(Trace, Finalize, Debug)]
 pub enum Value {
+    Range(RangeIterator),
     Func(FunctionValue),
     Map(HashMap<HashableValue, Val>),
     Array(Vec<Val>),
@@ -252,6 +286,10 @@ impl Display for Value {
                 write!(f, "}}")
             }
             Value::Float(fl) => write!(f, "{}", fl),
+            Value::Range(r) => match r.end {
+                None => write!(f, "{}::{}", r.start, r.step),
+                Some(end) => write!(f, "{}:{}:{}", r.start, end, r.step),
+            },
         }
     }
 }
@@ -452,6 +490,9 @@ impl Value {
         match self {
             Value::Map(v) => Ok(Box::new(v.values().cloned())),
             Value::Array(a) => Ok(Box::new(a.iter().cloned())),
+            Value::Range(r) => Ok(Box::new(
+                r.clone().map(|v| Value::new_number(v, UNKNOWN_SPAN)),
+            )),
             _ => Err(RuntimeError::NotIterable {
                 ty: self.name().into(),
                 location: None,
@@ -467,6 +508,13 @@ impl Value {
             Num::Float(f) => Self::new_float(f, span),
             Num::Int(i) => Self::new_number(i, span),
         }
+    }
+
+    pub fn new_range_iterator<U, S>(v: RangeIterator, span: &S) -> Val
+    where
+        S: Spanning<U>,
+    {
+        Self::new(Self::Range(v).spanned_gc(span))
     }
 
     pub fn new_file<U, S>(v: File, span: &S) -> Val
@@ -531,6 +579,7 @@ impl Value {
             Value::File(_) => "file",
             Value::Array(_) => "array",
             Value::Float(_) => "float",
+            Value::Range(_) => "range",
         }
     }
 }
@@ -1013,6 +1062,32 @@ impl Interpreter {
                 },
                 expr_span,
             )),
+            ast::Expr::Range { start, end, step } => {
+                let ss = start.span();
+                let start = self
+                    .run_expr(*start)?
+                    .borrow()
+                    .cast_number()
+                    .with_span(&ss)?;
+                let end = end
+                    .map(|end| {
+                        let es = end.span();
+
+                        self.run_expr(*end)?.borrow().cast_number().with_span(&es)
+                    })
+                    .transpose()?;
+                let sts = step.span();
+                let step = self
+                    .run_expr(*step)?
+                    .borrow()
+                    .cast_number()
+                    .with_span(&sts)?;
+
+                Ok(Value::new_range_iterator(
+                    RangeIterator::new(start, end, step),
+                    expr_span,
+                ))
+            }
         }
     }
 

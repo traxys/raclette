@@ -1,4 +1,4 @@
-use crate::{ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder}, span::SpannedValue};
+use crate::{ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder}, span::{SpannedValue, UNKNOWN_SPAN, SpanningExt}};
 use std::rc::Rc;
 use std::collections::HashMap;
 
@@ -38,6 +38,7 @@ extern {
 		"**" => Token::Power,
 		">>" => Token::RShift,
 		"<<" => Token::LShift,
+		":" => Token::Colon,
 	}
 }
 
@@ -135,6 +136,7 @@ PowerExpr: Expr = {
 	<MapExpr> => <>,
 };
 
+
 MapField: (SpannedValue<Expr>, SpannedValue<Expr>) = {
 	<Spn<Expr>> "=" <Spn<Expr>> => (<>),
 };
@@ -202,7 +204,25 @@ PrefixMapperExpr: Expr = {
 	<LiteralExpr> => <>,
 };
 
+RangeExpr: Expr = {
+	"[" <start:Spn<ShiftExpr>?> ":" <end:Spn<ShiftExpr>?> "]" => Expr::Range {
+		start: Box::new(start.unwrap_or_else(||
+			Expr::Literal(Literal::Number(0).spanned(UNKNOWN_SPAN)).spanned(UNKNOWN_SPAN))
+		),
+		end: end.map(Box::new),
+		step: Box::new(Expr::Literal(Literal::Number(1).spanned(UNKNOWN_SPAN)).spanned(UNKNOWN_SPAN)),
+	},
+	"[" <start:Spn<ShiftExpr>?> ":" <end:Spn<ShiftExpr>?> ":" <step:Spn<ShiftExpr>> "]" => Expr::Range {
+		start: Box::new(start.unwrap_or_else(||
+			Expr::Literal(Literal::Number(0).spanned(UNKNOWN_SPAN)).spanned(UNKNOWN_SPAN))
+		),
+		end: end.map(Box::new),
+		step: Box::new(step),
+	},
+};
+
 LiteralExpr: Expr = {
+	<RangeExpr> => <>,
 	<start:@L> "%" <op:BinaryOp> <end:@R> => Expr::Fold(SpannedValue {
 		start,
 		end,
