@@ -166,7 +166,7 @@ pub enum BinaryOp {
 #[derive(Debug, Clone)]
 pub enum Place {
     Ident(SpannedValue<String>),
-    Deref(Box<SpannedValue<Expr>>, SpannedValue<Rc<String>>),
+    Deref(Box<SpannedValue<Expr>>, SpannedValue<Rc<str>>),
 }
 
 #[derive(Debug)]

@@ -179,7 +179,7 @@ impl<'de> Deserialize<'de> for Value {
             }
 
             fn visit_string<E>(self, value: String) -> Result<Value, E> {
-                Ok(Value::Hashable(HashableValue::Str(Rc::new(value))))
+                Ok(Value::Hashable(HashableValue::Str(Rc::from(value))))
             }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
@@ -257,7 +257,7 @@ impl Display for Value {
 
 #[derive(Trace, Finalize, Debug, PartialEq, Eq, Hash, Clone)]
 pub enum HashableValue {
-    Str(Rc<String>),
+    Str(Rc<str>),
     Number(i64),
 }
 
@@ -290,7 +290,7 @@ impl<'de> Deserialize<'de> for HashableValue {
             }
 
             fn visit_string<E>(self, value: String) -> Result<HashableValue, E> {
-                Ok(HashableValue::Str(Rc::new(value)))
+                Ok(HashableValue::Str(Rc::from(value)))
             }
         }
 
@@ -354,14 +354,14 @@ pub enum FunctionKind {
 }
 
 impl Value {
-    pub fn field(&self, f: Rc<String>) -> Option<Val> {
+    pub fn field(&self, f: Rc<str>) -> Option<Val> {
         match self {
             Value::Map(m) => m.get(&HashableValue::Str(f)).cloned(),
             _ => None,
         }
     }
 
-    pub fn set_field(&mut self, field: SpannedValue<Rc<String>>, value: Val) -> Result<()> {
+    pub fn set_field(&mut self, field: SpannedValue<Rc<str>>, value: Val) -> Result<()> {
         match self {
             Value::Map(m) => {
                 m.insert(HashableValue::Str(field.value), value);
@@ -397,7 +397,7 @@ impl Value {
         }
     }
 
-    pub fn cast_str(&self) -> Result<Rc<String>> {
+    pub fn cast_str(&self) -> Result<Rc<str>> {
         match self {
             Value::Hashable(HashableValue::Str(f)) => Ok(f.clone()),
             v => Err(RuntimeError::CastError {
@@ -454,7 +454,7 @@ impl Value {
     where
         S: Spanning<U>,
     {
-        Self::new(Self::Hashable(HashableValue::Str(Rc::new(v))).spanned_gc(span))
+        Self::new(Self::Hashable(HashableValue::Str(Rc::from(v))).spanned_gc(span))
     }
 
     pub fn new_map<U, S>(v: HashMap<HashableValue, Val>, span: &S) -> Val
