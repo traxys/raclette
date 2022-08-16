@@ -339,9 +339,11 @@ impl std::fmt::Debug for Folder {
     }
 }
 
+type BuiltinFn = fn(Vec<Val>, HashMap<GcSpannedValue<Rc<str>>, Val>, Span) -> Result<Val>;
+
 #[derive(Trace, Finalize, Clone, Debug)]
 pub enum FunctionKind {
-    Builtin(fn(Vec<Val>, HashMap<GcSpannedValue<Rc<str>>, Val>, Span) -> Result<Val>),
+    Builtin(BuiltinFn),
     Folder(Folder),
     Mapper(Val),
     User {
@@ -353,6 +355,21 @@ pub enum FunctionKind {
         func: Box<FunctionValue>,
         named: HashMap<GcSpannedValue<Rc<str>>, Val>,
     },
+}
+
+#[derive(Copy, Clone)]
+enum Num {
+    Float(f64),
+    Int(i64),
+}
+
+impl Num {
+    fn f64(self) -> f64 {
+        match self {
+            Num::Float(f) => f,
+            Num::Int(i) => i as f64,
+        }
+    }
 }
 
 impl Value {
@@ -374,6 +391,18 @@ impl Value {
                 location: None,
             })
             .with_span(&field),
+        }
+    }
+
+    fn cast_num(&self) -> Result<Num> {
+        match self {
+            &Value::Hashable(HashableValue::Number(n)) => Ok(Num::Int(n)),
+            &Value::Float(f) => Ok(Num::Float(f)),
+            v => Err(RuntimeError::CastError {
+                into: "num".into(),
+                from: v.name().into(),
+                location: None,
+            }),
         }
     }
 
@@ -428,6 +457,16 @@ impl Value {
                 ty: self.name().into(),
                 location: None,
             }),
+        }
+    }
+
+    fn new_num<U, S>(v: Num, span: &S) -> Val
+    where
+        S: Spanning<U>,
+    {
+        match v {
+            Num::Float(f) => Self::new_float(f, span),
+            Num::Int(i) => Self::new_number(i, span),
         }
     }
 
@@ -520,7 +559,7 @@ impl FunctionValue {
                 named: already_specified,
             } => {
                 for (key, val) in already_specified {
-                    if !named.contains_key(&key) {
+                    if !named.contains_key(key) {
                         named.insert(key.clone(), val.clone());
                     }
                 }
@@ -605,26 +644,94 @@ impl FunctionValue {
     }
 }
 
-pub type Val = Gc<GcCell<GcSpannedValue<Value>>>;
-
-fn bitwise_or(a: Val, b: Val, _: &mut Interpreter, span: &Span) -> Result<Val> {
-    let a = a.borrow().cast_number()?;
-    let b = b.borrow().cast_number()?;
-
-    Ok(Value::new_number(a | b, span))
+fn power_nums(lhs: Num, rhs: Num) -> Num {
+    match (lhs, rhs) {
+        (Num::Float(f), Num::Float(e)) => Num::Float(f.powf(e)),
+        (Num::Float(f), Num::Int(i)) => Num::Float(f.powi(i as _)),
+        (Num::Int(i), Num::Float(e)) => Num::Float((i as f64).powf(e)),
+        (Num::Int(i), Num::Int(e)) if e < 0 => Num::Float((i as f64).powi(e as _)),
+        (Num::Int(i), Num::Int(e)) => Num::Int(i.pow(e as _)),
+    }
 }
 
-fn bitwise_and(a: Val, b: Val, _: &mut Interpreter, span: &Span) -> Result<Val> {
-    let a = a.borrow().cast_number()?;
-    let b = b.borrow().cast_number()?;
+pub type Val = Gc<GcCell<GcSpannedValue<Value>>>;
 
-    Ok(Value::new_number(a & b, span))
+macro_rules! int_operator_function {
+    ($name:ident, $op:tt) => {
+        fn $name(a: Val, b: Val, _: &mut Interpreter, span: &Span) -> Result<Val> {
+            let a = a.borrow().cast_number()?;
+            let b = b.borrow().cast_number()?;
+
+            Ok(Value::new_number(a $op b, span))
+        }
+    };
+}
+
+int_operator_function! {bitwise_or, |}
+int_operator_function! {bitwise_and, &}
+int_operator_function! {int_division, /}
+int_operator_function! {left_shift, <<}
+int_operator_function! {right_shift, >>}
+int_operator_function! {modulo, %}
+
+macro_rules! nums_op {
+    ($nums:expr, $op:tt) => {
+        match $nums {
+            Nums::Float(l, r) => Num::Float(l $op r),
+            Nums::Int(l, r) => Num::Int(l $op r),
+        }
+    };
+}
+
+macro_rules! num_operator_function {
+    ($name:ident, $op:tt) => {
+        fn $name(a: Val, b: Val, _: &mut Interpreter, span: &Span) -> Result<Val> {
+            let a = a.borrow().cast_num().with_span(&*a.borrow())?;
+            let b = b.borrow().cast_num().with_span(&*b.borrow())?;
+
+            Ok(Value::new_num(nums_op!((a, b).into(), $op), span))
+        }
+    };
+}
+
+num_operator_function! {times, *}
+num_operator_function! {sum, +}
+num_operator_function! {difference, -}
+
+fn power(a: Val, b: Val, _: &mut Interpreter, span: &Span) -> Result<Val> {
+    let a = a.borrow().cast_num().with_span(&*a.borrow())?;
+    let b = b.borrow().cast_num().with_span(&*b.borrow())?;
+
+    Ok(Value::new_num(power_nums(a, b), span))
+}
+
+fn divide(a: Val, b: Val, _: &mut Interpreter, span: &Span) -> Result<Val> {
+    let a = a.borrow().cast_num().with_span(&*a.borrow())?;
+    let b = b.borrow().cast_num().with_span(&*b.borrow())?;
+
+    Ok(Value::new_float(a.f64() / b.f64(), span))
 }
 
 fn redirect(a: Val, b: Val, scope: &mut Interpreter, span: &Span) -> Result<Val> {
     let b = b.borrow().cast_function()?;
 
     b.call(vec![a], HashMap::new(), scope, span)
+}
+
+enum Nums {
+    Float(f64, f64),
+    Int(i64, i64),
+}
+
+impl From<(Num, Num)> for Nums {
+    fn from((lhs, rhs): (Num, Num)) -> Self {
+        match (lhs, rhs) {
+            (Num::Float(l), Num::Float(r)) => Nums::Float(l, r),
+            (Num::Float(l), Num::Int(r)) => Nums::Float(l, r as f64),
+            (Num::Int(l), Num::Float(r)) => Nums::Float(l as f64, r),
+            (Num::Int(l), Num::Int(r)) => Nums::Int(l, r),
+        }
+    }
 }
 
 impl Interpreter {
@@ -703,12 +810,29 @@ impl Interpreter {
         Ok(())
     }
 
+    fn parse_num_operands(
+        &mut self,
+        lhs: SpannedValue<ast::Expr>,
+        rhs: SpannedValue<ast::Expr>,
+    ) -> Result<Nums> {
+        let ls = lhs.span();
+        let lhs = self.run_expr(lhs)?.borrow().cast_num().with_span(&ls)?;
+        let rs = rhs.span();
+        let rhs = self.run_expr(rhs)?.borrow().cast_num().with_span(&rs)?;
+        Ok((lhs, rhs).into())
+    }
+
     pub fn run_expr(&mut self, expr: SpannedValue<ast::Expr>) -> Result<Val> {
         let expr_span = &expr.span();
         match expr.value {
             ast::Expr::Literal(l) => self.run_literal(l),
             ast::Expr::Binary(op, lhs, rhs) => match op {
-                ast::BinaryOp::BitwiseOr | ast::BinaryOp::BitwiseAnd => {
+                ast::BinaryOp::BitwiseOr
+                | ast::BinaryOp::BitwiseAnd
+                | ast::BinaryOp::IntDivide
+                | ast::BinaryOp::LShift
+                | ast::BinaryOp::RShift
+                | ast::BinaryOp::Modulo => {
                     let ls = lhs.span();
                     let lhs = self.run_expr(*lhs)?.borrow().cast_number().with_span(&ls)?;
                     let rs = rhs.span();
@@ -716,9 +840,37 @@ impl Interpreter {
                     let v = match op {
                         ast::BinaryOp::BitwiseOr => lhs | rhs,
                         ast::BinaryOp::BitwiseAnd => lhs & rhs,
+                        ast::BinaryOp::IntDivide => lhs / rhs,
+                        ast::BinaryOp::LShift => lhs << rhs,
+                        ast::BinaryOp::RShift => lhs >> rhs,
+                        ast::BinaryOp::Modulo => lhs % rhs,
                         _ => unreachable!(),
                     };
                     Ok(Value::new_number(v, expr_span))
+                }
+                ast::BinaryOp::Power | ast::BinaryOp::Divide => {
+                    let ls = lhs.span();
+                    let lhs = self.run_expr(*lhs)?.borrow().cast_num().with_span(&ls)?;
+                    let rs = rhs.span();
+                    let rhs = self.run_expr(*rhs)?.borrow().cast_num().with_span(&rs)?;
+
+                    match op {
+                        ast::BinaryOp::Power => Ok(Value::new_num(power_nums(lhs, rhs), expr_span)),
+                        ast::BinaryOp::Divide => {
+                            Ok(Value::new_float(lhs.f64() / rhs.f64(), expr_span))
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                ast::BinaryOp::Plus | ast::BinaryOp::Minus | ast::BinaryOp::Times => {
+                    let nums = self.parse_num_operands(*lhs, *rhs)?;
+                    let v = match op {
+                        ast::BinaryOp::Plus => nums_op!(nums, +),
+                        ast::BinaryOp::Minus => nums_op!(nums, -),
+                        ast::BinaryOp::Times => nums_op!(nums, *),
+                        _ => unreachable!(),
+                    };
+                    Ok(Value::new_num(v, expr_span))
                 }
                 ast::BinaryOp::Redirect => {
                     let ls = lhs.span();
@@ -827,6 +979,15 @@ impl Interpreter {
                             (bitwise_and, Value::new_number(-1, expr_span))
                         }
                         ast::BinaryOp::Redirect => (redirect, Value::new_number(0, expr_span)),
+                        ast::BinaryOp::Plus => (sum, Value::new_number(0, expr_span)),
+                        ast::BinaryOp::Minus => (difference, Value::new_number(0, expr_span)),
+                        ast::BinaryOp::Times => (times, Value::new_number(1, expr_span)),
+                        ast::BinaryOp::Divide => (divide, Value::new_number(0, expr_span)),
+                        ast::BinaryOp::IntDivide => (int_division, Value::new_number(0, expr_span)),
+                        ast::BinaryOp::Power => (power, Value::new_number(0, expr_span)),
+                        ast::BinaryOp::Modulo => (modulo, Value::new_number(0, expr_span)),
+                        ast::BinaryOp::LShift => (left_shift, Value::new_number(0, expr_span)),
+                        ast::BinaryOp::RShift => (right_shift, Value::new_number(0, expr_span)),
                     };
                     Ok(FunctionValue::op_folder(f, def))
                 }

@@ -30,6 +30,14 @@ extern {
 		"=" => Token::Equal,
 		"," => Token::Comma,
 		"~" => Token::Tilde,
+		"+" => Token::Plus,
+		"-" => Token::Minus,
+		"*" => Token::Times,
+		"/" => Token::Divide,
+		"//" => Token::IntDivide,
+		"**" => Token::Power,
+		">>" => Token::RShift,
+		"<<" => Token::LShift,
 	}
 }
 
@@ -78,8 +86,51 @@ BOrExpr: Expr = {
 };
 
 BAndExpr: Expr = {
-	<lhs:Spn<MapExpr>> "&" <rhs:Spn<BAndExpr>> => {
+	<lhs:Spn<ShiftExpr>> "&" <rhs:Spn<BAndExpr>> => {
 		Expr::Binary(BinaryOp::BitwiseAnd, Box::new(lhs), Box::new(rhs))
+	},
+	<ShiftExpr> => <>,
+};
+
+ShiftExpr: Expr = {
+	<lhs:Spn<ShiftExpr>> ">>" <rhs:Spn<MultExpr>> => {
+		Expr::Binary(BinaryOp::RShift, Box::new(lhs), Box::new(rhs))
+	},
+	<lhs:Spn<ShiftExpr>> "<<" <rhs:Spn<MultExpr>> => {
+		Expr::Binary(BinaryOp::LShift, Box::new(lhs), Box::new(rhs))
+	},
+	<MultExpr> => <>,
+};
+
+AddExpr: Expr = {
+	<lhs:Spn<MultExpr>> "+" <rhs:Spn<AddExpr>> => {
+		Expr::Binary(BinaryOp::Plus, Box::new(lhs), Box::new(rhs))
+	},
+	<lhs:Spn<MultExpr>> "-" <rhs:Spn<AddExpr>> => {
+		Expr::Binary(BinaryOp::Minus, Box::new(lhs), Box::new(rhs))
+	},
+	<MultExpr> => <>,
+};
+
+MultExpr: Expr = {
+	<lhs:Spn<PowerExpr>> "*" <rhs:Spn<MultExpr>> => {
+		Expr::Binary(BinaryOp::Times, Box::new(lhs), Box::new(rhs))
+	},
+	<lhs:Spn<PowerExpr>> "%" <rhs:Spn<MultExpr>> => {
+		Expr::Binary(BinaryOp::Modulo, Box::new(lhs), Box::new(rhs))
+	},
+	<lhs:Spn<PowerExpr>> "/" <rhs:Spn<MultExpr>> => {
+		Expr::Binary(BinaryOp::Divide, Box::new(lhs), Box::new(rhs))
+	},
+	<lhs:Spn<PowerExpr>> "//" <rhs:Spn<MultExpr>> => {
+		Expr::Binary(BinaryOp::IntDivide, Box::new(lhs), Box::new(rhs))
+	},
+	<PowerExpr> => <>,
+};
+
+PowerExpr: Expr = {
+	<lhs:Spn<MapExpr>> "**" <rhs:Spn<PowerExpr>> => {
+		Expr::Binary(BinaryOp::Power, Box::new(lhs), Box::new(rhs))
 	},
 	<MapExpr> => <>,
 };
@@ -135,6 +186,15 @@ BinaryOp: BinaryOp = {
 	"|" => BinaryOp::BitwiseOr,
 	"&" => BinaryOp::BitwiseAnd,
 	"|>" => BinaryOp::Redirect,
+	"+" => BinaryOp::Plus,
+	"-" => BinaryOp::Minus,
+	"*" => BinaryOp::Times,
+	"/" => BinaryOp::Divide,
+	"//" => BinaryOp::IntDivide,
+	"**" => BinaryOp::Power,
+	">>" => BinaryOp::RShift,
+	"<<" => BinaryOp::LShift,
+	"%" => BinaryOp::Modulo,
 };
 
 PrefixMapperExpr: Expr = {

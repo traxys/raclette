@@ -105,6 +105,30 @@ pub enum Token {
     #[token("=")]
     #[display(fmt = "=")]
     Equal,
+    #[token("+")]
+    #[display(fmt = "+")]
+    Plus,
+    #[token("-")]
+    #[display(fmt = "-")]
+    Minus,
+    #[token("*")]
+    #[display(fmt = "*")]
+    Times,
+    #[token("**")]
+    #[display(fmt = "**")]
+    Power,
+    #[token("/")]
+    #[display(fmt = "/")]
+    Divide,
+    #[token("//")]
+    #[display(fmt = "//")]
+    IntDivide,
+    #[token(">>")]
+    #[display(fmt = ">>")]
+    RShift,
+    #[token("<<")]
+    #[display(fmt = "<<")]
+    LShift,
     #[token("->")]
     #[display(fmt = "->")]
     Arrow,
@@ -161,6 +185,15 @@ pub enum BinaryOp {
     BitwiseOr,
     BitwiseAnd,
     Redirect,
+    Plus,
+    Minus,
+    Times,
+    Divide,
+    IntDivide,
+    Power,
+    Modulo,
+    LShift,
+    RShift,
 }
 
 #[derive(Debug, Clone)]
