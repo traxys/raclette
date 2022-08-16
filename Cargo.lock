@@ -661,7 +661,6 @@ dependencies = [
  "derivative",
  "derive_more",
  "dirs-next",
- "either",
  "gc",
  "itertools",
  "lalrpop",

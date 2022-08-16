@@ -4,7 +4,6 @@ use crate::{
     ast,
     span::{GcSpannedValue, Span, SpannedValue, Spanning, SpanningExt, UNKNOWN_SPAN},
 };
-use either::Either;
 use gc::{Finalize, Gc, GcCell, Trace};
 use miette::{Diagnostic, SourceSpan};
 use serde::{
@@ -449,10 +448,10 @@ impl Value {
         }
     }
 
-    pub fn cast_iterable(&self) -> Result<impl Iterator<Item = Val> + '_> {
+    pub fn cast_iterable(&self) -> Result<Box<dyn Iterator<Item = Val> + '_>> {
         match self {
-            Value::Map(v) => Ok(Either::Left(v.values().cloned())),
-            Value::Array(a) => Ok(Either::Right(a.iter().cloned())),
+            Value::Map(v) => Ok(Box::new(v.values().cloned())),
+            Value::Array(a) => Ok(Box::new(a.iter().cloned())),
             _ => Err(RuntimeError::NotIterable {
                 ty: self.name().into(),
                 location: None,
