@@ -81,13 +81,13 @@ macro_rules! named_args {
 
                 Ok($name {
                     $(
-                        $field: $field.with(|field| match named.get(&*field) {
+                        $field: $field.with(|field| -> Result<_, RuntimeError> {match named.get(&*field) {
                             None => Ok(None),
                             Some(v) => {
                                 let v = v.borrow();
                                 Ok(Some(v.$caster().with_span(&*v)?))
                             }
-                        })?
+                        }})?
                     )*
                 })
             }
@@ -177,7 +177,7 @@ fn open_file(
     let _named = Named::from_named(named)?;
 
     let v = args[0].borrow().cast_str().with_span(&*args[0].borrow())?;
-    let f = File::open(&*v).map_err(RuntimeError::IoError)?;
+    let f = File::open(&*v).map_err(Into::into).with_span(&span)?;
 
     Ok(Value::new_file(f, &span))
 }
@@ -214,10 +214,36 @@ fn parse_json_value(
     Ok(Value::new(parsed.spanned_gc(&span)))
 }
 
+fn shell_function(
+    args: Vec<Val>,
+    named: HashMap<GcSpannedValue<Rc<str>>, Val>,
+    span: Span,
+) -> Result<Val, RuntimeError> {
+    named_args! {
+        struct Named {
+        }
+    }
+    let _named = Named::from_named(named)?;
+
+    let arg = args[0]
+        .borrow()
+        .cast_str()
+        .with_span(&args[0].borrow().span())?;
+
+    Ok(Value::new_function(
+        FunctionValue {
+            arity: 1,
+            action: FunctionKind::Shell(arg),
+        },
+        &span,
+    ))
+}
+
 define_builtin! {
     X(1) => hex;
     B(1) => bin;
     int(1) => parse_int;
     open(1) => open_file;
     json(1) => parse_json_value;
+    shf(1) => shell_function;
 }

@@ -1,9 +1,17 @@
-use std::{collections::HashMap, fmt::Display, fs::File, io::Read, rc::Rc};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    fs::File,
+    io::{Read, Write},
+    process::{ExitStatus, Stdio},
+    rc::Rc,
+};
 
 use crate::{
     ast,
     span::{GcSpannedValue, Span, SpannedValue, Spanning, SpanningExt, UNKNOWN_SPAN},
 };
+use bstr::BString;
 use gc::{Finalize, Gc, GcCell, Trace};
 use miette::{Diagnostic, SourceSpan};
 use serde::{
@@ -96,12 +104,38 @@ pub enum RuntimeError {
         #[label("identifier is not defined")]
         location: Option<SourceSpan>,
     },
+    #[error("Could not process utf8")]
+    InvalidUtf8 {
+        #[label("produced a value that is not utf8")]
+        location: Option<SourceSpan>,
+    },
     #[error("Io error")]
-    IoError(#[source] std::io::Error),
+    IoError {
+        #[source]
+        err: std::io::Error,
+        #[label("returned an IO error")]
+        location: Option<SourceSpan>,
+    },
+    #[error("Subprocess failed with error {status}.\nError output: {error}")]
+    ProcessFailure {
+        status: ExitStatus,
+        error: BString,
+        #[label("this expression launched a subprocess")]
+        location: Option<SourceSpan>,
+    },
     #[error("JSON error")]
     JsonError(#[source] serde_json::Error),
     #[error("Could not parse integer")]
     ParseIntError,
+}
+
+impl From<std::io::Error> for RuntimeError {
+    fn from(err: std::io::Error) -> Self {
+        Self::IoError {
+            err,
+            location: None,
+        }
+    }
 }
 
 macro_rules! impl_add_span {
@@ -135,6 +169,9 @@ impl RuntimeError {
         NoSuchField,
         FieldNotAssignable,
         UndefinedIdentifier,
+        IoError,
+        InvalidUtf8,
+        ProcessFailure,
     }
 }
 
@@ -392,6 +429,7 @@ pub enum FunctionKind {
         func: Box<FunctionValue>,
         named: HashMap<GcSpannedValue<Rc<str>>, Val>,
     },
+    Shell(Rc<str>),
 }
 
 #[derive(Copy, Clone)]
@@ -665,6 +703,47 @@ impl FunctionValue {
                 let ret = scope.run_expr(ret.clone());
                 scope.pop_scope();
                 ret
+            }
+            FunctionKind::Shell(cmd) => {
+                let arg = args[0].borrow();
+                let arg = arg.cast_str().with_span(&arg.span())?;
+
+                let mut command = std::process::Command::new("/bin/sh");
+                let mut process = command
+                    .arg("-c")
+                    .arg(&**cmd)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .map_err(Into::into)
+                    .with_span(span)?;
+
+                let stdin = process.stdin.as_mut().unwrap();
+                stdin
+                    .write_all(arg.as_bytes())
+                    .map_err(Into::into)
+                    .with_span(span)?;
+
+                let output = process
+                    .wait_with_output()
+                    .map_err(Into::into)
+                    .with_span(span)?;
+
+                if !output.status.success() {
+                    return Err(RuntimeError::ProcessFailure {
+                        error: output.stderr.into(),
+                        status: output.status,
+                        location: Some((*span).into()),
+                    });
+                }
+
+                let output =
+                    String::from_utf8(output.stdout).map_err(|_| RuntimeError::InvalidUtf8 {
+                        location: Some((*span).into()),
+                    })?;
+
+                Ok(Value::new_str(output, span))
             }
         }
     }
@@ -1007,7 +1086,7 @@ impl Interpreter {
                     Value::File(ref mut f) => {
                         let mut s = String::new();
                         f.read_to_string(&mut s)
-                            .map_err(RuntimeError::IoError)
+                            .map_err(Into::into)
                             .with_span(&span)?;
                         s
                     }
