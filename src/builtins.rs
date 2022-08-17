@@ -3,7 +3,7 @@ use itertools::Itertools;
 use crate::interpeter::{
     FunctionKind, FunctionValue, HashableValue, RuntimeError, SpannedResult, Val, Value,
 };
-use crate::span::{GcSpannedValue, Span, Spanning, SpanningExt, UNKNOWN_SPAN};
+use crate::span::{GcSpannedValue, GenerationSpan, Spanning, SpanningExt, UNKNOWN_SPAN};
 use once_cell::unsync::Lazy;
 use std::{collections::HashMap, fs::File, io::BufReader, rc::Rc};
 
@@ -19,7 +19,7 @@ macro_rules! define_builtin {
                     Value::new_function(FunctionValue {
                         arity: $arity,
                         action: FunctionKind::Builtin($func),
-                    }, UNKNOWN_SPAN)
+                    }, UNKNOWN_SPAN, 0)
                 );
             )*
             map
@@ -68,12 +68,12 @@ macro_rules! named_args {
 
 
         impl $name {
-            pub fn from_named(named: HashMap<GcSpannedValue<Rc<str>>, Val>) -> Result<$name, RuntimeError> {
+            pub fn from_named(named: HashMap<GcSpannedValue<Rc<str>>, Val>, gen: u64) -> Result<$name, RuntimeError> {
                 if let Some(name) = named.keys().find(|key|
                     ![$(stringify!($field))*].contains(&(***key).as_ref())
                 ) {
                     return Err(RuntimeError::InvalidNamedArgument {
-                        location: Some(name.span().into()),
+                        location: name.span().with_generation(gen).source_span(gen),
                         name: name.value.to_string(),
                     });
                 }
@@ -98,14 +98,15 @@ macro_rules! named_args {
 fn hex(
     args: Vec<Val>,
     named: HashMap<GcSpannedValue<Rc<str>>, Val>,
-    span: Span,
+    span: GenerationSpan,
+    gen: u64,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
             sep with cast_number(i64)
         }
     }
-    let named = Named::from_named(named)?;
+    let named = Named::from_named(named, gen)?;
 
     let v = args[0]
         .borrow()
@@ -113,22 +114,23 @@ fn hex(
         .with_span(&*args[0].borrow())?;
     let str = format!("{v:#x}");
     match named.sep {
-        None => Ok(Value::new_str(str, &span)),
-        Some(v) => Ok(Value::new_str(separate_string(str, v), &span)),
+        None => Ok(Value::new_str(str, &span, gen)),
+        Some(v) => Ok(Value::new_str(separate_string(str, v), &span, gen)),
     }
 }
 
 fn bin(
     args: Vec<Val>,
     named: HashMap<GcSpannedValue<Rc<str>>, Val>,
-    span: Span,
+    span: GenerationSpan,
+    gen: u64,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
             sep with cast_number(i64)
         }
     }
-    let named = Named::from_named(named)?;
+    let named = Named::from_named(named, gen)?;
 
     let v = args[0]
         .borrow()
@@ -136,21 +138,22 @@ fn bin(
         .with_span(&*args[0].borrow())?;
     let str = format!("{v:#b}");
     match named.sep {
-        None => Ok(Value::new_str(str, &span)),
-        Some(v) => Ok(Value::new_str(separate_string(str, v), &span)),
+        None => Ok(Value::new_str(str, &span, gen)),
+        Some(v) => Ok(Value::new_str(separate_string(str, v), &span, gen)),
     }
 }
 
 fn parse_int(
     args: Vec<Val>,
     named: HashMap<GcSpannedValue<Rc<str>>, Val>,
-    span: Span,
+    span: GenerationSpan,
+    gen: u64,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
         }
     }
-    let _named = Named::from_named(named)?;
+    let _named = Named::from_named(named, gen)?;
 
     let v = args[0].borrow().cast_str().with_span(&*args[0].borrow())?;
     let n = if v.starts_with("0x") {
@@ -162,38 +165,40 @@ fn parse_int(
     }
     .map_err(|_| RuntimeError::ParseIntError)?;
 
-    Ok(Value::new_number(n, &span))
+    Ok(Value::new_number(n, &span, gen))
 }
 
 fn open_file(
     args: Vec<Val>,
     named: HashMap<GcSpannedValue<Rc<str>>, Val>,
-    span: Span,
+    span: GenerationSpan,
+    gen: u64,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
         }
     }
-    let _named = Named::from_named(named)?;
+    let _named = Named::from_named(named, gen)?;
 
     let v = args[0].borrow().cast_str().with_span(&*args[0].borrow())?;
     let f = File::open(&*v).map_err(Into::into).with_span(&span)?;
 
-    Ok(Value::new_file(f, &span))
+    Ok(Value::new_file(f, &span, gen))
 }
 
 fn parse_json_value(
     args: Vec<Val>,
     named: HashMap<GcSpannedValue<Rc<str>>, Val>,
-    span: Span,
+    span: GenerationSpan,
+    gen: u64,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
         }
     }
-    let _named = Named::from_named(named)?;
+    let _named = Named::from_named(named, gen)?;
 
-    let arg_span = args[0].borrow().span();
+    let arg_span = args[0].borrow().gen_span();
     let parsed: Value = match &mut **args[0].borrow_mut() {
         Value::File(f) => {
             let mut buf_reader = BufReader::new(f);
@@ -206,24 +211,25 @@ fn parse_json_value(
             return Err(RuntimeError::CastError {
                 into: "str-like".into(),
                 from: v.name().into(),
-                location: Some(arg_span.into()),
+                location: arg_span.source_span(gen),
             })
         }
     };
 
-    Ok(Value::new(parsed.spanned_gc(&span)))
+    Ok(Value::new(parsed.spanned_gen(&span, gen)))
 }
 
 fn shell_function(
     args: Vec<Val>,
     named: HashMap<GcSpannedValue<Rc<str>>, Val>,
-    span: Span,
+    span: GenerationSpan,
+    gen: u64,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
         }
     }
-    let _named = Named::from_named(named)?;
+    let _named = Named::from_named(named, gen)?;
 
     let arg = args[0]
         .borrow()
@@ -236,6 +242,7 @@ fn shell_function(
             action: FunctionKind::Shell(arg),
         },
         &span,
+        gen,
     ))
 }
 

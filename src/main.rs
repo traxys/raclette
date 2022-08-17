@@ -186,6 +186,8 @@ fn main() -> Result<()> {
                                 }
                             }
                         }
+
+                        interpreter.new_generation();
                     }
                     Err(ReadlineError::Interrupted) => {
                         println!("Interrupted");

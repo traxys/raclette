@@ -9,7 +9,10 @@ use std::{
 
 use crate::{
     ast,
-    span::{GcSpannedValue, Span, SpannedValue, Spanning, SpanningExt, UNKNOWN_SPAN},
+    span::{
+        GcSpannedValue, GenerationSpan, GenerationSpanned, SpannedValue, Spanning, SpanningExt,
+        UNKNOWN_SPAN,
+    },
 };
 use bstr::BString;
 use gc::{Finalize, Gc, GcCell, Trace};
@@ -42,6 +45,7 @@ impl<T> SpannedResult for Result<T> {
 }
 
 pub struct Interpreter {
+    generation: u64,
     scopes: Vec<Scope>,
     global: Scope,
 }
@@ -88,7 +92,7 @@ pub enum RuntimeError {
     NoSuchField {
         field: String,
         #[label("in this expression")]
-        expr_location: SourceSpan,
+        expr_location: Option<SourceSpan>,
         #[label("this field does not exist")]
         location: Option<SourceSpan>,
     },
@@ -130,7 +134,7 @@ pub enum RuntimeError {
         #[label("This value is of type `{ty}`")]
         location: Option<SourceSpan>,
         #[label("This index is of type `{idx_ty}`")]
-        idx_location: SourceSpan,
+        idx_location: Option<SourceSpan>,
     },
     #[error("Index `{idx}` could not index value")]
     NoSuchIndex {
@@ -283,7 +287,7 @@ impl<'de> Deserialize<'de> for Value {
                 let mut vec = Vec::new();
 
                 while let Some(v) = seq.next_element::<Value>()? {
-                    vec.push(Value::new(v.spanned_gc(UNKNOWN_SPAN)))
+                    vec.push(Value::new(v.spanned_gen(UNKNOWN_SPAN, 0)))
                 }
 
                 Ok(Value::Array(vec))
@@ -298,7 +302,7 @@ impl<'de> Deserialize<'de> for Value {
                 loop {
                     match visitor.next_entry::<_, Value>() {
                         Ok(Some((k, v))) => {
-                            values.insert(k, Value::new(v.spanned_gc(UNKNOWN_SPAN)));
+                            values.insert(k, Value::new(v.spanned_gen(UNKNOWN_SPAN, 0)));
                         }
                         Ok(None) => break,
                         Err(e) => return Err(e),
@@ -412,7 +416,7 @@ pub struct FunctionValue {
     pub(crate) action: FunctionKind,
 }
 
-pub type FolderFn = fn(Val, Val, &mut Interpreter, &Span) -> Result<Val>;
+pub type FolderFn = fn(Val, Val, &mut Interpreter, &GenerationSpan) -> Result<Val>;
 
 #[derive(Trace, Finalize, Clone)]
 pub enum Folder {
@@ -426,7 +430,7 @@ impl std::fmt::Debug for Folder {
             Self::Op(arg0, arg1) => f
                 .debug_tuple("Op")
                 .field(
-                    &(*arg0 as fn(Val, Val, &'a mut Interpreter, &'a Span) -> Result<Val>)
+                    &(*arg0 as fn(Val, Val, &'a mut Interpreter, &'a GenerationSpan) -> Result<Val>)
                         as &dyn std::fmt::Debug,
                 )
                 .field(arg1)
@@ -436,7 +440,8 @@ impl std::fmt::Debug for Folder {
     }
 }
 
-type BuiltinFn = fn(Vec<Val>, HashMap<GcSpannedValue<Rc<str>>, Val>, Span) -> Result<Val>;
+type BuiltinFn =
+    fn(Vec<Val>, HashMap<GcSpannedValue<Rc<str>>, Val>, GenerationSpan, u64) -> Result<Val>;
 
 #[derive(Trace, Finalize, Clone, Debug)]
 pub enum FunctionKind {
@@ -471,13 +476,19 @@ impl Num {
 }
 
 impl Value {
-    pub fn index(&self, idx: Val, expr_span: &Span, index_span: &Span) -> Result<Val> {
+    pub fn index(
+        &self,
+        idx: Val,
+        expr_span: &GenerationSpan,
+        index_span: &GenerationSpan,
+        gen: u64,
+    ) -> Result<Val> {
         match (self, &**idx.borrow()) {
             (Value::Array(a), &Value::Hashable(HashableValue::Number(n))) => {
                 if (n >= 0 && n as usize >= a.len()) || (n < 0 && (-n) as usize > a.len()) {
                     return Err(RuntimeError::NoSuchIndex {
                         idx: n.to_string(),
-                        location: Some(index_span.into()),
+                        location: index_span.source_span(gen),
                     });
                 }
 
@@ -491,30 +502,30 @@ impl Value {
                 if n < 0 {
                     return Err(RuntimeError::NoSuchIndex {
                         idx: n.to_string(),
-                        location: Some(index_span.into()),
+                        location: index_span.source_span(gen),
                     });
                 }
 
                 match r.clone().nth(n as usize) {
-                    Some(v) => Ok(Value::new_number(v, expr_span)),
+                    Some(v) => Ok(Value::new_number(v, expr_span, gen)),
                     None => Err(RuntimeError::NoSuchIndex {
                         idx: n.to_string(),
-                        location: Some(index_span.into()),
+                        location: index_span.source_span(gen),
                     }),
                 }
             }
             (Value::Map(m), Value::Hashable(h)) => match m.get(h) {
                 None => Err(RuntimeError::NoSuchIndex {
                     idx: h.to_string(),
-                    location: Some(index_span.into()),
+                    location: index_span.source_span(gen),
                 }),
                 Some(v) => Ok(v.clone()),
             },
             (e, i) => Err(RuntimeError::NotIndexableWith {
                 ty: e.name().into(),
                 idx_ty: i.name().into(),
-                location: Some(expr_span.into()),
-                idx_location: index_span.into(),
+                location: expr_span.source_span(gen),
+                idx_location: index_span.source_span(gen),
             }),
         }
     }
@@ -523,15 +534,16 @@ impl Value {
         &mut self,
         idx: Val,
         value: Val,
-        expr_span: &Span,
-        index_span: &Span,
+        expr_span: &GenerationSpan,
+        index_span: &GenerationSpan,
+        gen: u64,
     ) -> Result<()> {
         match (self, &**idx.borrow()) {
             (Value::Array(a), &Value::Hashable(HashableValue::Number(n))) => {
                 if (n >= 0 && n as usize >= a.len()) || (n < 0 && -n as usize > a.len()) {
                     return Err(RuntimeError::NoSuchIndex {
                         idx: n.to_string(),
-                        location: Some(index_span.into()),
+                        location: index_span.source_span(gen),
                     });
                 }
 
@@ -548,13 +560,13 @@ impl Value {
                 if n < 0 {
                     return Err(RuntimeError::NoSuchIndex {
                         idx: n.to_string(),
-                        location: Some(index_span.into()),
+                        location: index_span.source_span(gen),
                     });
                 }
 
                 Err(RuntimeError::IndexNotAssignable {
                     idx: n.to_string(),
-                    location: Some(index_span.into()),
+                    location: index_span.source_span(gen),
                 })
             }
             (Value::Map(m), Value::Hashable(h)) => {
@@ -565,8 +577,8 @@ impl Value {
             (e, i) => Err(RuntimeError::NotIndexableWith {
                 ty: e.name().into(),
                 idx_ty: i.name().into(),
-                location: Some(expr_span.into()),
-                idx_location: index_span.into(),
+                location: expr_span.source_span(gen),
+                idx_location: index_span.source_span(gen),
             }),
         }
     }
@@ -652,7 +664,7 @@ impl Value {
             Value::Map(v) => Ok(Box::new(v.values().cloned())),
             Value::Array(a) => Ok(Box::new(a.iter().cloned())),
             Value::Range(r) => Ok(Box::new(
-                r.clone().map(|v| Value::new_number(v, UNKNOWN_SPAN)),
+                r.clone().map(|v| Value::new_number(v, UNKNOWN_SPAN, 0)),
             )),
             _ => Err(RuntimeError::NotIterable {
                 ty: self.name().into(),
@@ -661,73 +673,73 @@ impl Value {
         }
     }
 
-    fn new_num<U, S>(v: Num, span: &S) -> Val
+    fn new_num<U, S>(v: Num, span: &S, gen: u64) -> Val
     where
         S: Spanning<U>,
     {
         match v {
-            Num::Float(f) => Self::new_float(f, span),
-            Num::Int(i) => Self::new_number(i, span),
+            Num::Float(f) => Self::new_float(f, span, gen),
+            Num::Int(i) => Self::new_number(i, span, gen),
         }
     }
 
-    pub fn new_range_iterator<U, S>(v: RangeIterator, span: &S) -> Val
+    pub fn new_range_iterator<U, S>(v: RangeIterator, span: &S, gen: u64) -> Val
     where
         S: Spanning<U>,
     {
-        Self::new(Self::Range(v).spanned_gc(span))
+        Self::new(Self::Range(v).spanned_gen(span, gen))
     }
 
-    pub fn new_file<U, S>(v: File, span: &S) -> Val
+    pub fn new_file<U, S>(v: File, span: &S, gen: u64) -> Val
     where
         S: Spanning<U>,
     {
-        Self::new(Self::File(v).spanned_gc(span))
+        Self::new(Self::File(v).spanned_gen(span, gen))
     }
 
-    pub fn new_float<U, S>(v: f64, span: &S) -> Val
+    pub fn new_float<U, S>(v: f64, span: &S, gen: u64) -> Val
     where
         S: Spanning<U>,
     {
-        Self::new(Self::Float(v).spanned_gc(span))
+        Self::new(Self::Float(v).spanned_gen(span, gen))
     }
 
-    pub fn new_number<U, S>(v: i64, span: &S) -> Val
+    pub fn new_number<U, S>(v: i64, span: &S, gen: u64) -> Val
     where
         S: Spanning<U>,
     {
-        Self::new(Self::Hashable(HashableValue::Number(v)).spanned_gc(span))
+        Self::new(Self::Hashable(HashableValue::Number(v)).spanned_gen(span, gen))
     }
 
-    pub fn new_function<U, S>(v: FunctionValue, span: &S) -> Val
+    pub fn new_function<U, S>(v: FunctionValue, span: &S, gen: u64) -> Val
     where
         S: Spanning<U>,
     {
-        Self::new(Self::Func(v).spanned_gc(span))
+        Self::new(Self::Func(v).spanned_gen(span, gen))
     }
 
-    pub fn new_str<U, S>(v: String, span: &S) -> Val
+    pub fn new_str<U, S>(v: String, span: &S, gen: u64) -> Val
     where
         S: Spanning<U>,
     {
-        Self::new(Self::Hashable(HashableValue::Str(Rc::from(v))).spanned_gc(span))
+        Self::new(Self::Hashable(HashableValue::Str(Rc::from(v))).spanned_gen(span, gen))
     }
 
-    pub fn new_map<U, S>(v: HashMap<HashableValue, Val>, span: &S) -> Val
+    pub fn new_map<U, S>(v: HashMap<HashableValue, Val>, span: &S, gen: u64) -> Val
     where
         S: Spanning<U>,
     {
-        Self::new(Self::Map(v).spanned_gc(span))
+        Self::new(Self::Map(v).spanned_gen(span, gen))
     }
 
-    pub fn new_array<U, S>(v: Vec<Val>, span: &S) -> Val
+    pub fn new_array<U, S>(v: Vec<Val>, span: &S, gen: u64) -> Val
     where
         S: Spanning<U>,
     {
-        Self::new(Self::Array(v).spanned_gc(span))
+        Self::new(Self::Array(v).spanned_gen(span, gen))
     }
 
-    pub(crate) fn new(v: GcSpannedValue<Value>) -> Val {
+    pub(crate) fn new(v: GenerationSpanned<Value>) -> Val {
         Gc::new(GcCell::new(v))
     }
 
@@ -751,7 +763,7 @@ impl FunctionValue {
         args: Vec<Val>,
         mut named: HashMap<GcSpannedValue<Rc<str>>, Val>,
         scope: &mut Interpreter,
-        span: &Span,
+        span: &GenerationSpan,
     ) -> Result<Val> {
         if args.len() != self.arity {
             return Err(RuntimeError::ArgumentCountMismatch {
@@ -762,7 +774,7 @@ impl FunctionValue {
         }
 
         match &self.action {
-            FunctionKind::Builtin(f) => f(args, named, *span),
+            FunctionKind::Builtin(f) => f(args, named, span.clone(), scope.generation),
             FunctionKind::SpecifyNamed {
                 func,
                 named: already_specified,
@@ -787,7 +799,8 @@ impl FunctionValue {
                         let v = f.borrow();
                         let func = v.cast_function()?;
                         iter.try_fold(first.unwrap_or_else(|| def.clone()), |acc, e| {
-                            func.call(vec![acc, e], HashMap::new(), scope, &v.span())
+                            let spn = e.borrow().gen_span();
+                            func.call(vec![acc, e], HashMap::new(), scope, &spn)
                         })
                     }
                 }
@@ -800,16 +813,25 @@ impl FunctionValue {
                     Value::Map(map) => {
                         let mut new_map = map.clone();
                         for (_, v) in new_map.iter_mut() {
-                            *v = mapper.call(vec![v.clone()], HashMap::new(), scope, &m.span())?;
+                            let spn = &v.borrow().gen_span();
+                            *v = mapper.call(vec![v.clone()], HashMap::new(), scope, spn)?;
                         }
 
-                        Ok(Value::new_map(new_map, span))
+                        Ok(Value::new_map(new_map, span, scope.generation))
                     }
                     Value::Array(a) => Ok(Value::new_array(
                         a.iter()
-                            .map(|e| mapper.call(vec![e.clone()], HashMap::new(), scope, &m.span()))
+                            .map(|e| {
+                                mapper.call(
+                                    vec![e.clone()],
+                                    HashMap::new(),
+                                    scope,
+                                    &e.borrow().gen_span(),
+                                )
+                            })
                             .collect::<Result<_>>()?,
                         span,
+                        scope.generation,
                     )),
                     _ => Err(RuntimeError::NotIterable {
                         ty: iter.name().into(),
@@ -857,21 +879,21 @@ impl FunctionValue {
                     return Err(RuntimeError::ProcessFailure {
                         error: output.stderr.into(),
                         status: output.status,
-                        location: Some((*span).into()),
+                        location: span.source_span(scope.generation),
                     });
                 }
 
                 let output =
                     String::from_utf8(output.stdout).map_err(|_| RuntimeError::InvalidUtf8 {
-                        location: Some((*span).into()),
+                        location: span.source_span(scope.generation),
                     })?;
 
-                Ok(Value::new_str(output, span))
+                Ok(Value::new_str(output, span, scope.generation))
             }
         }
     }
 
-    pub fn user_folder(f: Val, def: Val) -> Val {
+    pub fn user_folder(f: Val, def: Val, gen: u64) -> Val {
         let span = def.borrow().span();
         Value::new_function(
             FunctionValue {
@@ -879,10 +901,11 @@ impl FunctionValue {
                 action: FunctionKind::Folder(Folder::User(f, def)),
             },
             &span,
+            gen,
         )
     }
 
-    pub fn op_folder(f: FolderFn, def: Val) -> Val {
+    pub fn op_folder(f: FolderFn, def: Val, gen: u64) -> Val {
         let span = def.borrow().span();
         Value::new_function(
             FunctionValue {
@@ -890,6 +913,7 @@ impl FunctionValue {
                 action: FunctionKind::Folder(Folder::Op(f, def)),
             },
             &span,
+            gen,
         )
     }
 }
@@ -904,15 +928,15 @@ fn power_nums(lhs: Num, rhs: Num) -> Num {
     }
 }
 
-pub type Val = Gc<GcCell<GcSpannedValue<Value>>>;
+pub type Val = Gc<GcCell<GenerationSpanned<Value>>>;
 
 macro_rules! int_operator_function {
     ($name:ident, $op:tt) => {
-        fn $name(a: Val, b: Val, _: &mut Interpreter, span: &Span) -> Result<Val> {
+        fn $name(a: Val, b: Val, s: &mut Interpreter, span: &GenerationSpan) -> Result<Val> {
             let a = a.borrow().cast_number()?;
             let b = b.borrow().cast_number()?;
 
-            Ok(Value::new_number(a $op b, span))
+            Ok(Value::new_number(a $op b, span, s.generation))
         }
     };
 }
@@ -935,11 +959,15 @@ macro_rules! nums_op {
 
 macro_rules! num_operator_function {
     ($name:ident, $op:tt) => {
-        fn $name(a: Val, b: Val, _: &mut Interpreter, span: &Span) -> Result<Val> {
+        fn $name(a: Val, b: Val, s: &mut Interpreter, span: &GenerationSpan) -> Result<Val> {
             let a = a.borrow().cast_num().with_span(&*a.borrow())?;
             let b = b.borrow().cast_num().with_span(&*b.borrow())?;
 
-            Ok(Value::new_num(nums_op!((a, b).into(), $op), span))
+            Ok(Value::new_num(
+                nums_op!((a, b).into(), $op),
+                span,
+                s.generation,
+            ))
         }
     };
 }
@@ -948,21 +976,21 @@ num_operator_function! {times, *}
 num_operator_function! {sum, +}
 num_operator_function! {difference, -}
 
-fn power(a: Val, b: Val, _: &mut Interpreter, span: &Span) -> Result<Val> {
+fn power(a: Val, b: Val, s: &mut Interpreter, span: &GenerationSpan) -> Result<Val> {
     let a = a.borrow().cast_num().with_span(&*a.borrow())?;
     let b = b.borrow().cast_num().with_span(&*b.borrow())?;
 
-    Ok(Value::new_num(power_nums(a, b), span))
+    Ok(Value::new_num(power_nums(a, b), span, s.generation))
 }
 
-fn divide(a: Val, b: Val, _: &mut Interpreter, span: &Span) -> Result<Val> {
+fn divide(a: Val, b: Val, s: &mut Interpreter, span: &GenerationSpan) -> Result<Val> {
     let a = a.borrow().cast_num().with_span(&*a.borrow())?;
     let b = b.borrow().cast_num().with_span(&*b.borrow())?;
 
-    Ok(Value::new_float(a.f64() / b.f64(), span))
+    Ok(Value::new_float(a.f64() / b.f64(), span, s.generation))
 }
 
-fn redirect(a: Val, b: Val, scope: &mut Interpreter, span: &Span) -> Result<Val> {
+fn redirect(a: Val, b: Val, scope: &mut Interpreter, span: &GenerationSpan) -> Result<Val> {
     let b = b.borrow().cast_function()?;
 
     b.call(vec![a], HashMap::new(), scope, span)
@@ -985,6 +1013,10 @@ impl From<(Num, Num)> for Nums {
 }
 
 impl Interpreter {
+    pub fn new_generation(&mut self) {
+        self.generation += 1;
+    }
+
     pub fn resolve(&self, name: &str) -> Result<Val> {
         for scope in self.scopes.iter().rev() {
             if let Some(v) = scope.vars.get(name) {
@@ -1031,6 +1063,7 @@ impl Interpreter {
 
     pub fn new() -> Self {
         Self {
+            generation: 0,
             scopes: Vec::new(),
             global: Scope {
                 vars: crate::builtins::create(),
@@ -1054,13 +1087,14 @@ impl Interpreter {
                         p.borrow_mut().set_field(field, e)?;
                     }
                     ast::Place::Index(se, i) => {
-                        let ses = se.span();
+                        let ses = se.with_generation(self.generation);
                         let se = self.run_expr(*se)?;
 
-                        let is = i.span();
+                        let is = i.with_generation(self.generation);
                         let i = self.run_expr(*i)?;
 
-                        se.borrow_mut().set_index(i, e, &ses, &is)?;
+                        se.borrow_mut()
+                            .set_index(i, e, &ses, &is, self.generation)?;
                     }
                 }
             }
@@ -1105,7 +1139,7 @@ impl Interpreter {
                         ast::BinaryOp::Modulo => lhs % rhs,
                         _ => unreachable!(),
                     };
-                    Ok(Value::new_number(v, expr_span))
+                    Ok(Value::new_number(v, expr_span, self.generation))
                 }
                 ast::BinaryOp::Power | ast::BinaryOp::Divide => {
                     let ls = lhs.span();
@@ -1114,10 +1148,16 @@ impl Interpreter {
                     let rhs = self.run_expr(*rhs)?.borrow().cast_num().with_span(&rs)?;
 
                     match op {
-                        ast::BinaryOp::Power => Ok(Value::new_num(power_nums(lhs, rhs), expr_span)),
-                        ast::BinaryOp::Divide => {
-                            Ok(Value::new_float(lhs.f64() / rhs.f64(), expr_span))
-                        }
+                        ast::BinaryOp::Power => Ok(Value::new_num(
+                            power_nums(lhs, rhs),
+                            expr_span,
+                            self.generation,
+                        )),
+                        ast::BinaryOp::Divide => Ok(Value::new_float(
+                            lhs.f64() / rhs.f64(),
+                            expr_span,
+                            self.generation,
+                        )),
                         _ => unreachable!(),
                     }
                 }
@@ -1129,7 +1169,7 @@ impl Interpreter {
                         ast::BinaryOp::Times => nums_op!(nums, *),
                         _ => unreachable!(),
                     };
-                    Ok(Value::new_num(v, expr_span))
+                    Ok(Value::new_num(v, expr_span, self.generation))
                 }
                 ast::BinaryOp::Redirect => {
                     let ls = lhs.span();
@@ -1140,7 +1180,12 @@ impl Interpreter {
                         .borrow()
                         .cast_function()
                         .with_span(&f)?;
-                    func.call(vec![input], HashMap::new(), self, expr_span)
+                    func.call(
+                        vec![input],
+                        HashMap::new(),
+                        self,
+                        &expr_span.with_generation(self.generation),
+                    )
                 }
             },
             ast::Expr::Place(p) => match p.value {
@@ -1152,20 +1197,22 @@ impl Interpreter {
                     e.field(f.value.clone())
                         .ok_or_else(|| RuntimeError::NoSuchField {
                             field: f.to_string(),
-                            expr_location: e_span.into(),
+                            expr_location: e_span
+                                .with_generation(self.generation)
+                                .source_span(self.generation),
                             location: None,
                         })
                         .with_span(&f)
                 }
                 ast::Place::Index(e, i) => {
-                    let es = e.span();
+                    let es = e.span().with_generation(self.generation);
                     let e = self.run_expr(*e)?;
                     let e = e.borrow();
 
-                    let is = i.span();
+                    let is = i.span().with_generation(self.generation);
                     let i = self.run_expr(*i)?;
 
-                    e.index(i, &es, &is)
+                    e.index(i, &es, &is, self.generation)
                 }
             },
             ast::Expr::Call { func, args } => {
@@ -1183,8 +1230,13 @@ impl Interpreter {
                         .into_iter()
                         .map(|e| self.run_expr(e))
                         .collect::<Result<_>>()?;
-                    func.call(args, HashMap::new(), self, expr_span)
-                        .with_span(&f)
+                    func.call(
+                        args,
+                        HashMap::new(),
+                        self,
+                        &expr_span.with_generation(self.generation),
+                    )
+                    .with_span(&f)
                 }
             }
             ast::Expr::NamedCall { func, named } => {
@@ -1206,6 +1258,7 @@ impl Interpreter {
                         action: FunctionKind::SpecifyNamed { func, named },
                     },
                     expr_span,
+                    self.generation,
                 ))
             }
             ast::Expr::Map(m) => {
@@ -1219,7 +1272,7 @@ impl Interpreter {
                         ))
                     })
                     .collect();
-                Ok(Value::new_map(map?, expr_span))
+                Ok(Value::new_map(map?, expr_span, self.generation))
             }
             ast::Expr::Tilde(e) => {
                 let span = e.span();
@@ -1234,36 +1287,61 @@ impl Interpreter {
                     }
                     any => any.to_string(),
                 };
-                Ok(Value::new_str(str, expr_span))
+                Ok(Value::new_str(str, expr_span, self.generation))
             }
             ast::Expr::Array(a) => {
                 let vec: Result<_> = a.into_iter().map(|a| self.run_expr(a)).collect();
-                Ok(Value::new_array(vec?, expr_span))
+                Ok(Value::new_array(vec?, expr_span, self.generation))
             }
             ast::Expr::Fold(folder) => match folder.value {
                 ast::Folder::Operator(op) => {
                     let (f, def): (FolderFn, _) = match op {
-                        ast::BinaryOp::BitwiseOr => (bitwise_or, Value::new_number(0, expr_span)),
-                        ast::BinaryOp::BitwiseAnd => {
-                            (bitwise_and, Value::new_number(-1, expr_span))
+                        ast::BinaryOp::BitwiseOr => {
+                            (bitwise_or, Value::new_number(0, expr_span, self.generation))
                         }
-                        ast::BinaryOp::Redirect => (redirect, Value::new_number(0, expr_span)),
-                        ast::BinaryOp::Plus => (sum, Value::new_number(0, expr_span)),
-                        ast::BinaryOp::Minus => (difference, Value::new_number(0, expr_span)),
-                        ast::BinaryOp::Times => (times, Value::new_number(1, expr_span)),
-                        ast::BinaryOp::Divide => (divide, Value::new_number(0, expr_span)),
-                        ast::BinaryOp::IntDivide => (int_division, Value::new_number(0, expr_span)),
-                        ast::BinaryOp::Power => (power, Value::new_number(0, expr_span)),
-                        ast::BinaryOp::Modulo => (modulo, Value::new_number(0, expr_span)),
-                        ast::BinaryOp::LShift => (left_shift, Value::new_number(0, expr_span)),
-                        ast::BinaryOp::RShift => (right_shift, Value::new_number(0, expr_span)),
+                        ast::BinaryOp::BitwiseAnd => (
+                            bitwise_and,
+                            Value::new_number(-1, expr_span, self.generation),
+                        ),
+                        ast::BinaryOp::Redirect => {
+                            (redirect, Value::new_number(0, expr_span, self.generation))
+                        }
+                        ast::BinaryOp::Plus => {
+                            (sum, Value::new_number(0, expr_span, self.generation))
+                        }
+                        ast::BinaryOp::Minus => {
+                            (difference, Value::new_number(0, expr_span, self.generation))
+                        }
+                        ast::BinaryOp::Times => {
+                            (times, Value::new_number(1, expr_span, self.generation))
+                        }
+                        ast::BinaryOp::Divide => {
+                            (divide, Value::new_number(0, expr_span, self.generation))
+                        }
+                        ast::BinaryOp::IntDivide => (
+                            int_division,
+                            Value::new_number(0, expr_span, self.generation),
+                        ),
+                        ast::BinaryOp::Power => {
+                            (power, Value::new_number(0, expr_span, self.generation))
+                        }
+                        ast::BinaryOp::Modulo => {
+                            (modulo, Value::new_number(0, expr_span, self.generation))
+                        }
+                        ast::BinaryOp::LShift => {
+                            (left_shift, Value::new_number(0, expr_span, self.generation))
+                        }
+                        ast::BinaryOp::RShift => (
+                            right_shift,
+                            Value::new_number(0, expr_span, self.generation),
+                        ),
                     };
-                    Ok(FunctionValue::op_folder(f, def))
+                    Ok(FunctionValue::op_folder(f, def, self.generation))
                 }
                 ast::Folder::Args { func, def } => {
                     let func = self.run_expr(*func)?;
                     let def = self.run_expr(*def)?;
-                    Ok(FunctionValue::user_folder(func, def))
+                    Ok(FunctionValue::user_folder(func, def, self.generation))
                 }
             },
             ast::Expr::Mapper(m) => {
@@ -1274,6 +1352,7 @@ impl Interpreter {
                         action: FunctionKind::Mapper(mapper),
                     },
                     expr_span,
+                    self.generation,
                 ))
             }
             ast::Expr::FuncDef { args, ret } => Ok(Value::new_function(
@@ -1282,6 +1361,7 @@ impl Interpreter {
                     action: FunctionKind::User { args, ret: *ret },
                 },
                 expr_span,
+                self.generation,
             )),
             ast::Expr::Range { start, end, step } => {
                 let ss = start.span();
@@ -1307,6 +1387,7 @@ impl Interpreter {
                 Ok(Value::new_range_iterator(
                     RangeIterator::new(start, end, step),
                     expr_span,
+                    self.generation,
                 ))
             }
         }
@@ -1315,8 +1396,8 @@ impl Interpreter {
     fn run_literal(&mut self, lit: SpannedValue<ast::Literal>) -> Result<Val> {
         let span = &lit.span();
         Ok(match lit.value {
-            ast::Literal::Number(n) => Value::new_number(n, span),
-            ast::Literal::String(s) => Value::new_str(s, span),
+            ast::Literal::Number(n) => Value::new_number(n, span, self.generation),
+            ast::Literal::String(s) => Value::new_str(s, span, self.generation),
         })
     }
 }

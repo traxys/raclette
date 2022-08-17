@@ -24,7 +24,33 @@ pub struct SpannedValue<T> {
     pub value: T,
 }
 
+#[derive(Debug, Clone, Trace, Finalize, Derivative, Eq)]
+#[derivative(PartialEq, Hash)]
+pub struct GenerationSpanned<T> {
+    #[derivative(PartialEq = "ignore", Hash = "ignore")]
+    pub generation: Option<u64>,
+    pub span: GcSpannedValue<T>,
+}
+
 pub type Span = SpannedValue<()>;
+pub type GenerationSpan = GenerationSpanned<()>;
+
+impl<T> GenerationSpanned<T> {
+    pub fn gen_span(&self) -> GenerationSpan {
+        GenerationSpan {
+            generation: self.generation,
+            span: ().spanned_gc(self),
+        }
+    }
+
+    pub fn source_span(&self, current_gen: u64) -> Option<SourceSpan> {
+        if Some(current_gen) == self.generation {
+            Some(SourceSpan::from(self.span.start..self.span.end))
+        } else {
+            None
+        }
+    }
+}
 
 pub const UNKNOWN_SPAN: &Span = &Span {
     start: 1,
@@ -53,18 +79,6 @@ where
     }
 }
 
-impl<T> From<SpannedValue<T>> for SourceSpan {
-    fn from(s: SpannedValue<T>) -> Self {
-        (s.start..s.end).into()
-    }
-}
-
-impl<T> From<&SpannedValue<T>> for SourceSpan {
-    fn from(s: &SpannedValue<T>) -> Self {
-        (s.start..s.end).into()
-    }
-}
-
 pub trait Spanning<T> {
     fn span(&self) -> Span;
     fn with_span_unit(value: T, s: &Span) -> Self;
@@ -78,8 +92,11 @@ pub trait Spanning<T> {
         Self::with_span_unit(value, &other)
     }
 
-    fn source_span(&self) -> SourceSpan {
-        self.span().into()
+    fn with_generation(&self, generation: u64) -> GenerationSpan {
+        GenerationSpan {
+            generation: Some(generation),
+            span: self.span().into(),
+        }
     }
 
     /* fn update_span<U, S>(mut self, span: &S) -> Self
@@ -106,6 +123,16 @@ pub trait SpanningExt {
         S: Spanning<U>,
     {
         GcSpannedValue::with_span(self, span)
+    }
+
+    fn spanned_gen<U, S>(self, span: &S, generation: u64) -> GenerationSpanned<Self>
+    where
+        Self: Sized,
+        S: Spanning<U>,
+    {
+        let mut s = GenerationSpanned::with_span(self, span);
+        s.generation = Some(generation);
+        s
     }
 }
 
@@ -188,6 +215,19 @@ impl<T> Spanning<T> for SpannedValue<T> {
     }
 }
 
+impl<T> Spanning<T> for GenerationSpanned<T> {
+    fn span(&self) -> Span {
+        self.span.span()
+    }
+
+    fn with_span_unit(value: T, s: &Span) -> Self {
+        Self {
+            generation: None,
+            span: GcSpannedValue::with_span_unit(value, s),
+        }
+    }
+}
+
 impl<T> SpannedValue<T> {
     pub fn map<F, U>(self, f: F) -> SpannedValue<U>
     where
@@ -238,5 +278,19 @@ impl<T> DerefMut for SpannedValue<T> {
 impl<T> DerefMut for GcSpannedValue<T> {
     fn deref_mut(&mut self) -> &mut T {
         &mut self.value
+    }
+}
+
+impl<T> Deref for GenerationSpanned<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.span.deref()
+    }
+}
+
+impl<T> DerefMut for GenerationSpanned<T> {
+    fn deref_mut(&mut self) -> &mut T {
+        self.span.deref_mut()
     }
 }
