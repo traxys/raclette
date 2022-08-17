@@ -245,6 +245,7 @@ LiteralExpr: Expr = {
 Place: Place = {
 	Spn<ident> => Place::Ident(<>),
 	<e:Spn<LiteralExpr>> "." <f:Spn<ident>> => Place::Deref(Box::new(e), f.map(Rc::from)),
+	<e:Spn<LiteralExpr>> "[" <i:Spn<Expr>> "]" => Place::Index(Box::new(e), Box::new(i)),
 };
 
 pub Statement: Statement = {

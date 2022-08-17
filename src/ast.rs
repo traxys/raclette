@@ -208,6 +208,7 @@ pub enum BinaryOp {
 pub enum Place {
     Ident(SpannedValue<String>),
     Deref(Box<SpannedValue<Expr>>, SpannedValue<Rc<str>>),
+    Index(Box<SpannedValue<Expr>>, Box<SpannedValue<Expr>>),
 }
 
 #[derive(Debug)]

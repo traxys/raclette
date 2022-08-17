@@ -123,6 +123,27 @@ pub enum RuntimeError {
         #[label("this expression launched a subprocess")]
         location: Option<SourceSpan>,
     },
+    #[error("Value of type `{ty}` is not indexable with values of type `{idx_ty}`")]
+    NotIndexableWith {
+        ty: String,
+        idx_ty: String,
+        #[label("This value is of type `{ty}`")]
+        location: Option<SourceSpan>,
+        #[label("This index is of type `{idx_ty}`")]
+        idx_location: SourceSpan,
+    },
+    #[error("Index `{idx}` could not index value")]
+    NoSuchIndex {
+        idx: String,
+        #[label("This value is invalid for the indexed expression")]
+        location: Option<SourceSpan>,
+    },
+    #[error("The accessed index is read only")]
+    IndexNotAssignable {
+        idx: String,
+        #[label("This index is read-only")]
+        location: Option<SourceSpan>,
+    },
     #[error("JSON error")]
     JsonError(#[source] serde_json::Error),
     #[error("Could not parse integer")]
@@ -172,6 +193,8 @@ impl RuntimeError {
         IoError,
         InvalidUtf8,
         ProcessFailure,
+        NotIndexableWith,
+        NoSuchIndex,
     }
 }
 
@@ -448,6 +471,88 @@ impl Num {
 }
 
 impl Value {
+    pub fn index(&self, idx: Val, expr_span: &Span) -> Result<Val> {
+        match (self, &**idx.borrow()) {
+            (Value::Array(a), &Value::Hashable(HashableValue::Number(n))) => {
+                if (n >= 0 && n as usize >= a.len()) || (n < 0 && (-n) as usize > a.len()) {
+                    return Err(RuntimeError::NoSuchIndex {
+                        idx: n.to_string(),
+                        location: Some(idx.borrow().span().into()),
+                    });
+                }
+
+                if n >= 0 {
+                    Ok(a[n as usize].clone())
+                } else {
+                    Ok(a[a.len() - (-n) as usize].clone())
+                }
+            }
+            (Value::Range(r), &Value::Hashable(HashableValue::Number(n))) => {
+                if n < 0 {
+                    return Err(RuntimeError::NoSuchIndex {
+                        idx: n.to_string(),
+                        location: Some(idx.borrow().span().into()),
+                    });
+                }
+
+                match r.clone().nth(n as usize) {
+                    Some(v) => Ok(Value::new_number(v, expr_span)),
+                    None => Err(RuntimeError::NoSuchIndex {
+                        idx: n.to_string(),
+                        location: Some(idx.borrow().span().into()),
+                    }),
+                }
+            }
+            (e, i) => Err(RuntimeError::NotIndexableWith {
+                ty: e.name().into(),
+                idx_ty: i.name().into(),
+                location: Some((*expr_span).into()),
+                idx_location: idx.borrow().span().into(),
+            }),
+        }
+    }
+
+    pub fn set_index(&mut self, idx: Val, value: Val, expr_span: &Span) -> Result<()> {
+        match (self, &**idx.borrow()) {
+            (Value::Array(a), &Value::Hashable(HashableValue::Number(n))) => {
+                if (n >= 0 && n as usize >= a.len()) || (n < 0 && -n as usize > a.len()) {
+                    return Err(RuntimeError::NoSuchIndex {
+                        idx: n.to_string(),
+                        location: Some(idx.borrow().span().into()),
+                    });
+                }
+
+                if n >= 0 {
+                    a[n as usize] = value;
+                } else {
+                    let l = a.len();
+                    a[l - (-n) as usize] = value;
+                }
+
+                Ok(())
+            }
+            (Value::Range(_), &Value::Hashable(HashableValue::Number(n))) => {
+                if n < 0 {
+                    return Err(RuntimeError::NoSuchIndex {
+                        idx: n.to_string(),
+                        location: Some(idx.borrow().span().into()),
+                    });
+                }
+
+                return Err(RuntimeError::IndexNotAssignable {
+                    idx: n.to_string(),
+                    location: Some(idx.borrow().span().into()),
+                });
+            }
+            (e, i) => Err(RuntimeError::NotIndexableWith {
+                ty: e.name().into(),
+                idx_ty: i.name().into(),
+                location: Some((*expr_span).into()),
+                idx_location: idx.borrow().span().into(),
+            }),
+        }
+    }
+
     pub fn field(&self, f: Rc<str>) -> Option<Val> {
         match self {
             Value::Map(m) => m.get(&HashableValue::Str(f)).cloned(),
@@ -930,6 +1035,14 @@ impl Interpreter {
                         let p = self.run_expr(*p)?;
                         p.borrow_mut().set_field(field, e)?;
                     }
+                    ast::Place::Index(se, i) => {
+                        let ses = se.span();
+                        let se = self.run_expr(*se)?;
+
+                        let i = self.run_expr(*i)?;
+
+                        se.borrow_mut().set_index(i, e, &ses)?;
+                    }
                 }
             }
         };
@@ -1024,6 +1137,15 @@ impl Interpreter {
                             location: None,
                         })
                         .with_span(&f)
+                }
+                ast::Place::Index(e, i) => {
+                    let es = e.span();
+                    let e = self.run_expr(*e)?;
+                    let e = e.borrow();
+
+                    let i = self.run_expr(*i)?;
+
+                    e.index(i, &es)
                 }
             },
             ast::Expr::Call { func, args } => {
