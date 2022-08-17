@@ -237,6 +237,7 @@ LiteralExpr: Expr = {
 	),
 	<Spn<FuncDef>> "@" => Expr::Mapper(Box::new(<>)),
 	<Spn<Literal>> => Expr::Literal(<>),
+	<e:Spn<LiteralExpr>> <r:Spn<RangeExpr>> => todo!(),
 	<p:Spn<Place>> => Expr::Place(<>),
 	"[" <Comma<Spn<Expr>>> "]" => Expr::Array(<>),
 	"(" <Expr> ")" => <>,

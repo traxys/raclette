@@ -59,6 +59,12 @@ impl<T> From<SpannedValue<T>> for SourceSpan {
     }
 }
 
+impl<T> From<&SpannedValue<T>> for SourceSpan {
+    fn from(s: &SpannedValue<T>) -> Self {
+        (s.start..s.end).into()
+    }
+}
+
 pub trait Spanning<T> {
     fn span(&self) -> Span;
     fn with_span_unit(value: T, s: &Span) -> Self;

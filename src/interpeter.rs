@@ -471,13 +471,13 @@ impl Num {
 }
 
 impl Value {
-    pub fn index(&self, idx: Val, expr_span: &Span) -> Result<Val> {
+    pub fn index(&self, idx: Val, expr_span: &Span, index_span: &Span) -> Result<Val> {
         match (self, &**idx.borrow()) {
             (Value::Array(a), &Value::Hashable(HashableValue::Number(n))) => {
                 if (n >= 0 && n as usize >= a.len()) || (n < 0 && (-n) as usize > a.len()) {
                     return Err(RuntimeError::NoSuchIndex {
                         idx: n.to_string(),
-                        location: Some(idx.borrow().span().into()),
+                        location: Some(index_span.into()),
                     });
                 }
 
@@ -491,7 +491,7 @@ impl Value {
                 if n < 0 {
                     return Err(RuntimeError::NoSuchIndex {
                         idx: n.to_string(),
-                        location: Some(idx.borrow().span().into()),
+                        location: Some(index_span.into()),
                     });
                 }
 
@@ -499,26 +499,39 @@ impl Value {
                     Some(v) => Ok(Value::new_number(v, expr_span)),
                     None => Err(RuntimeError::NoSuchIndex {
                         idx: n.to_string(),
-                        location: Some(idx.borrow().span().into()),
+                        location: Some(index_span.into()),
                     }),
                 }
             }
+            (Value::Map(m), Value::Hashable(h)) => match m.get(h) {
+                None => Err(RuntimeError::NoSuchIndex {
+                    idx: h.to_string(),
+                    location: Some(index_span.into()),
+                }),
+                Some(v) => Ok(v.clone()),
+            },
             (e, i) => Err(RuntimeError::NotIndexableWith {
                 ty: e.name().into(),
                 idx_ty: i.name().into(),
-                location: Some((*expr_span).into()),
-                idx_location: idx.borrow().span().into(),
+                location: Some(expr_span.into()),
+                idx_location: index_span.into(),
             }),
         }
     }
 
-    pub fn set_index(&mut self, idx: Val, value: Val, expr_span: &Span) -> Result<()> {
+    pub fn set_index(
+        &mut self,
+        idx: Val,
+        value: Val,
+        expr_span: &Span,
+        index_span: &Span,
+    ) -> Result<()> {
         match (self, &**idx.borrow()) {
             (Value::Array(a), &Value::Hashable(HashableValue::Number(n))) => {
                 if (n >= 0 && n as usize >= a.len()) || (n < 0 && -n as usize > a.len()) {
                     return Err(RuntimeError::NoSuchIndex {
                         idx: n.to_string(),
-                        location: Some(idx.borrow().span().into()),
+                        location: Some(index_span.into()),
                     });
                 }
 
@@ -535,20 +548,25 @@ impl Value {
                 if n < 0 {
                     return Err(RuntimeError::NoSuchIndex {
                         idx: n.to_string(),
-                        location: Some(idx.borrow().span().into()),
+                        location: Some(index_span.into()),
                     });
                 }
 
-                return Err(RuntimeError::IndexNotAssignable {
+                Err(RuntimeError::IndexNotAssignable {
                     idx: n.to_string(),
-                    location: Some(idx.borrow().span().into()),
-                });
+                    location: Some(index_span.into()),
+                })
+            }
+            (Value::Map(m), Value::Hashable(h)) => {
+                m.insert(h.clone(), value);
+
+                Ok(())
             }
             (e, i) => Err(RuntimeError::NotIndexableWith {
                 ty: e.name().into(),
                 idx_ty: i.name().into(),
-                location: Some((*expr_span).into()),
-                idx_location: idx.borrow().span().into(),
+                location: Some(expr_span.into()),
+                idx_location: index_span.into(),
             }),
         }
     }
@@ -1039,9 +1057,10 @@ impl Interpreter {
                         let ses = se.span();
                         let se = self.run_expr(*se)?;
 
+                        let is = i.span();
                         let i = self.run_expr(*i)?;
 
-                        se.borrow_mut().set_index(i, e, &ses)?;
+                        se.borrow_mut().set_index(i, e, &ses, &is)?;
                     }
                 }
             }
@@ -1143,9 +1162,10 @@ impl Interpreter {
                     let e = self.run_expr(*e)?;
                     let e = e.borrow();
 
+                    let is = i.span();
                     let i = self.run_expr(*i)?;
 
-                    e.index(i, &es)
+                    e.index(i, &es, &is)
                 }
             },
             ast::Expr::Call { func, args } => {
