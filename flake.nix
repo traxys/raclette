@@ -32,6 +32,7 @@
           pkgs.bashInteractive
           pkgs.cargo-fuzz
           pkgs.rustup
+		  pkgs.cargo-flamegraph
           rust
         ];
         buildInputs = [];
