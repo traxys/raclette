@@ -1,7 +1,6 @@
 use std::{collections::HashMap, fmt::Display, ops::{Range, Deref}, rc::Rc};
 
 use arbitrary::Arbitrary;
-use gc::{Trace, Finalize};
 use logos::Logos;
 
 use crate::span::SpannedValue;
@@ -33,7 +32,7 @@ fn escape_string(input: &str) -> String {
     }
 }
 
-#[derive(Debug, Clone, Hash, Eq, PartialEq, Trace, Finalize)]
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct RcStr(pub Rc<str>);
 
 impl Deref for RcStr {

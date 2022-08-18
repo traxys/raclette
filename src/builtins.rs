@@ -4,7 +4,7 @@ use crate::ast::RcStr;
 use crate::interpreter::{
     FunctionKind, FunctionValue, HashableValue, RuntimeError, SpannedResult, Val, Value,
 };
-use crate::span::{GcSpannedValue, GenerationSpan, Spanning, SpanningExt, UNKNOWN_SPAN};
+use crate::span::{GenerationSpan, SpannedValue, Spanning, SpanningExt, UNKNOWN_SPAN};
 use once_cell::unsync::Lazy;
 use std::{collections::HashMap, fs::File, io::BufReader, ops::Deref, rc::Rc};
 
@@ -60,16 +60,16 @@ macro_rules! named_args {
         thread_local! {
             $(
                 #[allow(non_upper_case_globals)]
-                static $field: Lazy<GcSpannedValue<RcStr>> = Lazy::new(|| {
+                static $field: Lazy<SpannedValue<RcStr>> = Lazy::new(|| {
                     let s: RcStr = RcStr(Rc::from(stringify!($field)));
-                    s.spanned_gc(UNKNOWN_SPAN)
+                    s.spanned(UNKNOWN_SPAN)
                 });
             )*
         }
 
 
         impl $name {
-            pub fn from_named(named: HashMap<GcSpannedValue<RcStr>, Val>, gen: u64) -> Result<$name, RuntimeError> {
+            pub fn from_named(named: HashMap<SpannedValue<RcStr>, Val>, gen: u64) -> Result<$name, RuntimeError> {
                 if let Some(name) = named.keys().find(|key|
                     ![$(stringify!($field))*].contains(&(***key).deref())
                 ) {
@@ -98,7 +98,7 @@ macro_rules! named_args {
 
 fn hex(
     args: Vec<Val>,
-    named: HashMap<GcSpannedValue<RcStr>, Val>,
+    named: HashMap<SpannedValue<RcStr>, Val>,
     span: GenerationSpan,
     gen: u64,
 ) -> Result<Val, RuntimeError> {
@@ -122,7 +122,7 @@ fn hex(
 
 fn bin(
     args: Vec<Val>,
-    named: HashMap<GcSpannedValue<RcStr>, Val>,
+    named: HashMap<SpannedValue<RcStr>, Val>,
     span: GenerationSpan,
     gen: u64,
 ) -> Result<Val, RuntimeError> {
@@ -146,7 +146,7 @@ fn bin(
 
 fn parse_int(
     args: Vec<Val>,
-    named: HashMap<GcSpannedValue<RcStr>, Val>,
+    named: HashMap<SpannedValue<RcStr>, Val>,
     span: GenerationSpan,
     gen: u64,
 ) -> Result<Val, RuntimeError> {
@@ -171,7 +171,7 @@ fn parse_int(
 
 fn open_file(
     args: Vec<Val>,
-    named: HashMap<GcSpannedValue<RcStr>, Val>,
+    named: HashMap<SpannedValue<RcStr>, Val>,
     span: GenerationSpan,
     gen: u64,
 ) -> Result<Val, RuntimeError> {
@@ -189,7 +189,7 @@ fn open_file(
 
 fn parse_json_value(
     args: Vec<Val>,
-    named: HashMap<GcSpannedValue<RcStr>, Val>,
+    named: HashMap<SpannedValue<RcStr>, Val>,
     span: GenerationSpan,
     gen: u64,
 ) -> Result<Val, RuntimeError> {
@@ -222,7 +222,7 @@ fn parse_json_value(
 
 fn shell_function(
     args: Vec<Val>,
-    named: HashMap<GcSpannedValue<RcStr>, Val>,
+    named: HashMap<SpannedValue<RcStr>, Val>,
     span: GenerationSpan,
     gen: u64,
 ) -> Result<Val, RuntimeError> {

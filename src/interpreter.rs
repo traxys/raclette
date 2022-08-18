@@ -1,4 +1,5 @@
 use std::{
+    cell::RefCell,
     collections::HashMap,
     fmt::Display,
     fs::File,
@@ -9,14 +10,10 @@ use std::{
 
 use crate::{
     ast::{self, RangeExpr, RcStr},
-    span::{
-        GcSpannedValue, GenerationSpan, GenerationSpanned, SpannedValue, Spanning, SpanningExt,
-        UNKNOWN_SPAN,
-    },
+    span::{GenerationSpan, GenerationSpanned, SpannedValue, Spanning, SpanningExt, UNKNOWN_SPAN},
 };
 use bstr::BString;
 use either::Either;
-use gc::{Finalize, Gc, GcCell, Trace};
 use miette::{Diagnostic, SourceSpan};
 use serde::{
     de::{MapAccess, Visitor},
@@ -217,13 +214,13 @@ type RangeIteratorDef = (
 );
 type RangeIterator = std::iter::StepBy<Either<std::ops::Range<i64>, std::ops::RangeFrom<i64>>>;
 
-#[derive(Trace, Finalize, Debug)]
+#[derive(Debug)]
 pub enum Value {
-    Range(#[unsafe_ignore_trace] RangeIterator),
+    Range(RangeIterator),
     Func(FunctionValue),
     Map(HashMap<HashableValue, Val>),
     Array(Vec<Val>),
-    File(#[unsafe_ignore_trace] File),
+    File(File),
     Hashable(HashableValue),
     Float(f64),
 }
@@ -335,7 +332,7 @@ impl Display for Value {
     }
 }
 
-#[derive(Trace, Finalize, Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum HashableValue {
     Str(RcStr),
     Number(i64),
@@ -387,7 +384,7 @@ impl Display for HashableValue {
     }
 }
 
-#[derive(Trace, Finalize, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct FunctionValue {
     pub(crate) arity: usize,
     pub(crate) action: FunctionKind,
@@ -395,9 +392,9 @@ pub struct FunctionValue {
 
 pub type FolderFn = fn(Val, Val, &mut Interpreter, &GenerationSpan) -> Result<Val>;
 
-#[derive(Trace, Finalize, Clone)]
+#[derive(Clone)]
 pub enum Folder {
-    Op(#[unsafe_ignore_trace] FolderFn, Val),
+    Op(FolderFn, Val),
     User(Val, Val),
 }
 
@@ -418,21 +415,20 @@ impl std::fmt::Debug for Folder {
 }
 
 type BuiltinFn =
-    fn(Vec<Val>, HashMap<GcSpannedValue<RcStr>, Val>, GenerationSpan, u64) -> Result<Val>;
+    fn(Vec<Val>, HashMap<SpannedValue<RcStr>, Val>, GenerationSpan, u64) -> Result<Val>;
 
-#[derive(Trace, Finalize, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum FunctionKind {
     Builtin(BuiltinFn),
     Folder(Folder),
     Mapper(Val),
     User {
         args: Vec<String>,
-        #[unsafe_ignore_trace]
         ret: SpannedValue<ast::Expr>,
     },
     SpecifyNamed {
         func: Box<FunctionValue>,
-        named: HashMap<GcSpannedValue<RcStr>, Val>,
+        named: HashMap<SpannedValue<RcStr>, Val>,
     },
     Shell(RcStr),
 }
@@ -728,7 +724,7 @@ impl Value {
     }
 
     pub(crate) fn new(v: GenerationSpanned<Value>) -> Val {
-        Gc::new(GcCell::new(v))
+        Rc::new(RefCell::new(v))
     }
 
     pub(crate) fn name(&self) -> &'static str {
@@ -749,7 +745,7 @@ impl FunctionValue {
     pub fn call(
         &self,
         args: Vec<Val>,
-        mut named: HashMap<GcSpannedValue<RcStr>, Val>,
+        mut named: HashMap<SpannedValue<RcStr>, Val>,
         scope: &mut Interpreter,
         span: &GenerationSpan,
     ) -> Result<Val> {
@@ -916,7 +912,7 @@ fn power_nums(lhs: Num, rhs: Num) -> Num {
     }
 }
 
-pub type Val = Gc<GcCell<GenerationSpanned<Value>>>;
+pub type Val = Rc<RefCell<GenerationSpanned<Value>>>;
 
 macro_rules! int_operator_function {
     ($name:ident, $op:tt) => {
@@ -1233,7 +1229,7 @@ impl Interpreter {
                 );
                 let named = named
                     .into_iter()
-                    .map(|(key, val)| Ok((key.into(), self.run_expr(val)?)))
+                    .map(|(key, val)| Ok((key, self.run_expr(val)?)))
                     .collect::<Result<_>>()?;
 
                 Ok(Value::new_function(
