@@ -18,7 +18,9 @@
 
         overlays = [(import rust-overlay)];
       };
-      rust = pkgs.rust-bin.stable.latest.default;
+      rust = pkgs.rust-bin.stable.latest.default.override {
+        extensions = ["llvm-tools-preview" "rust-src"];
+      };
 
       naersk' = pkgs.callPackage naersk {
         cargo = rust;
@@ -28,6 +30,8 @@
       devShell = pkgs.mkShell {
         nativeBuildInputs = [
           pkgs.bashInteractive
+          pkgs.cargo-fuzz
+          pkgs.rustup
           rust
         ];
         buildInputs = [];
