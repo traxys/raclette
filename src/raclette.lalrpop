@@ -1,5 +1,5 @@
 use crate::{
-	ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder, RangeExpr},
+	ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder, RangeExpr, RcStr},
 	span::{SpannedValue, UNKNOWN_SPAN, SpanningExt}
 };
 use std::rc::Rc;
@@ -159,9 +159,9 @@ TildeExpr: Expr = {
 	<CallExpr> => <>,
 };
 
-Named: (SpannedValue<Rc<str>>, SpannedValue<Expr>) = <n:Spn<ident>> "=" <v:Spn<Expr>> => (n.map(Rc::from), v);
+Named: (SpannedValue<RcStr>, SpannedValue<Expr>) = <n:Spn<ident>> "=" <v:Spn<Expr>> => (n.map(|e| RcStr(Rc::from(e))), v);
 
-NamedArgs: HashMap<SpannedValue<Rc<str>>, SpannedValue<Expr>> = <args:(<Named> ",")*> <last:Named?> => {
+NamedArgs: HashMap<SpannedValue<RcStr>, SpannedValue<Expr>> = <args:(<Named> ",")*> <last:Named?> => {
 	let mut named: HashMap<_, _> = args.into_iter().collect();
 	if let Some(last) = last {
 		named.insert(last.0, last.1);
@@ -251,7 +251,7 @@ LiteralExpr: Expr = {
 
 Place: Place = {
 	Spn<ident> => Place::Ident(<>),
-	<e:Spn<LiteralExpr>> "." <f:Spn<ident>> => Place::Deref(Box::new(e), f.map(Rc::from)),
+	<e:Spn<LiteralExpr>> "." <f:Spn<ident>> => Place::Deref(Box::new(e), f.map(|e| RcStr(Rc::from(e)))),
 	<e:Spn<LiteralExpr>> "[" <i:Spn<Expr>> "]" => Place::Index(Box::new(e), Box::new(i)),
 };
 

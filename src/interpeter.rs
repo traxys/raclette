@@ -8,7 +8,7 @@ use std::{
 };
 
 use crate::{
-    ast::{self, RangeExpr},
+    ast::{self, RangeExpr, RcStr},
     span::{
         GcSpannedValue, GenerationSpan, GenerationSpanned, SpannedValue, Spanning, SpanningExt,
         UNKNOWN_SPAN,
@@ -257,7 +257,7 @@ impl<'de> Deserialize<'de> for Value {
             }
 
             fn visit_string<E>(self, value: String) -> Result<Value, E> {
-                Ok(Value::Hashable(HashableValue::Str(Rc::from(value))))
+                Ok(Value::Hashable(HashableValue::Str(RcStr(Rc::from(value)))))
             }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
@@ -337,7 +337,7 @@ impl Display for Value {
 
 #[derive(Trace, Finalize, Debug, PartialEq, Eq, Hash, Clone)]
 pub enum HashableValue {
-    Str(Rc<str>),
+    Str(RcStr),
     Number(i64),
 }
 
@@ -370,7 +370,7 @@ impl<'de> Deserialize<'de> for HashableValue {
             }
 
             fn visit_string<E>(self, value: String) -> Result<HashableValue, E> {
-                Ok(HashableValue::Str(Rc::from(value)))
+                Ok(HashableValue::Str(RcStr(Rc::from(value))))
             }
         }
 
@@ -418,7 +418,7 @@ impl std::fmt::Debug for Folder {
 }
 
 type BuiltinFn =
-    fn(Vec<Val>, HashMap<GcSpannedValue<Rc<str>>, Val>, GenerationSpan, u64) -> Result<Val>;
+    fn(Vec<Val>, HashMap<GcSpannedValue<RcStr>, Val>, GenerationSpan, u64) -> Result<Val>;
 
 #[derive(Trace, Finalize, Clone, Debug)]
 pub enum FunctionKind {
@@ -432,9 +432,9 @@ pub enum FunctionKind {
     },
     SpecifyNamed {
         func: Box<FunctionValue>,
-        named: HashMap<GcSpannedValue<Rc<str>>, Val>,
+        named: HashMap<GcSpannedValue<RcStr>, Val>,
     },
-    Shell(Rc<str>),
+    Shell(RcStr),
 }
 
 #[derive(Copy, Clone)]
@@ -560,14 +560,14 @@ impl Value {
         }
     }
 
-    pub fn field(&self, f: Rc<str>) -> Option<Val> {
+    pub fn field(&self, f: RcStr) -> Option<Val> {
         match self {
             Value::Map(m) => m.get(&HashableValue::Str(f)).cloned(),
             _ => None,
         }
     }
 
-    pub fn set_field(&mut self, field: SpannedValue<Rc<str>>, value: Val) -> Result<()> {
+    pub fn set_field(&mut self, field: SpannedValue<RcStr>, value: Val) -> Result<()> {
         match self {
             Value::Map(m) => {
                 m.insert(HashableValue::Str(field.value), value);
@@ -626,7 +626,7 @@ impl Value {
         }
     }
 
-    pub fn cast_str(&self) -> Result<Rc<str>> {
+    pub fn cast_str(&self) -> Result<RcStr> {
         match self {
             Value::Hashable(HashableValue::Str(f)) => Ok(f.clone()),
             v => Err(RuntimeError::CastError {
@@ -710,7 +710,7 @@ impl Value {
     where
         S: Spanning<U>,
     {
-        Self::new(Self::Hashable(HashableValue::Str(Rc::from(v))).spanned_gen(span, gen))
+        Self::new(Self::Hashable(HashableValue::Str(RcStr(Rc::from(v)))).spanned_gen(span, gen))
     }
 
     pub fn new_map<U, S>(v: HashMap<HashableValue, Val>, span: &S, gen: u64) -> Val
@@ -749,7 +749,7 @@ impl FunctionValue {
     pub fn call(
         &self,
         args: Vec<Val>,
-        mut named: HashMap<GcSpannedValue<Rc<str>>, Val>,
+        mut named: HashMap<GcSpannedValue<RcStr>, Val>,
         scope: &mut Interpreter,
         span: &GenerationSpan,
     ) -> Result<Val> {

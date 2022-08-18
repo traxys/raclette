@@ -1,5 +1,7 @@
-use std::{collections::HashMap, ops::Range, rc::Rc};
+use std::{collections::HashMap, fmt::Display, ops::{Range, Deref}, rc::Rc};
 
+use arbitrary::Arbitrary;
+use gc::{Trace, Finalize};
 use logos::Logos;
 
 use crate::span::SpannedValue;
@@ -28,6 +30,30 @@ fn escape_string(input: &str) -> String {
             }
         }
         String::from_utf8(val).expect("should not produce garbage")
+    }
+}
+
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Trace, Finalize)]
+pub struct RcStr(pub Rc<str>);
+
+impl Deref for RcStr {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+impl Display for RcStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl<'a> Arbitrary<'a> for RcStr {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let data = String::arbitrary(u)?;
+        Ok(Self(Rc::from(data)))
     }
 }
 
@@ -144,13 +170,13 @@ pub enum Token {
     Error,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Arbitrary)]
 pub enum Literal {
     Number(i64),
     String(String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Arbitrary)]
 pub enum Folder {
     Operator(BinaryOp),
     Args {
@@ -159,14 +185,14 @@ pub enum Folder {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Arbitrary)]
 pub struct RangeExpr {
     pub start: SpannedValue<Expr>,
     pub end: Option<SpannedValue<Expr>>,
     pub step: SpannedValue<Expr>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Arbitrary)]
 pub enum Expr {
     Slice {
         iterable: Box<SpannedValue<Expr>>,
@@ -187,7 +213,7 @@ pub enum Expr {
     },
     NamedCall {
         func: Box<SpannedValue<Expr>>,
-        named: HashMap<SpannedValue<Rc<str>>, SpannedValue<Expr>>,
+        named: HashMap<SpannedValue<RcStr>, SpannedValue<Expr>>,
     },
     Call {
         func: Box<SpannedValue<Expr>>,
@@ -195,7 +221,7 @@ pub enum Expr {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Arbitrary)]
 pub enum BinaryOp {
     BitwiseOr,
     BitwiseAnd,
@@ -211,14 +237,14 @@ pub enum BinaryOp {
     RShift,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Arbitrary)]
 pub enum Place {
     Ident(SpannedValue<String>),
-    Deref(Box<SpannedValue<Expr>>, SpannedValue<Rc<str>>),
+    Deref(Box<SpannedValue<Expr>>, SpannedValue<RcStr>),
     Index(Box<SpannedValue<Expr>>, Box<SpannedValue<Expr>>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Arbitrary)]
 pub enum Statement {
     Expr(SpannedValue<Expr>),
     Assign(SpannedValue<Place>, SpannedValue<Expr>),

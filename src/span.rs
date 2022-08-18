@@ -1,5 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
+use arbitrary::Arbitrary;
 use derivative::Derivative;
 use gc::{Finalize, Trace};
 use miette::SourceSpan;
@@ -14,7 +15,7 @@ pub struct GcSpannedValue<T> {
     pub value: T,
 }
 
-#[derive(Debug, Clone, Copy, Derivative, Eq)]
+#[derive(Debug, Clone, Copy, Derivative, Eq, Arbitrary)]
 #[derivative(PartialEq, Hash)]
 pub struct SpannedValue<T> {
     #[derivative(PartialEq = "ignore", Hash = "ignore")]
