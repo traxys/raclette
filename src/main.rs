@@ -1,16 +1,13 @@
 use std::{ffi::OsStr, path::PathBuf};
 
 use clap::Parser;
-use lalrpop_util::lalrpop_mod;
 use miette::{Context, Diagnostic, IntoDiagnostic, NamedSource, Result, SourceCode, SourceSpan};
 use rustyline::{error::ReadlineError, Editor};
 
-use crate::span::{Span, SpanningExt};
-
-pub mod ast;
-pub mod builtins;
-pub mod interpeter;
-pub mod span;
+use raclette::{
+    ast, interpreter,
+    span::{Span, SpanningExt},
+};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -19,8 +16,6 @@ struct Args {
     #[clap(short, long, conflicts_with = "file")]
     command: Option<String>,
 }
-
-lalrpop_mod!(pub raclette);
 
 #[derive(thiserror::Error, Debug, Diagnostic)]
 enum ParseError {
@@ -114,10 +109,10 @@ fn main() -> Result<()> {
             .wrap_err("Could not create data directory")?;
     };
 
-    let mut interpreter = interpeter::Interpreter::new();
+    let mut interpreter = interpreter::Interpreter::new();
 
     if let Some(command) = args.command {
-        let parser = raclette::ExprParser::new();
+        let parser = raclette::raclette::ExprParser::new();
         let expr = parser
             .parse(ast::lexer(&command))
             .into_report(command.clone())?;
@@ -137,7 +132,7 @@ fn main() -> Result<()> {
 
     match args.file {
         None => {
-            let parser = raclette::StatementParser::new();
+            let parser = raclette::raclette::StatementParser::new();
             let mut rl = Editor::<()>::new().into_diagnostic()?;
 
             let path = data_dir
@@ -217,7 +212,7 @@ fn main() -> Result<()> {
                     .unwrap_or_else(|| "<source-file>".into()),
                 input.clone(),
             );
-            let parsed = raclette::FileParser::new()
+            let parsed = raclette::raclette::FileParser::new()
                 .parse(ast::lexer(&input))
                 .into_report(source)?;
             dbg!(parsed);

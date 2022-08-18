@@ -1,7 +1,7 @@
 use itertools::Itertools;
 
 use crate::ast::RcStr;
-use crate::interpeter::{
+use crate::interpreter::{
     FunctionKind, FunctionValue, HashableValue, RuntimeError, SpannedResult, Val, Value,
 };
 use crate::span::{GcSpannedValue, GenerationSpan, Spanning, SpanningExt, UNKNOWN_SPAN};
