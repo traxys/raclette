@@ -13,6 +13,7 @@ derive_more = { version = "0.99.17", default-features = false, features = [
   "display",
 ] }
 dirs-next = "2.0.0"
+either = "1.8.0"
 gc = { version = "0.4.1", features = ["derive"] }
 itertools = "0.10.3"
 lalrpop-util = "0.19.8"

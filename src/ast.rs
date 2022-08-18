@@ -160,12 +160,19 @@ pub enum Folder {
 }
 
 #[derive(Debug, Clone)]
+pub struct RangeExpr {
+    pub start: SpannedValue<Expr>,
+    pub end: Option<SpannedValue<Expr>>,
+    pub step: SpannedValue<Expr>,
+}
+
+#[derive(Debug, Clone)]
 pub enum Expr {
-    Range {
-        start: Box<SpannedValue<Expr>>,
-        end: Option<Box<SpannedValue<Expr>>>,
-        step: Box<SpannedValue<Expr>>,
+    Slice {
+        iterable: Box<SpannedValue<Expr>>,
+        slice: Box<SpannedValue<RangeExpr>>,
     },
+    Range(Box<RangeExpr>),
     Literal(SpannedValue<Literal>),
     Place(SpannedValue<Place>),
     Binary(BinaryOp, Box<SpannedValue<Expr>>, Box<SpannedValue<Expr>>),

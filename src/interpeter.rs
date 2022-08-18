@@ -8,13 +8,14 @@ use std::{
 };
 
 use crate::{
-    ast,
+    ast::{self, RangeExpr},
     span::{
         GcSpannedValue, GenerationSpan, GenerationSpanned, SpannedValue, Spanning, SpanningExt,
         UNKNOWN_SPAN,
     },
 };
 use bstr::BString;
+use either::Either;
 use gc::{Finalize, Gc, GcCell, Trace};
 use miette::{Diagnostic, SourceSpan};
 use serde::{
@@ -148,6 +149,11 @@ pub enum RuntimeError {
         #[label("This index is read-only")]
         location: Option<SourceSpan>,
     },
+    #[error("The range is reversed")]
+    ReversedRange {
+        #[label("This range has `start > end`")]
+        location: Option<SourceSpan>,
+    },
     #[error("JSON error")]
     JsonError(#[source] serde_json::Error),
     #[error("Could not parse integer")]
@@ -199,47 +205,21 @@ impl RuntimeError {
         ProcessFailure,
         NotIndexableWith,
         NoSuchIndex,
+        ReversedRange,
     }
 }
 
 type Result<T> = std::result::Result<T, RuntimeError>;
 
-#[derive(Debug, Trace, Finalize, Clone)]
-pub struct RangeIterator {
-    start: i64,
-    end: Option<i64>,
-    step: i64,
-    current: i64,
-}
-
-impl RangeIterator {
-    fn new(start: i64, end: Option<i64>, step: i64) -> Self {
-        Self {
-            start,
-            end,
-            step,
-            current: start,
-        }
-    }
-}
-
-impl Iterator for RangeIterator {
-    type Item = i64;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self.end {
-            Some(end) if self.current >= end => return None,
-            _ => (),
-        }
-        let v = self.current;
-        self.current += self.step;
-        Some(v)
-    }
-}
+type RangeIteratorDef = (
+    Either<std::ops::Range<i64>, std::ops::RangeFrom<i64>>,
+    usize,
+);
+type RangeIterator = std::iter::StepBy<Either<std::ops::Range<i64>, std::ops::RangeFrom<i64>>>;
 
 #[derive(Trace, Finalize, Debug)]
 pub enum Value {
-    Range(RangeIterator),
+    Range(#[unsafe_ignore_trace] RangeIterator),
     Func(FunctionValue),
     Map(HashMap<HashableValue, Val>),
     Array(Vec<Val>),
@@ -350,10 +330,7 @@ impl Display for Value {
                 write!(f, "}}")
             }
             Value::Float(fl) => write!(f, "{}", fl),
-            Value::Range(r) => match r.end {
-                None => write!(f, "{}::{}", r.start, r.step),
-                Some(end) => write!(f, "{}:{}:{}", r.start, end, r.step),
-            },
+            Value::Range(_) => write!(f, "<range>"),
         }
     }
 }
@@ -601,6 +578,17 @@ impl Value {
                 location: None,
             })
             .with_span(&field),
+        }
+    }
+
+    fn cast_slice(&self) -> Result<&[Val]> {
+        match self {
+            Value::Array(a) => Ok(a),
+            v => Err(RuntimeError::CastError {
+                into: "array".into(),
+                from: v.name().into(),
+                location: None,
+            }),
         }
     }
 
@@ -1363,34 +1351,116 @@ impl Interpreter {
                 expr_span,
                 self.generation,
             )),
-            ast::Expr::Range { start, end, step } => {
-                let ss = start.span();
-                let start = self
-                    .run_expr(*start)?
-                    .borrow()
-                    .cast_number()
-                    .with_span(&ss)?;
-                let end = end
-                    .map(|end| {
-                        let es = end.span();
-
-                        self.run_expr(*end)?.borrow().cast_number().with_span(&es)
-                    })
-                    .transpose()?;
-                let sts = step.span();
-                let step = self
-                    .run_expr(*step)?
-                    .borrow()
-                    .cast_number()
-                    .with_span(&sts)?;
-
+            ast::Expr::Range(r) => {
+                let (range, step) = self.run_range(*r)?;
                 Ok(Value::new_range_iterator(
-                    RangeIterator::new(start, end, step),
+                    range.step_by(step),
                     expr_span,
                     self.generation,
                 ))
             }
+            ast::Expr::Slice { iterable, slice } => {
+                let is = iterable.span();
+                let iterable = self.run_expr(*iterable)?;
+                let it = iterable.borrow();
+                let arr = it.cast_slice().with_span(&is)?;
+
+                let rs = slice.span();
+
+                let (range, step) = self.run_range(slice.value)?;
+
+                match range {
+                    Either::Left(bounded) => {
+                        if bounded.start > bounded.end {
+                            return Err(RuntimeError::ReversedRange {
+                                location: rs
+                                    .with_generation(self.generation)
+                                    .source_span(self.generation),
+                            });
+                        }
+
+                        if bounded.start < 0 || bounded.start as usize >= arr.len() {
+                            return Err(RuntimeError::NoSuchIndex {
+                                idx: bounded.start.to_string(),
+                                location: rs
+                                    .with_generation(self.generation)
+                                    .source_span(self.generation),
+                            });
+                        }
+
+                        if bounded.end < 0 || bounded.end as usize >= arr.len() {
+                            return Err(RuntimeError::NoSuchIndex {
+                                idx: bounded.end.to_string(),
+                                location: rs
+                                    .with_generation(self.generation)
+                                    .source_span(self.generation),
+                            });
+                        }
+
+                        Ok(Value::new_array(
+                            arr[bounded.start as usize..bounded.end as usize]
+                                .iter()
+                                .step_by(step)
+                                .cloned()
+                                .collect(),
+                            expr_span,
+                            self.generation,
+                        ))
+                    }
+                    Either::Right(unbounded) => {
+                        if unbounded.start < 0 || unbounded.start as usize >= arr.len() {
+                            return Err(RuntimeError::NoSuchIndex {
+                                idx: unbounded.start.to_string(),
+                                location: rs
+                                    .with_generation(self.generation)
+                                    .source_span(self.generation),
+                            });
+                        }
+
+                        Ok(Value::new_array(
+                            arr[unbounded.start as usize..]
+                                .iter()
+                                .step_by(step)
+                                .cloned()
+                                .collect(),
+                            expr_span,
+                            self.generation,
+                        ))
+                    }
+                }
+            }
         }
+    }
+
+    fn run_range(&mut self, range: RangeExpr) -> Result<RangeIteratorDef> {
+        let RangeExpr { start, end, step } = range;
+        let ss = start.span();
+        let start = self
+            .run_expr(start)?
+            .borrow()
+            .cast_number()
+            .with_span(&ss)?;
+        let end = end
+            .map(|end| {
+                let es = end.span();
+
+                self.run_expr(end)?.borrow().cast_number().with_span(&es)
+            })
+            .transpose()?;
+        let sts = step.span();
+        let step = self
+            .run_expr(step)?
+            .borrow()
+            .cast_number()
+            .with_span(&sts)?;
+
+        Ok((
+            match end {
+                Some(end) => Either::Left(start..end),
+                None => Either::Right(start..),
+            },
+            step as usize,
+        ))
     }
 
     fn run_literal(&mut self, lit: SpannedValue<ast::Literal>) -> Result<Val> {

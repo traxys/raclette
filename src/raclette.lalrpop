@@ -1,4 +1,7 @@
-use crate::{ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder}, span::{SpannedValue, UNKNOWN_SPAN, SpanningExt}};
+use crate::{
+	ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder, RangeExpr},
+	span::{SpannedValue, UNKNOWN_SPAN, SpanningExt}
+};
 use std::rc::Rc;
 use std::collections::HashMap;
 
@@ -204,25 +207,25 @@ PrefixMapperExpr: Expr = {
 	<LiteralExpr> => <>,
 };
 
-RangeExpr: Expr = {
-	"[" <start:Spn<ShiftExpr>?> ":" <end:Spn<ShiftExpr>?> "]" => Expr::Range {
-		start: Box::new(start.unwrap_or_else(||
-			Expr::Literal(Literal::Number(0).spanned(UNKNOWN_SPAN)).spanned(UNKNOWN_SPAN))
+RangeExpr: RangeExpr = {
+	"[" <start:Spn<ShiftExpr>?> ":" <end:Spn<ShiftExpr>?> "]" => RangeExpr {
+		start: start.unwrap_or_else(||
+			Expr::Literal(Literal::Number(0).spanned(UNKNOWN_SPAN)).spanned(UNKNOWN_SPAN)
 		),
-		end: end.map(Box::new),
-		step: Box::new(Expr::Literal(Literal::Number(1).spanned(UNKNOWN_SPAN)).spanned(UNKNOWN_SPAN)),
+		end: end,
+		step: Expr::Literal(Literal::Number(1).spanned(UNKNOWN_SPAN)).spanned(UNKNOWN_SPAN),
 	},
-	"[" <start:Spn<ShiftExpr>?> ":" <end:Spn<ShiftExpr>?> ":" <step:Spn<ShiftExpr>> "]" => Expr::Range {
-		start: Box::new(start.unwrap_or_else(||
-			Expr::Literal(Literal::Number(0).spanned(UNKNOWN_SPAN)).spanned(UNKNOWN_SPAN))
+	"[" <start:Spn<ShiftExpr>?> ":" <end:Spn<ShiftExpr>?> ":" <step:Spn<ShiftExpr>> "]" => RangeExpr {
+		start: start.unwrap_or_else(||
+			Expr::Literal(Literal::Number(0).spanned(UNKNOWN_SPAN)).spanned(UNKNOWN_SPAN)
 		),
-		end: end.map(Box::new),
-		step: Box::new(step),
+		end: end,
+		step: step,
 	},
 };
 
 LiteralExpr: Expr = {
-	<RangeExpr> => <>,
+	<RangeExpr> => Expr::Range(Box::new(<>)),
 	<start:@L> "%" <op:BinaryOp> <end:@R> => Expr::Fold(SpannedValue {
 		start,
 		end,
@@ -237,7 +240,10 @@ LiteralExpr: Expr = {
 	),
 	<Spn<FuncDef>> "@" => Expr::Mapper(Box::new(<>)),
 	<Spn<Literal>> => Expr::Literal(<>),
-	<e:Spn<LiteralExpr>> <r:Spn<RangeExpr>> => todo!(),
+	<e:Spn<LiteralExpr>> <r:Spn<RangeExpr>> => Expr::Slice {
+		iterable: Box::new(e),
+		slice: Box::new(r),
+	},
 	<p:Spn<Place>> => Expr::Place(<>),
 	"[" <Comma<Spn<Expr>>> "]" => Expr::Array(<>),
 	"(" <Expr> ")" => <>,
