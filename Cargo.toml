@@ -34,6 +34,7 @@ debug = true
 
 [dev-dependencies]
 criterion = "0.3.6"
+pprof = { version = "0.10.0", features = ["flamegraph"] }
 
 [[bench]]
 name = "range_sum"

@@ -33,6 +33,7 @@
           pkgs.cargo-fuzz
           pkgs.rustup
 		  pkgs.cargo-flamegraph
+		  pkgs.cargo-criterion
           rust
         ];
         buildInputs = [];
