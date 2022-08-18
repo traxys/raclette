@@ -1211,21 +1211,17 @@ impl Interpreter {
                     .cast_function()
                     .with_span(&f)?;
 
-                if func.arity != 0 && args.is_empty() {
-                    todo!("Short hand for defining a new function")
-                } else {
-                    let args = args
-                        .into_iter()
-                        .map(|e| self.run_expr(e))
-                        .collect::<Result<_>>()?;
-                    func.call(
-                        args,
-                        HashMap::new(),
-                        self,
-                        &expr_span.with_generation(self.generation),
-                    )
-                    .with_span(&f)
-                }
+                let args = args
+                    .into_iter()
+                    .map(|e| self.run_expr(e))
+                    .collect::<Result<_>>()?;
+                func.call(
+                    args,
+                    HashMap::new(),
+                    self,
+                    &expr_span.with_generation(self.generation),
+                )
+                .with_span(&f)
             }
             ast::Expr::NamedCall { func, named } => {
                 let f = func.span();
