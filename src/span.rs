@@ -33,6 +33,10 @@ impl<T> GenerationSpanned<T> {
         }
     }
 
+    pub fn set_gen(&mut self, gen: u64) {
+        self.generation = Some(gen);
+    }
+
     pub fn source_span(&self, current_gen: u64) -> Option<SourceSpan> {
         if Some(current_gen) == self.generation {
             Some(SourceSpan::from(self.span.start..self.span.end))
@@ -51,6 +55,10 @@ pub const UNKNOWN_SPAN: &Span = &Span {
 pub trait Spanning<T> {
     fn span(&self) -> Span;
     fn with_span_unit(value: T, s: &Span) -> Self;
+    fn swap_span<U, S>(&mut self, span: &S)
+    where
+        S: Spanning<U>,
+        Self: Sized;
 
     fn with_span<U, S>(value: T, other: &S) -> Self
     where
@@ -64,7 +72,7 @@ pub trait Spanning<T> {
     fn with_generation(&self, generation: u64) -> GenerationSpan {
         GenerationSpan {
             generation: Some(generation),
-            span: self.span().into(),
+            span: self.span(),
         }
     }
 }
@@ -107,6 +115,15 @@ impl<T> Spanning<T> for SpannedValue<T> {
             value,
         }
     }
+
+    fn swap_span<U, S>(&mut self, span: &S)
+    where
+        S: Spanning<U>,
+        Self: Sized,
+    {
+        self.start = span.span().start;
+        self.end = span.span().end;
+    }
 }
 
 impl<T> Spanning<T> for GenerationSpanned<T> {
@@ -119,6 +136,14 @@ impl<T> Spanning<T> for GenerationSpanned<T> {
             generation: None,
             span: SpannedValue::with_span_unit(value, s),
         }
+    }
+
+    fn swap_span<U, S>(&mut self, span: &S)
+    where
+        S: Spanning<U>,
+        Self: Sized,
+    {
+        self.span.swap_span(span)
     }
 }
 

@@ -1,7 +1,7 @@
 use std::{
     cell::RefCell,
     collections::HashMap,
-    fmt::Display,
+    fmt::{Debug, Display},
     fs::File,
     io::{Read, Write},
     process::{ExitStatus, Stdio},
@@ -392,23 +392,24 @@ pub struct FunctionValue {
 
 pub type FolderFn = fn(Val, Val, &mut Interpreter, &GenerationSpan) -> Result<Val>;
 
-#[derive(Clone)]
 pub enum Folder {
-    Op(FolderFn, Val),
+    Op(Box<dyn NativeFolder>),
     User(Val, Val),
+}
+
+impl Clone for Folder {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Op(arg0) => Self::Op(arg0.restart()),
+            Self::User(arg0, arg1) => Self::User(arg0.clone(), arg1.clone()),
+        }
+    }
 }
 
 impl std::fmt::Debug for Folder {
     fn fmt<'a>(&'a self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Op(arg0, arg1) => f
-                .debug_tuple("Op")
-                .field(
-                    &(*arg0 as fn(Val, Val, &'a mut Interpreter, &'a GenerationSpan) -> Result<Val>)
-                        as &dyn std::fmt::Debug,
-                )
-                .field(arg1)
-                .finish(),
+            Self::Op(arg0) => f.debug_tuple("Op").field(&arg0.kind()).finish(),
             Self::User(arg0, arg1) => f.debug_tuple("User").field(arg0).field(arg1).finish(),
         }
     }
@@ -775,10 +776,18 @@ impl FunctionValue {
                 let mut iter = iter.cast_iterable()?;
                 let first = iter.next();
                 match folder {
-                    Folder::Op(f, def) => iter
-                        .try_fold(first.unwrap_or_else(|| def.clone()), |acc, e| {
-                            f(acc, e, scope, span)
-                        }),
+                    Folder::Op(f) => {
+                        let mut f = f.restart();
+                        if let Some(first) = first {
+                            f.seed(first)?;
+                        }
+
+                        for item in iter {
+                            f.accumulate(&item, scope)?;
+                        }
+
+                        f.finish(span, scope.generation)
+                    }
                     Folder::User(f, def) => {
                         let v = f.borrow();
                         let func = v.cast_function()?;
@@ -889,14 +898,16 @@ impl FunctionValue {
         )
     }
 
-    pub fn op_folder(f: FolderFn, def: Val, gen: u64) -> Val {
-        let span = def.borrow().span();
+    pub fn op_folder<S, U>(f: Box<dyn NativeFolder>, span: &S, gen: u64) -> Val
+    where
+        S: Spanning<U>,
+    {
         Value::new_function(
             FunctionValue {
                 arity: 1,
-                action: FunctionKind::Folder(Folder::Op(f, def)),
+                action: FunctionKind::Folder(Folder::Op(f)),
             },
-            &span,
+            span,
             gen,
         )
     }
@@ -914,23 +925,66 @@ fn power_nums(lhs: Num, rhs: Num) -> Num {
 
 pub type Val = Rc<RefCell<GenerationSpanned<Value>>>;
 
-macro_rules! int_operator_function {
-    ($name:ident, $op:tt) => {
-        fn $name(a: Val, b: Val, s: &mut Interpreter, span: &GenerationSpan) -> Result<Val> {
-            let a = a.borrow().cast_number()?;
-            let b = b.borrow().cast_number()?;
+pub trait NativeFolder {
+    fn start() -> Box<dyn NativeFolder>
+    where
+        Self: Sized;
+    fn restart(&self) -> Box<dyn NativeFolder>;
 
-            Ok(Value::new_number(a $op b, span, s.generation))
+    fn seed(&mut self, v: Val) -> Result<()>;
+
+    fn accumulate(&mut self, value: &Val, interpreter: &mut Interpreter) -> Result<()>;
+    fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val>;
+
+    fn kind(&self) -> &'static str;
+}
+
+macro_rules! int_folder {
+    ($name:ident, $op:tt, $default:expr) => {
+        struct $name {
+            current: i64,
+        }
+
+        impl NativeFolder for $name {
+            fn start() -> Box<dyn NativeFolder> {
+                Box::new(Self {
+                    current: $default,
+                })
+            }
+
+            fn restart(&self) -> Box<dyn NativeFolder> {
+                Self::start()
+            }
+
+            fn seed(&mut self, v: Val) -> Result<()> {
+                self.current = v.borrow().cast_number().with_span(&*v.borrow())?;
+                Ok(())
+            }
+
+            fn accumulate(&mut self, value: &Val, _: &mut Interpreter) -> Result<()> {
+                let v = value.borrow().cast_number().with_span(&*value.borrow())?;
+                self.current $op v;
+
+                Ok(())
+            }
+
+            fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val> {
+                Ok(Value::new_number(self.current, span, generation))
+            }
+
+            fn kind(&self) -> &'static str {
+                stringify!($name)
+            }
         }
     };
 }
 
-int_operator_function! {bitwise_or, |}
-int_operator_function! {bitwise_and, &}
-int_operator_function! {int_division, /}
-int_operator_function! {left_shift, <<}
-int_operator_function! {right_shift, >>}
-int_operator_function! {modulo, %}
+int_folder! {BitwiseOrFolder, |=, 0}
+int_folder! {BitwiseAndFolder, &=, -1}
+int_folder! {IntDivideFolder, /=, 0}
+int_folder! {LeftShiftFolder, <<=, 0}
+int_folder! {RightShiftFolder, >>=, 0}
+int_folder! {ModuloFolder, %=, 0}
 
 macro_rules! nums_op {
     ($nums:expr, $op:tt) => {
@@ -941,43 +995,171 @@ macro_rules! nums_op {
     };
 }
 
-macro_rules! num_operator_function {
-    ($name:ident, $op:tt) => {
-        fn $name(a: Val, b: Val, s: &mut Interpreter, span: &GenerationSpan) -> Result<Val> {
-            let a = a.borrow().cast_num().with_span(&*a.borrow())?;
-            let b = b.borrow().cast_num().with_span(&*b.borrow())?;
+macro_rules! num_folder {
+    ($name:ident, $op:tt, $default:expr) => {
+        struct $name {
+            current: Num,
+        }
 
-            Ok(Value::new_num(
-                nums_op!((a, b).into(), $op),
-                span,
-                s.generation,
-            ))
+        impl NativeFolder for $name {
+            fn start() -> Box<dyn NativeFolder> {
+                Box::new(Self {
+                    current: Num::Int($default),
+                })
+            }
+
+            fn restart(&self) -> Box<dyn NativeFolder> {
+                Self::start()
+            }
+
+            fn seed(&mut self, v: Val) -> Result<()> {
+                self.current = v.borrow().cast_num().with_span(&*v.borrow())?;
+                Ok(())
+            }
+
+            fn accumulate(&mut self, value: &Val, _: &mut Interpreter) -> Result<()> {
+                let v = value.borrow().cast_num().with_span(&*value.borrow())?;
+                self.current = nums_op!((self.current, v).into(), $op);
+
+                Ok(())
+            }
+
+            fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val> {
+                Ok(Value::new_num(self.current, span, generation))
+            }
+
+            fn kind(&self) -> &'static str {
+                stringify!($name)
+            }
         }
     };
 }
 
-num_operator_function! {times, *}
-num_operator_function! {sum, +}
-num_operator_function! {difference, -}
+num_folder! {TimesFolder, *, 1}
+num_folder! {SumFolder, +, 0}
+num_folder! {DifferenceFolder, -, 0}
 
-fn power(a: Val, b: Val, s: &mut Interpreter, span: &GenerationSpan) -> Result<Val> {
-    let a = a.borrow().cast_num().with_span(&*a.borrow())?;
-    let b = b.borrow().cast_num().with_span(&*b.borrow())?;
-
-    Ok(Value::new_num(power_nums(a, b), span, s.generation))
+struct PowerFolder {
+    current: Num,
 }
 
-fn divide(a: Val, b: Val, s: &mut Interpreter, span: &GenerationSpan) -> Result<Val> {
-    let a = a.borrow().cast_num().with_span(&*a.borrow())?;
-    let b = b.borrow().cast_num().with_span(&*b.borrow())?;
+impl NativeFolder for PowerFolder {
+    fn start() -> Box<dyn NativeFolder>
+    where
+        Self: Sized,
+    {
+        Box::new(Self {
+            current: Num::Int(0),
+        })
+    }
 
-    Ok(Value::new_float(a.f64() / b.f64(), span, s.generation))
+    fn restart(&self) -> Box<dyn NativeFolder> {
+        Self::start()
+    }
+
+    fn seed(&mut self, v: Val) -> Result<()> {
+        self.current = v.borrow().cast_num().with_span(&*v.borrow())?;
+        Ok(())
+    }
+
+    fn accumulate(&mut self, value: &Val, _: &mut Interpreter) -> Result<()> {
+        let v = value.borrow().cast_num().with_span(&*value.borrow())?;
+        self.current = power_nums(self.current, v);
+
+        Ok(())
+    }
+
+    fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val> {
+        Ok(Value::new_num(self.current, span, generation))
+    }
+
+    fn kind(&self) -> &'static str {
+        "PowerFolder"
+    }
 }
 
-fn redirect(a: Val, b: Val, scope: &mut Interpreter, span: &GenerationSpan) -> Result<Val> {
-    let b = b.borrow().cast_function()?;
+struct DivideFolder {
+    current: f64,
+}
 
-    b.call(vec![a], HashMap::new(), scope, span)
+impl NativeFolder for DivideFolder {
+    fn start() -> Box<dyn NativeFolder>
+    where
+        Self: Sized,
+    {
+        Box::new(Self { current: 0. })
+    }
+
+    fn restart(&self) -> Box<dyn NativeFolder> {
+        Self::start()
+    }
+
+    fn seed(&mut self, v: Val) -> Result<()> {
+        self.current = v.borrow().cast_num().with_span(&*v.borrow())?.f64();
+        Ok(())
+    }
+
+    fn accumulate(&mut self, value: &Val, _: &mut Interpreter) -> Result<()> {
+        let v = value.borrow().cast_num().with_span(&*value.borrow())?;
+        self.current /= v.f64();
+
+        Ok(())
+    }
+
+    fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val> {
+        Ok(Value::new_float(self.current, span, generation))
+    }
+
+    fn kind(&self) -> &'static str {
+        "DivideFolder"
+    }
+}
+
+struct RedirectFolder {
+    current: Val,
+}
+
+impl NativeFolder for RedirectFolder {
+    fn start() -> Box<dyn NativeFolder>
+    where
+        Self: Sized,
+    {
+        Box::new(Self {
+            current: Value::new_number(0, UNKNOWN_SPAN, 0),
+        })
+    }
+
+    fn restart(&self) -> Box<dyn NativeFolder> {
+        Self::start()
+    }
+
+    fn seed(&mut self, v: Val) -> Result<()> {
+        self.current = v;
+        Ok(())
+    }
+
+    fn accumulate(&mut self, value: &Val, interpreter: &mut Interpreter) -> Result<()> {
+        let v = value.borrow().cast_function().with_span(&*value.borrow())?;
+        self.current = v.call(
+            vec![self.current.clone()],
+            HashMap::new(),
+            interpreter,
+            &UNKNOWN_SPAN.with_generation(0),
+        )?;
+
+        Ok(())
+    }
+
+    fn finish(&self, span: &GenerationSpan, gen: u64) -> Result<Val> {
+        let v = self.current.clone();
+        v.borrow_mut().swap_span(span);
+        v.borrow_mut().set_gen(gen);
+        Ok(v)
+    }
+
+    fn kind(&self) -> &'static str {
+        "RedirectFolder"
+    }
 }
 
 enum Nums {
@@ -1275,48 +1457,21 @@ impl Interpreter {
             }
             ast::Expr::Fold(folder) => match folder.value {
                 ast::Folder::Operator(op) => {
-                    let (f, def): (FolderFn, _) = match op {
-                        ast::BinaryOp::BitwiseOr => {
-                            (bitwise_or, Value::new_number(0, expr_span, self.generation))
-                        }
-                        ast::BinaryOp::BitwiseAnd => (
-                            bitwise_and,
-                            Value::new_number(-1, expr_span, self.generation),
-                        ),
-                        ast::BinaryOp::Redirect => {
-                            (redirect, Value::new_number(0, expr_span, self.generation))
-                        }
-                        ast::BinaryOp::Plus => {
-                            (sum, Value::new_number(0, expr_span, self.generation))
-                        }
-                        ast::BinaryOp::Minus => {
-                            (difference, Value::new_number(0, expr_span, self.generation))
-                        }
-                        ast::BinaryOp::Times => {
-                            (times, Value::new_number(1, expr_span, self.generation))
-                        }
-                        ast::BinaryOp::Divide => {
-                            (divide, Value::new_number(0, expr_span, self.generation))
-                        }
-                        ast::BinaryOp::IntDivide => (
-                            int_division,
-                            Value::new_number(0, expr_span, self.generation),
-                        ),
-                        ast::BinaryOp::Power => {
-                            (power, Value::new_number(0, expr_span, self.generation))
-                        }
-                        ast::BinaryOp::Modulo => {
-                            (modulo, Value::new_number(0, expr_span, self.generation))
-                        }
-                        ast::BinaryOp::LShift => {
-                            (left_shift, Value::new_number(0, expr_span, self.generation))
-                        }
-                        ast::BinaryOp::RShift => (
-                            right_shift,
-                            Value::new_number(0, expr_span, self.generation),
-                        ),
+                    let folder = match op {
+                        ast::BinaryOp::BitwiseOr => BitwiseOrFolder::start(),
+                        ast::BinaryOp::BitwiseAnd => BitwiseAndFolder::start(),
+                        ast::BinaryOp::Redirect => RedirectFolder::start(),
+                        ast::BinaryOp::Plus => SumFolder::start(),
+                        ast::BinaryOp::Minus => DifferenceFolder::start(),
+                        ast::BinaryOp::Times => TimesFolder::start(),
+                        ast::BinaryOp::Divide => DivideFolder::start(),
+                        ast::BinaryOp::IntDivide => IntDivideFolder::start(),
+                        ast::BinaryOp::Power => PowerFolder::start(),
+                        ast::BinaryOp::Modulo => ModuloFolder::start(),
+                        ast::BinaryOp::LShift => LeftShiftFolder::start(),
+                        ast::BinaryOp::RShift => RightShiftFolder::start(),
                     };
-                    Ok(FunctionValue::op_folder(f, def, self.generation))
+                    Ok(FunctionValue::op_folder(folder, expr_span, self.generation))
                 }
                 ast::Folder::Args { func, def } => {
                     let func = self.run_expr(*func)?;
