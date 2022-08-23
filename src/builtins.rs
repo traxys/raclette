@@ -247,6 +247,24 @@ fn shell_function(
     ))
 }
 
+fn to_list(
+    args: Vec<Val>,
+    named: HashMap<SpannedValue<RcStr>, Val>,
+    span: GenerationSpan,
+    gen: u64,
+) -> Result<Val, RuntimeError> {
+    named_args! {
+        struct Named {
+        }
+    }
+    let _named = Named::from_named(named, gen)?;
+
+    let arg = args[0].borrow();
+    let iter = arg.cast_iterable().with_span(&args[0].borrow().span())?;
+
+    Ok(Value::new_array(iter.collect(), &span, gen))
+}
+
 define_builtin! {
     X(1) => hex;
     B(1) => bin;
@@ -254,4 +272,5 @@ define_builtin! {
     open(1) => open_file;
     json(1) => parse_json_value;
     shf(1) => shell_function;
+    list(1) => to_list;
 }
