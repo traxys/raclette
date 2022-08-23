@@ -393,7 +393,7 @@ pub struct FunctionValue {
 pub type FolderFn = fn(Val, Val, &mut Interpreter, &GenerationSpan) -> Result<Val>;
 
 pub enum Folder {
-    Op(Box<dyn NativeFolder>),
+    Op(NativeFolders),
     User(Val, Val),
 }
 
@@ -435,7 +435,7 @@ pub enum FunctionKind {
 }
 
 #[derive(Copy, Clone)]
-enum Num {
+pub enum Num {
     Float(f64),
     Int(i64),
 }
@@ -786,7 +786,7 @@ impl FunctionValue {
                             f.accumulate(&item, scope)?;
                         }
 
-                        f.finish(span, scope.generation)
+                        Ok(f.finish(span, scope.generation))
                     }
                     Folder::User(f, def) => {
                         let v = f.borrow();
@@ -898,7 +898,7 @@ impl FunctionValue {
         )
     }
 
-    pub fn op_folder<S, U>(f: Box<dyn NativeFolder>, span: &S, gen: u64) -> Val
+    pub fn op_folder<S, U>(f: NativeFolders, span: &S, gen: u64) -> Val
     where
         S: Spanning<U>,
     {
@@ -925,66 +925,146 @@ fn power_nums(lhs: Num, rhs: Num) -> Num {
 
 pub type Val = Rc<RefCell<GenerationSpanned<Value>>>;
 
-pub trait NativeFolder {
-    fn start() -> Box<dyn NativeFolder>
-    where
-        Self: Sized;
-    fn restart(&self) -> Box<dyn NativeFolder>;
-
-    fn seed(&mut self, v: Val) -> Result<()>;
-
-    fn accumulate(&mut self, value: &Val, interpreter: &mut Interpreter) -> Result<()>;
-    fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val>;
-
-    fn kind(&self) -> &'static str;
-}
-
-macro_rules! int_folder {
-    ($name:ident, $op:tt, $default:expr) => {
-        struct $name {
-            current: i64,
+macro_rules! create_folders {
+    (
+        $($int_name:ident, $int_op:tt, $int_default:expr);*;
+        -
+        $($num_name:ident, $num_op:tt, $num_default:expr);*;
+        -
+        $($raw_name:ident, $raw_ty:ty, $raw_default:expr, $seed:expr, $accumulate:expr, $finish:expr);*;
+    ) => {
+        pub enum NativeFolders {
+            $(
+                $int_name {
+                    current: i64,
+                },
+            )*
+            $(
+                $num_name {
+                    current: Num,
+                },
+            )*
+            $(
+                $raw_name {
+                    current: $raw_ty,
+                },
+            )*
         }
 
-        impl NativeFolder for $name {
-            fn start() -> Box<dyn NativeFolder> {
-                Box::new(Self {
-                    current: $default,
-                })
+        impl NativeFolders {
+            paste::paste! {
+            $(
+                fn [< $int_name:snake >] () -> Self {
+                    Self::$int_name { current: $int_default }
+                }
+            )*
+            $(
+                fn [< $num_name:snake >] () -> Self {
+                    Self::$num_name { current: Num::Int($num_default) }
+                }
+            )*
+            $(
+                fn [< $raw_name:snake >] () -> Self {
+                    Self::$raw_name { current: $raw_default }
+                }
+            )*
             }
 
-            fn restart(&self) -> Box<dyn NativeFolder> {
-                Self::start()
+            fn restart(&self) -> Self {
+                paste::paste! {
+                    match self {
+                    $(
+                        Self::$int_name { .. } => Self::[< $int_name:snake >](),
+                    )*
+                    $(
+                        Self::$num_name { .. } => Self::[< $num_name:snake >](),
+                    )*
+                    $(
+                        Self::$raw_name { .. } => Self::[< $raw_name:snake >](),
+                    )*
+                    }
+                }
             }
 
             fn seed(&mut self, v: Val) -> Result<()> {
-                self.current = v.borrow().cast_number().with_span(&*v.borrow())?;
-                Ok(())
+                match self {
+                $(
+                    Self::$int_name{ ref mut current } => {
+                        *current = v.borrow().cast_number().with_span(&*v.borrow())?;
+                        Ok(())
+                    }
+                )*
+                $(
+                    Self::$num_name{ ref mut current } => {
+                        *current = v.borrow().cast_num().with_span(&*v.borrow())?;
+                        Ok(())
+                    }
+                )*
+                $(
+                    Self::$raw_name{current} => $seed(current, v),
+                )*
+                }
             }
 
-            fn accumulate(&mut self, value: &Val, _: &mut Interpreter) -> Result<()> {
-                let v = value.borrow().cast_number().with_span(&*value.borrow())?;
-                self.current $op v;
+            fn accumulate(&mut self, value: &Val, interpreter: &mut Interpreter) -> Result<()> {
+                match self {
+                $(
+                    Self::$int_name {ref mut current } => {
+                        let v = value.borrow().cast_number().with_span(&*value.borrow())?;
+                        *current $int_op v;
 
-                Ok(())
+                        Ok(())
+                    }
+                )*
+                $(
+                    Self::$num_name {ref mut current } => {
+                        let v = value.borrow().cast_num().with_span(&*value.borrow())?;
+                        *current = nums_op!((*current, v).into(), $num_op);
+
+                        Ok(())
+                    }
+                )*
+                $(
+                    Self::$raw_name{current} => $accumulate(current, value, interpreter),
+                )*
+                }
             }
 
-            fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val> {
-                Ok(Value::new_number(self.current, span, generation))
+            fn finish(&self, span: &GenerationSpan, generation: u64) -> Val {
+                match self {
+                $(
+                    &Self::$int_name {current} => {
+                        Value::new_number(current, span, generation)
+
+                    }
+                )*
+                $(
+                    &Self::$num_name {current} => {
+                        Value::new_num(current, span, generation)
+                    }
+                )*
+                $(
+                    Self::$raw_name{current} => $finish(current, span, generation),
+                )*
+                }
             }
 
             fn kind(&self) -> &'static str {
-                stringify!($name)
+                match self {
+                $(
+                    Self::$int_name {..} => stringify!($int_name),
+                )*
+                $(
+                    Self::$num_name {..} => stringify!($num_name),
+                )*
+                $(
+                    Self::$raw_name {..} => stringify!($raw_name),
+                )*
+                }
             }
         }
     };
 }
-
-int_folder! {BitwiseOrFolder, |=, 0}
-int_folder! {BitwiseAndFolder, &=, -1}
-int_folder! {IntDivideFolder, /=, 0}
-int_folder! {LeftShiftFolder, <<=, 0}
-int_folder! {RightShiftFolder, >>=, 0}
-int_folder! {ModuloFolder, %=, 0}
 
 macro_rules! nums_op {
     ($nums:expr, $op:tt) => {
@@ -995,171 +1075,82 @@ macro_rules! nums_op {
     };
 }
 
-macro_rules! num_folder {
-    ($name:ident, $op:tt, $default:expr) => {
-        struct $name {
-            current: Num,
-        }
-
-        impl NativeFolder for $name {
-            fn start() -> Box<dyn NativeFolder> {
-                Box::new(Self {
-                    current: Num::Int($default),
-                })
-            }
-
-            fn restart(&self) -> Box<dyn NativeFolder> {
-                Self::start()
-            }
-
-            fn seed(&mut self, v: Val) -> Result<()> {
-                self.current = v.borrow().cast_num().with_span(&*v.borrow())?;
-                Ok(())
-            }
-
-            fn accumulate(&mut self, value: &Val, _: &mut Interpreter) -> Result<()> {
-                let v = value.borrow().cast_num().with_span(&*value.borrow())?;
-                self.current = nums_op!((self.current, v).into(), $op);
-
-                Ok(())
-            }
-
-            fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val> {
-                Ok(Value::new_num(self.current, span, generation))
-            }
-
-            fn kind(&self) -> &'static str {
-                stringify!($name)
-            }
-        }
-    };
+create_folders! {
+    BitwiseOrFolder, |=, 0;
+    BitwiseAndFolder, &=, -1;
+    IntDivideFolder, /=, 0;
+    LeftShiftFolder, <<=, 0;
+    RightShiftFolder, >>=, 0;
+    ModuloFolder, %=, 0;
+    -
+    TimesFolder, *, 1;
+    SumFolder, +, 0;
+    DifferenceFolder, -, 0;
+    -
+    PowerFolder, Num, Num::Int(0), power_seed, power_accumulate, power_finish;
+    DivideFolder, f64, 0., divide_seed, divide_accumulate, divide_finish;
+    RedirectFolder, Val, Value::new_number(0, UNKNOWN_SPAN, 0), redirect_seed,
+        redirect_accumulate, redirect_finish;
 }
 
-num_folder! {TimesFolder, *, 1}
-num_folder! {SumFolder, +, 0}
-num_folder! {DifferenceFolder, -, 0}
-
-struct PowerFolder {
-    current: Num,
+fn power_seed(current: &mut Num, v: Val) -> Result<()> {
+    *current = v.borrow().cast_num().with_span(&*v.borrow())?;
+    Ok(())
 }
 
-impl NativeFolder for PowerFolder {
-    fn start() -> Box<dyn NativeFolder>
-    where
-        Self: Sized,
-    {
-        Box::new(Self {
-            current: Num::Int(0),
-        })
-    }
+fn power_accumulate(current: &mut Num, value: &Val, _: &mut Interpreter) -> Result<()> {
+    let v = value.borrow().cast_num().with_span(&*value.borrow())?;
+    *current = power_nums(*current, v);
 
-    fn restart(&self) -> Box<dyn NativeFolder> {
-        Self::start()
-    }
-
-    fn seed(&mut self, v: Val) -> Result<()> {
-        self.current = v.borrow().cast_num().with_span(&*v.borrow())?;
-        Ok(())
-    }
-
-    fn accumulate(&mut self, value: &Val, _: &mut Interpreter) -> Result<()> {
-        let v = value.borrow().cast_num().with_span(&*value.borrow())?;
-        self.current = power_nums(self.current, v);
-
-        Ok(())
-    }
-
-    fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val> {
-        Ok(Value::new_num(self.current, span, generation))
-    }
-
-    fn kind(&self) -> &'static str {
-        "PowerFolder"
-    }
+    Ok(())
 }
 
-struct DivideFolder {
-    current: f64,
+fn power_finish(current: &Num, span: &GenerationSpan, generation: u64) -> Val {
+    Value::new_num(*current, span, generation)
 }
 
-impl NativeFolder for DivideFolder {
-    fn start() -> Box<dyn NativeFolder>
-    where
-        Self: Sized,
-    {
-        Box::new(Self { current: 0. })
-    }
-
-    fn restart(&self) -> Box<dyn NativeFolder> {
-        Self::start()
-    }
-
-    fn seed(&mut self, v: Val) -> Result<()> {
-        self.current = v.borrow().cast_num().with_span(&*v.borrow())?.f64();
-        Ok(())
-    }
-
-    fn accumulate(&mut self, value: &Val, _: &mut Interpreter) -> Result<()> {
-        let v = value.borrow().cast_num().with_span(&*value.borrow())?;
-        self.current /= v.f64();
-
-        Ok(())
-    }
-
-    fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val> {
-        Ok(Value::new_float(self.current, span, generation))
-    }
-
-    fn kind(&self) -> &'static str {
-        "DivideFolder"
-    }
+fn divide_seed(current: &mut f64, v: Val) -> Result<()> {
+    *current = v.borrow().cast_num().with_span(&*v.borrow())?.f64();
+    Ok(())
 }
 
-struct RedirectFolder {
-    current: Val,
+fn divide_accumulate(current: &mut f64, value: &Val, _: &mut Interpreter) -> Result<()> {
+    let v = value.borrow().cast_num().with_span(&*value.borrow())?;
+    *current /= v.f64();
+
+    Ok(())
 }
 
-impl NativeFolder for RedirectFolder {
-    fn start() -> Box<dyn NativeFolder>
-    where
-        Self: Sized,
-    {
-        Box::new(Self {
-            current: Value::new_number(0, UNKNOWN_SPAN, 0),
-        })
-    }
+fn divide_finish(current: &f64, span: &GenerationSpan, generation: u64) -> Val {
+    Value::new_float(*current, span, generation)
+}
 
-    fn restart(&self) -> Box<dyn NativeFolder> {
-        Self::start()
-    }
+fn redirect_seed(current: &mut Val, v: Val) -> Result<()> {
+    *current = v;
+    Ok(())
+}
 
-    fn seed(&mut self, v: Val) -> Result<()> {
-        self.current = v;
-        Ok(())
-    }
+fn redirect_accumulate(
+    current: &mut Val,
+    value: &Val,
+    interpreter: &mut Interpreter,
+) -> Result<()> {
+    let v = value.borrow().cast_function().with_span(&*value.borrow())?;
+    *current = v.call(
+        vec![current.clone()],
+        HashMap::new(),
+        interpreter,
+        &UNKNOWN_SPAN.with_generation(0),
+    )?;
 
-    fn accumulate(&mut self, value: &Val, interpreter: &mut Interpreter) -> Result<()> {
-        let v = value.borrow().cast_function().with_span(&*value.borrow())?;
-        self.current = v.call(
-            vec![self.current.clone()],
-            HashMap::new(),
-            interpreter,
-            &UNKNOWN_SPAN.with_generation(0),
-        )?;
+    Ok(())
+}
 
-        Ok(())
-    }
-
-    fn finish(&self, span: &GenerationSpan, gen: u64) -> Result<Val> {
-        let v = self.current.clone();
-        v.borrow_mut().swap_span(span);
-        v.borrow_mut().set_gen(gen);
-        Ok(v)
-    }
-
-    fn kind(&self) -> &'static str {
-        "RedirectFolder"
-    }
+fn redirect_finish(current: &Val, span: &GenerationSpan, gen: u64) -> Val {
+    let v = current.clone();
+    v.borrow_mut().swap_span(span);
+    v.borrow_mut().set_gen(gen);
+    v
 }
 
 enum Nums {
@@ -1458,18 +1449,18 @@ impl Interpreter {
             ast::Expr::Fold(folder) => match folder.value {
                 ast::Folder::Operator(op) => {
                     let folder = match op {
-                        ast::BinaryOp::BitwiseOr => BitwiseOrFolder::start(),
-                        ast::BinaryOp::BitwiseAnd => BitwiseAndFolder::start(),
-                        ast::BinaryOp::Redirect => RedirectFolder::start(),
-                        ast::BinaryOp::Plus => SumFolder::start(),
-                        ast::BinaryOp::Minus => DifferenceFolder::start(),
-                        ast::BinaryOp::Times => TimesFolder::start(),
-                        ast::BinaryOp::Divide => DivideFolder::start(),
-                        ast::BinaryOp::IntDivide => IntDivideFolder::start(),
-                        ast::BinaryOp::Power => PowerFolder::start(),
-                        ast::BinaryOp::Modulo => ModuloFolder::start(),
-                        ast::BinaryOp::LShift => LeftShiftFolder::start(),
-                        ast::BinaryOp::RShift => RightShiftFolder::start(),
+                        ast::BinaryOp::BitwiseOr => NativeFolders::bitwise_or_folder(),
+                        ast::BinaryOp::BitwiseAnd => NativeFolders::bitwise_and_folder(),
+                        ast::BinaryOp::Redirect => NativeFolders::redirect_folder(),
+                        ast::BinaryOp::Plus => NativeFolders::sum_folder(),
+                        ast::BinaryOp::Minus => NativeFolders::difference_folder(),
+                        ast::BinaryOp::Times => NativeFolders::times_folder(),
+                        ast::BinaryOp::Divide => NativeFolders::divide_folder(),
+                        ast::BinaryOp::IntDivide => NativeFolders::int_divide_folder(),
+                        ast::BinaryOp::Power => NativeFolders::power_folder(),
+                        ast::BinaryOp::Modulo => NativeFolders::modulo_folder(),
+                        ast::BinaryOp::LShift => NativeFolders::left_shift_folder(),
+                        ast::BinaryOp::RShift => NativeFolders::right_shift_folder(),
                     };
                     Ok(FunctionValue::op_folder(folder, expr_span, self.generation))
                 }
