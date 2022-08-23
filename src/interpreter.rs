@@ -658,6 +658,13 @@ impl Value {
         }
     }
 
+    fn int_iterable(&self) -> Option<impl Iterator<Item = i64> + '_> {
+        match self {
+            Value::Range(r) => Some(r.clone()),
+            _ => None,
+        }
+    }
+
     fn new_num<U, S>(v: Num, span: &S, gen: u64) -> Val
     where
         S: Spanning<U>,
@@ -773,28 +780,62 @@ impl FunctionValue {
             }
             FunctionKind::Folder(folder) => {
                 let iter = args[0].borrow();
-                let mut iter = iter.cast_iterable()?;
-                let first = iter.next();
-                match folder {
-                    Folder::Op(f) => {
-                        let mut f = f.restart();
-                        if let Some(first) = first {
-                            f.seed(first)?;
-                        }
+                let int_iterable = iter.int_iterable();
+                if let Some(mut iter) = int_iterable {
+                    let first = iter.next();
+                    match folder {
+                        Folder::Op(f) => {
+                            let mut f = f.restart();
+                            if let Some(first) = first {
+                                f.seed(Value::new_number(first, span, scope.generation))?;
+                            }
 
-                        for item in iter {
-                            f.accumulate(&item, scope)?;
-                        }
+                            for item in iter {
+                                f.int_accumulate(item, scope)?;
+                            }
 
-                        f.finish(span, scope.generation)
+                            f.finish(span, scope.generation)
+                        }
+                        Folder::User(f, def) => {
+                            let v = f.borrow();
+                            let func = v.cast_function()?;
+                            let gen = scope.generation;
+                            iter.map(|n| Value::new_number(n, span, gen))
+                                .try_fold(
+                                    first
+                                        .map(|n| Value::new_number(n, span, gen))
+                                        .unwrap_or_else(|| def.clone()),
+                                    |acc, e| {
+                                        let spn = e.borrow().gen_span();
+                                        func.call(vec![acc, e], HashMap::new(), scope, &spn)
+                                    },
+                                )
+                        }
                     }
-                    Folder::User(f, def) => {
-                        let v = f.borrow();
-                        let func = v.cast_function()?;
-                        iter.try_fold(first.unwrap_or_else(|| def.clone()), |acc, e| {
-                            let spn = e.borrow().gen_span();
-                            func.call(vec![acc, e], HashMap::new(), scope, &spn)
-                        })
+                } else {
+                    let mut iter = iter.cast_iterable()?;
+                    let first = iter.next();
+                    match folder {
+                        Folder::Op(f) => {
+                            let mut f = f.restart();
+                            if let Some(first) = first {
+                                f.seed(first)?;
+                            }
+
+                            for item in iter {
+                                f.accumulate(&item, scope)?;
+                            }
+
+                            f.finish(span, scope.generation)
+                        }
+                        Folder::User(f, def) => {
+                            let v = f.borrow();
+                            let func = v.cast_function()?;
+                            iter.try_fold(first.unwrap_or_else(|| def.clone()), |acc, e| {
+                                let spn = e.borrow().gen_span();
+                                func.call(vec![acc, e], HashMap::new(), scope, &spn)
+                            })
+                        }
                     }
                 }
             }
@@ -936,6 +977,13 @@ pub trait NativeFolder {
     fn accumulate(&mut self, value: &Val, interpreter: &mut Interpreter) -> Result<()>;
     fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val>;
 
+    fn int_accumulate(&mut self, value: i64, interpreter: &mut Interpreter) -> Result<()> {
+        self.accumulate(
+            &Value::new_number(value, UNKNOWN_SPAN, interpreter.generation),
+            interpreter,
+        )
+    }
+
     fn kind(&self) -> &'static str;
 }
 
@@ -961,10 +1009,13 @@ macro_rules! int_folder {
                 Ok(())
             }
 
-            fn accumulate(&mut self, value: &Val, _: &mut Interpreter) -> Result<()> {
+            fn accumulate(&mut self, value: &Val, inter: &mut Interpreter) -> Result<()> {
                 let v = value.borrow().cast_number().with_span(&*value.borrow())?;
-                self.current $op v;
+                self.int_accumulate(v, inter)
+            }
 
+            fn int_accumulate(&mut self, value: i64, _: &mut Interpreter) -> Result<()> {
+                self.current $op value;
                 Ok(())
             }
 
@@ -1020,6 +1071,12 @@ macro_rules! num_folder {
             fn accumulate(&mut self, value: &Val, _: &mut Interpreter) -> Result<()> {
                 let v = value.borrow().cast_num().with_span(&*value.borrow())?;
                 self.current = nums_op!((self.current, v).into(), $op);
+
+                Ok(())
+            }
+
+            fn int_accumulate(&mut self, value: i64, _: &mut Interpreter) -> Result<()> {
+                self.current = nums_op!((self.current, Num::Int(value)).into(), $op);
 
                 Ok(())
             }
