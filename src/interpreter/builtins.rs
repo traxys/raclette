@@ -1,12 +1,20 @@
 use itertools::Itertools;
 
-use crate::ast::RcStr;
-use crate::interpreter::{
-    FunctionKind, FunctionValue, HashableValue, RuntimeError, SpannedResult, Val, Value,
+use crate::{
+    ast::RcStr,
+    span::{GenerationSpan, SpannedValue, Spanning, SpanningExt, UNKNOWN_SPAN},
+    Val, Value,
 };
-use crate::span::{GenerationSpan, SpannedValue, Spanning, SpanningExt, UNKNOWN_SPAN};
 use once_cell::unsync::Lazy;
 use std::{collections::HashMap, fs::File, io::BufReader, ops::Deref, rc::Rc};
+
+use super::{
+    value::{
+        func::{FunctionKind, FunctionValue},
+        HashableValue,
+    },
+    RuntimeError, SpannedResult,
+};
 
 macro_rules! define_builtin {
     ($(
