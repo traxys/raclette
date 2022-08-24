@@ -1,7 +1,8 @@
 use either::Either;
 use serde::{
     de::{MapAccess, Visitor},
-    Deserialize,
+    ser::{Error, SerializeMap, SerializeSeq},
+    Deserialize, Serialize,
 };
 use std::{cell::RefCell, collections::HashMap, fmt::Display, fs::File, rc::Rc};
 
@@ -72,6 +73,36 @@ pub enum Value {
     Float(f64),
 }
 
+impl Serialize for Value {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Value::Map(m) => {
+                let mut map = serializer.serialize_map(Some(m.len()))?;
+                for (k, v) in m {
+                    map.serialize_entry(k, &**v.borrow())?;
+                }
+                map.end()
+            }
+            Value::Hashable(v) => v.serialize(serializer),
+            &Value::Float(f) => serializer.serialize_f64(f),
+            Value::Array(s) => {
+                let mut seq = serializer.serialize_seq(Some(s.len()))?;
+                for e in s {
+                    seq.serialize_element(&**e.borrow())?;
+                }
+                seq.end()
+            }
+            _ => Err(S::Error::custom(format!(
+                "`{}` is not serializable",
+                self.name()
+            ))),
+        }
+    }
+}
+
 impl<'de> Deserialize<'de> for Value {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
@@ -94,6 +125,27 @@ impl<'de> Deserialize<'de> for Value {
 
             fn visit_u64<E>(self, value: u64) -> Result<Value, E> {
                 Ok(Value::Hashable(HashableValue::Number(value as i64)))
+            }
+
+            fn visit_unit<E>(self) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Value::Hashable(HashableValue::Null))
+            }
+
+            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Value::Hashable(HashableValue::Bool(v)))
+            }
+
+            fn visit_f64<E>(self, v: f64) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(Value::Float(v))
             }
 
             fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Value, E> {
@@ -183,6 +235,22 @@ impl Display for Value {
 pub enum HashableValue {
     Str(RcStr),
     Number(i64),
+    Null,
+    Bool(bool),
+}
+
+impl Serialize for HashableValue {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            HashableValue::Str(v) => serializer.serialize_str(v),
+            &HashableValue::Number(n) => serializer.serialize_i64(n),
+            HashableValue::Null => serializer.serialize_none(),
+            &HashableValue::Bool(b) => serializer.serialize_bool(b),
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for HashableValue {
@@ -216,6 +284,20 @@ impl<'de> Deserialize<'de> for HashableValue {
             fn visit_string<E>(self, value: String) -> Result<HashableValue, E> {
                 Ok(HashableValue::Str(RcStr(Rc::from(value))))
             }
+
+            fn visit_unit<E>(self) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(HashableValue::Null)
+            }
+
+            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+            where
+                E: serde::de::Error,
+            {
+                Ok(HashableValue::Bool(v))
+            }
         }
 
         deserializer.deserialize_any(HashableValueVisitor)
@@ -227,6 +309,8 @@ impl Display for HashableValue {
         match self {
             HashableValue::Str(s) => write!(f, "{}", s),
             HashableValue::Number(n) => write!(f, "{}", n),
+            HashableValue::Null => write!(f, "Null"),
+            HashableValue::Bool(b) => write!(f, "{}", b),
         }
     }
 }
@@ -521,6 +605,8 @@ impl Value {
         match self {
             Value::Hashable(HashableValue::Number(_)) => "number",
             Value::Hashable(HashableValue::Str(_)) => "str",
+            Value::Hashable(HashableValue::Null) => "null",
+            Value::Hashable(HashableValue::Bool(_)) => "bool",
             Value::Map(_) => "map",
             Value::Func(_) => "function",
             Value::File(_) => "file",

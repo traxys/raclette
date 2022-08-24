@@ -137,10 +137,32 @@ pub enum RuntimeError {
         #[label("This range has `start > end`")]
         location: Option<SourceSpan>,
     },
-    #[error("JSON error")]
-    JsonError(#[source] serde_json::Error),
+    #[error("The format `{format}` is not supported for ser/de")]
+    UnsupportedSerdeFormat {
+        format: String,
+        #[label("This is not a valid format")]
+        location: Option<SourceSpan>,
+    },
+    #[error("ser/de error")]
+    SerdeError(#[source] SerdeError),
     #[error("Could not parse integer")]
     ParseIntError,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SerdeError {
+    #[error("Could not parse json value")]
+    Json(#[from] serde_json::Error),
+    #[error("Could not parse yaml value")]
+    Yaml(#[from] serde_yaml::Error),
+    #[error("Could not parse ron value")]
+    RonDe(#[from] ron::error::SpannedError),
+    #[error("Could not serialize ron value")]
+    RonSer(#[from] ron::Error),
+    #[error("Could not serialize toml value")]
+    TomlSer(#[from] toml::ser::Error),
+    #[error("Could not parse toml value")]
+    TomlDe(#[from] toml::de::Error),
 }
 
 impl From<std::io::Error> for RuntimeError {
@@ -189,6 +211,7 @@ impl RuntimeError {
         NotIndexableWith,
         NoSuchIndex,
         ReversedRange,
+        UnsupportedSerdeFormat,
     }
 }
 

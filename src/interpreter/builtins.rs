@@ -6,7 +6,13 @@ use crate::{
     Val, Value,
 };
 use once_cell::unsync::Lazy;
-use std::{collections::HashMap, fs::File, io::BufReader, ops::Deref, rc::Rc};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::{BufReader, Read},
+    ops::Deref,
+    rc::Rc,
+};
 
 use super::{
     value::{
@@ -195,27 +201,138 @@ fn open_file(
     Ok(Value::new_file(f, &span, gen))
 }
 
-fn parse_json_value(
+fn ser_value(
     args: Vec<Val>,
-    named: HashMap<SpannedValue<RcStr>, Val>,
+    named_map: HashMap<SpannedValue<RcStr>, Val>,
     span: GenerationSpan,
     gen: u64,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
+            fmt with cast_str(RcStr)
         }
     }
-    let _named = Named::from_named(named, gen)?;
+    let fmt_span = fmt.with(|k| named_map.get(k).map(|v| v.borrow().source_span(gen)));
+    let named = Named::from_named(named_map, gen)?;
+
+    enum Format {
+        Yaml,
+        Toml,
+        Ron,
+        Json,
+    }
+
+    let format = match named.fmt {
+        None => Format::Json,
+        Some(s) => match s.to_lowercase().trim() {
+            "yaml" => Format::Yaml,
+            "toml" => Format::Toml,
+            "ron" => Format::Ron,
+            "json" => Format::Json,
+            _ => {
+                return Err(RuntimeError::UnsupportedSerdeFormat {
+                    format: s.to_string(),
+                    location: fmt_span.flatten(),
+                });
+            }
+        },
+    };
+
+    let arg = args[0].borrow();
+
+    let stringified = match format {
+        Format::Json => serde_json::to_string(&**arg)
+            .map_err(Into::into)
+            .map_err(RuntimeError::SerdeError),
+        Format::Yaml => serde_yaml::to_string(&**arg)
+            .map_err(Into::into)
+            .map_err(RuntimeError::SerdeError),
+        Format::Ron => ron::to_string(&**arg)
+            .map_err(Into::into)
+            .map_err(RuntimeError::SerdeError),
+        Format::Toml => toml::to_string(&**arg)
+            .map_err(Into::into)
+            .map_err(RuntimeError::SerdeError),
+    }
+    .with_span(&*arg)?;
+
+    Ok(Value::new_str(stringified, &span, gen))
+}
+
+fn deser_value(
+    args: Vec<Val>,
+    named_map: HashMap<SpannedValue<RcStr>, Val>,
+    span: GenerationSpan,
+    gen: u64,
+) -> Result<Val, RuntimeError> {
+    named_args! {
+        struct Named {
+            fmt with cast_str(RcStr)
+        }
+    }
+    let fmt_span = fmt.with(|k| named_map.get(k).map(|v| v.borrow().source_span(gen)));
+    let named = Named::from_named(named_map, gen)?;
+
+    enum Format {
+        Yaml,
+        Toml,
+        Ron,
+        Json,
+    }
+
+    let format = match named.fmt {
+        None => Format::Json,
+        Some(s) => match s.to_lowercase().trim() {
+            "yaml" => Format::Yaml,
+            "toml" => Format::Toml,
+            "ron" => Format::Ron,
+            "json" => Format::Json,
+            _ => {
+                return Err(RuntimeError::UnsupportedSerdeFormat {
+                    format: s.to_string(),
+                    location: fmt_span.flatten(),
+                });
+            }
+        },
+    };
 
     let arg_span = args[0].borrow().gen_span();
     let parsed: Value = match &mut **args[0].borrow_mut() {
         Value::File(f) => {
             let mut buf_reader = BufReader::new(f);
-            serde_json::from_reader(&mut buf_reader).map_err(RuntimeError::JsonError)?
+            match format {
+                Format::Json => serde_json::from_reader(&mut buf_reader)
+                    .map_err(Into::into)
+                    .map_err(RuntimeError::SerdeError)?,
+                Format::Yaml => serde_yaml::from_reader(&mut buf_reader)
+                    .map_err(Into::into)
+                    .map_err(RuntimeError::SerdeError)?,
+                Format::Ron => ron::de::from_reader(&mut buf_reader)
+                    .map_err(Into::into)
+                    .map_err(RuntimeError::SerdeError)?,
+                Format::Toml => {
+                    let mut data = Vec::new();
+                    buf_reader.read_to_end(&mut data)?;
+                    toml::de::from_slice(&data)
+                        .map_err(Into::into)
+                        .map_err(RuntimeError::SerdeError)?
+                }
+            }
         }
-        Value::Hashable(HashableValue::Str(s)) => {
-            serde_json::from_str(s).map_err(RuntimeError::JsonError)?
-        }
+        Value::Hashable(HashableValue::Str(s)) => match format {
+            Format::Json => serde_json::from_str(s)
+                .map_err(Into::into)
+                .map_err(RuntimeError::SerdeError)?,
+            Format::Yaml => serde_yaml::from_str(s)
+                .map_err(Into::into)
+                .map_err(RuntimeError::SerdeError)?,
+            Format::Ron => ron::from_str(s)
+                .map_err(Into::into)
+                .map_err(RuntimeError::SerdeError)?,
+            Format::Toml => toml::from_str(s)
+                .map_err(Into::into)
+                .map_err(RuntimeError::SerdeError)?,
+        },
         v => {
             return Err(RuntimeError::CastError {
                 into: "str-like".into(),
@@ -273,12 +390,29 @@ fn to_list(
     Ok(Value::new_array(iter.collect(), &span, gen))
 }
 
+fn zero(
+    _: Vec<Val>,
+    named: HashMap<SpannedValue<RcStr>, Val>,
+    span: GenerationSpan,
+    gen: u64,
+) -> Result<Val, RuntimeError> {
+    named_args! {
+        struct Named {
+        }
+    }
+    let _named = Named::from_named(named, gen)?;
+
+    Ok(Value::new_number(0, &span, gen))
+}
+
 define_builtin! {
     X(1) => hex;
     B(1) => bin;
     int(1) => parse_int;
     open(1) => open_file;
-    json(1) => parse_json_value;
     shf(1) => shell_function;
     list(1) => to_list;
+    des(1) => deser_value;
+    ser(1) => ser_value;
+    zero(1) => zero;
 }
