@@ -1,0 +1,2 @@
+import toml; f = open("../data/config.toml"); toml.load(f); print(0)
+open("../data/config.toml") |> des{fmt = "toml"} |> zero

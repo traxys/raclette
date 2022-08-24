@@ -61,9 +61,10 @@
           pkgs.cargo-flamegraph
           pkgs.cargo-criterion
           pkgs.hyperfine
-		  pkgs.glow
+          pkgs.glow
           hf-scripts
           rust
+          (pkgs.python3.withPackages (ps: with ps; [toml pyyaml]))
         ];
         buildInputs = [];
       };

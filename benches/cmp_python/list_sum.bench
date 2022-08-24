@@ -1,2 +1,2 @@
-sum(list(range(100000)))
+print(sum(list(range(100000))))
 [:100000] |> list |> %+

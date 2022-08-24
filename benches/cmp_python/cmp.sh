@@ -22,6 +22,6 @@ for bench in *.bench; do
 		--export-json "json/$(basename "$bench" .bench).json" \
 		--warmup 1 \
 		--shell=none \
-		-n python "python -c 'print($(head -n1 "$bench"))'" \
+		-n python "python -c '$(head -n1 "$bench")'" \
 		-n raclette "../../target/release/raclette -c '$(tail -n1 "$bench")'"
 done
