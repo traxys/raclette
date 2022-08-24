@@ -61,6 +61,7 @@
           pkgs.cargo-flamegraph
           pkgs.cargo-criterion
           pkgs.hyperfine
+		  pkgs.glow
           hf-scripts
           rust
         ];
