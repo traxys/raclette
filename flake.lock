@@ -30,6 +30,22 @@
         "type": "github"
       }
     },
+    "hyperfine": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1660587576,
+        "narHash": "sha256-rBZCQfNS9reTHO+bckmHGwqzJRNTwTPQrJvtWVGPf8s=",
+        "owner": "sharkdp",
+        "repo": "hyperfine",
+        "rev": "6c0ec317ead302ce7b3e79d944d0a8315d758ad8",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sharkdp",
+        "repo": "hyperfine",
+        "type": "github"
+      }
+    },
     "naersk": {
       "inputs": {
         "nixpkgs": "nixpkgs"
@@ -97,6 +113,7 @@
     "root": {
       "inputs": {
         "flake-utils": "flake-utils",
+        "hyperfine": "hyperfine",
         "naersk": "naersk",
         "nixpkgs": "nixpkgs_2",
         "rust-overlay": "rust-overlay"
