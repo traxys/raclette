@@ -39,3 +39,7 @@ pprof = { version = "0.10.0", features = ["flamegraph"] }
 [[bench]]
 name = "range_sum"
 harness = false
+
+[[bench]]
+name = "list_sum"
+harness = false
