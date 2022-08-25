@@ -42,9 +42,9 @@ criterion = "0.3.6"
 pprof = { version = "0.10.0", features = ["flamegraph"] }
 
 [[bench]]
-name = "range_sum"
+name = "sums"
 harness = false
 
 [[bench]]
-name = "list_sum"
+name = "serdes"
 harness = false
