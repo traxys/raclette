@@ -1,8 +1,9 @@
 use itertools::Itertools;
+use miette::SourceCode;
 
 use crate::{
     ast::RcStr,
-    interpreter::SerdeError,
+    interpreter::{value::func::BuiltinFnSpec, SerdeError},
     span::{Span, SpannedValue, SpanningExt, UNKNOWN_SPAN},
     Val, Value,
 };
@@ -20,7 +21,7 @@ use super::{
         func::{FunctionKind, FunctionValue},
         HashableValue,
     },
-    RuntimeError,
+    Interpreter, RuntimeError,
 };
 
 macro_rules! define_builtin {
@@ -115,6 +116,7 @@ fn hex(
     args: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
     call_span: &Span,
+    _: &mut Interpreter,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
@@ -135,6 +137,7 @@ fn bin(
     args: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
     call_span: &Span,
+    _: &mut Interpreter,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
@@ -155,6 +158,7 @@ fn parse_int(
     args: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
     call_span: &Span,
+    _: &mut Interpreter,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
@@ -179,6 +183,7 @@ fn open_file(
     args: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
     call_span: &Span,
+    _: &mut Interpreter,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
@@ -196,6 +201,7 @@ fn ser_value(
     args: Vec<Val>,
     named_map: HashMap<SpannedValue<RcStr>, Val>,
     call_span: &Span,
+    _: &mut Interpreter,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
@@ -254,6 +260,7 @@ fn deser_value(
     args: Vec<Val>,
     named_map: HashMap<SpannedValue<RcStr>, Val>,
     call_span: &Span,
+    _: &mut Interpreter,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
@@ -339,6 +346,7 @@ fn shell_function(
     args: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
     call_span: &Span,
+    _: &mut Interpreter,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
@@ -361,6 +369,7 @@ fn to_list(
     args: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
     call_span: &Span,
+    _: &mut Interpreter,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
@@ -378,6 +387,7 @@ fn zero(
     _: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
     call_span: &Span,
+    _: &mut Interpreter,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
@@ -392,6 +402,7 @@ fn ty(
     args: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
     call_span: &Span,
+    _: &mut Interpreter,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
@@ -402,6 +413,83 @@ fn ty(
     let arg = args[0].borrow().name();
 
     Ok(Value::new_str(arg.into(), call_span))
+}
+
+fn dump_vars(
+    _: Vec<Val>,
+    named: HashMap<SpannedValue<RcStr>, Val>,
+    call_span: &Span,
+    interpreter: &mut Interpreter,
+) -> Result<Val, RuntimeError> {
+    named_args! {
+        struct Named {
+        }
+    }
+    let _named = Named::from_named(named)?;
+
+    for (i, scope) in interpreter.scopes.iter().rev().enumerate() {
+        println!("# Scope {i}");
+        for (name, value) in &scope.vars {
+            println!(" - {} = {}", name, value.borrow().value)
+        }
+    }
+
+    println!("# Global Scope");
+    for (name, value) in &interpreter.global.vars {
+        println!(" - {} = {}", name, value.borrow().value)
+    }
+
+    Ok(Value::new_null(call_span))
+}
+
+fn def_from_span<U>(v: &SpannedValue<U>) -> String {
+    String::from_utf8(
+        v.source
+            .read_span(&(v.start..v.end).into(), 0, 0)
+            .expect("could not read span")
+            .data()
+            .to_vec(),
+    )
+    .expect("source code is utf8")
+}
+
+fn fnkind_def<'a>(f: &'a FunctionKind) -> String {
+    match f {
+        &FunctionKind::Builtin(ptr) => format!("{:#?}", ptr as BuiltinFnSpec<'a>),
+        FunctionKind::Folder(f) => match f {
+            super::value::func::folder::Folder::Op(op) => format!("%({})", op.kind()),
+            super::value::func::folder::Folder::User(_, _) => todo!(),
+        },
+        FunctionKind::Mapper(m) => format!("@({})", def_from_span(&m.borrow())),
+        FunctionKind::User {
+            args: _,
+            scope: _,
+            ret,
+        } => def_from_span(ret),
+        FunctionKind::SpecifyNamed { func, named } => {
+            format!("({}){{{:?}}}", fnkind_def(&func.action), named)
+        }
+        FunctionKind::Shell(s) => format!("shf({})", s),
+    }
+}
+
+fn fn_def(
+    args: Vec<Val>,
+    named: HashMap<SpannedValue<RcStr>, Val>,
+    call_span: &Span,
+    _: &mut Interpreter,
+) -> Result<Val, RuntimeError> {
+    named_args! {
+        struct Named {
+        }
+    }
+    let _named = Named::from_named(named)?;
+
+    let arg = args[0].borrow().cast_function(&args[0].borrow())?;
+
+    let def = fnkind_def(&arg.action);
+
+    Ok(Value::new_str(def, call_span))
 }
 
 define_builtin! {
@@ -415,4 +503,6 @@ define_builtin! {
     des(1) => deser_value;
     ser(1) => ser_value;
     zero(1) => zero;
+    __vars(0) => dump_vars;
+    __fndef(1) => fn_def;
 }

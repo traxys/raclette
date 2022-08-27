@@ -509,6 +509,10 @@ impl Value {
         }
     }
 
+    pub fn new_null<U>(span: &SpannedValue<U>) -> Val {
+        Self::new(Self::Hashable(HashableValue::Null).spanned(span))
+    }
+
     pub fn new_range_iterator<U>(v: RangeIterator, span: &SpannedValue<U>) -> Val {
         Self::new(Self::Range(v).spanned(span))
     }

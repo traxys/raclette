@@ -19,8 +19,10 @@ pub struct FunctionValue {
     pub(crate) action: FunctionKind,
 }
 
-type BuiltinFnSpec<'a> = fn(Vec<Val>, HashMap<SpannedValue<RcStr>, Val>, &'a Span) -> Result<Val>;
-type BuiltinFn = fn(Vec<Val>, HashMap<SpannedValue<RcStr>, Val>, &Span) -> Result<Val>;
+pub type BuiltinFnSpec<'a> =
+    fn(Vec<Val>, HashMap<SpannedValue<RcStr>, Val>, &'a Span, &'a mut Interpreter) -> Result<Val>;
+type BuiltinFn =
+    fn(Vec<Val>, HashMap<SpannedValue<RcStr>, Val>, &Span, &mut Interpreter) -> Result<Val>;
 
 #[derive(Clone)]
 pub enum FunctionKind {
@@ -48,7 +50,11 @@ impl Debug for FunctionKind {
                 .finish(),
             Self::Folder(arg0) => f.debug_tuple("Folder").field(arg0).finish(),
             Self::Mapper(arg0) => f.debug_tuple("Mapper").field(arg0).finish(),
-            Self::User { args, ret, scope: _ } => f
+            Self::User {
+                args,
+                ret,
+                scope: _,
+            } => f
                 .debug_struct("User")
                 .field("args", args)
                 .field("ret", ret)
@@ -82,7 +88,7 @@ impl FunctionValue {
 
         let mut named = named;
         match &self.action {
-            FunctionKind::Builtin(f) => f(args, named, call_span),
+            FunctionKind::Builtin(f) => f(args, named, call_span, interpreter),
             FunctionKind::SpecifyNamed {
                 func,
                 named: already_specified,
@@ -119,7 +125,9 @@ impl FunctionValue {
                                 first
                                     .map(|n| Value::new_number(n, call_span))
                                     .unwrap_or_else(|| def.clone()),
-                                |acc, e| func.call(vec![acc, e], HashMap::new(), interpreter, call_span),
+                                |acc, e| {
+                                    func.call(vec![acc, e], HashMap::new(), interpreter, call_span)
+                                },
                             )
                         }
                     }
@@ -179,7 +187,11 @@ impl FunctionValue {
                     _ => Err(RuntimeError::not_iterable(iter.name().into(), &iter)),
                 }
             }
-            FunctionKind::User { args: names, ret, scope } => {
+            FunctionKind::User {
+                args: names,
+                ret,
+                scope,
+            } => {
                 let s = Scope {
                     vars: names.iter().cloned().zip(args).collect(),
                 };
