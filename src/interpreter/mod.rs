@@ -639,6 +639,7 @@ impl Interpreter {
     fn run_literal(&mut self, lit: SpannedValue<ast::Literal>) -> Result<Val> {
         let span = &lit.span();
         Ok(match lit.value {
+            ast::Literal::Float(f) => Value::new_float(f, span),
             ast::Literal::Number(n) => Value::new_number(n, span),
             ast::Literal::String(s) => Value::new_str(s, span),
         })

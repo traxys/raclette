@@ -13,6 +13,7 @@ extern {
 
 	enum Token {
 		number => Token::Number(<i64>),
+		float => Token::Float(<f64>),
 		ident => Token::Identifier(<String>),
 		str => Token::String(<String>),
 		"->" => Token::Arrow,
@@ -67,6 +68,7 @@ Spn<T>: SpannedValue<T> = {
 Literal: Literal = {
 	number => Literal::Number(<>),
 	str => Literal::String(<>),
+	float => Literal::Float(<>),
 };
 
 pub Expr: Expr = {
@@ -102,13 +104,13 @@ BAndExpr: Expr = {
 };
 
 ShiftExpr: Expr = {
-	<lhs:Spn<ShiftExpr>> ">>" <rhs:Spn<MultExpr>> => {
+	<lhs:Spn<ShiftExpr>> ">>" <rhs:Spn<AddExpr>> => {
 		Expr::Binary(BinaryOp::RShift, Box::new(lhs), Box::new(rhs))
 	},
-	<lhs:Spn<ShiftExpr>> "<<" <rhs:Spn<MultExpr>> => {
+	<lhs:Spn<ShiftExpr>> "<<" <rhs:Spn<AddExpr>> => {
 		Expr::Binary(BinaryOp::LShift, Box::new(lhs), Box::new(rhs))
 	},
-	<MultExpr> => <>,
+	<AddExpr> => <>,
 };
 
 AddExpr: Expr = {
@@ -122,16 +124,16 @@ AddExpr: Expr = {
 };
 
 MultExpr: Expr = {
-	<lhs:Spn<PowerExpr>> "*" <rhs:Spn<MultExpr>> => {
+	<lhs:Spn<MultExpr>> "*" <rhs:Spn<PowerExpr>> => {
 		Expr::Binary(BinaryOp::Times, Box::new(lhs), Box::new(rhs))
 	},
-	<lhs:Spn<PowerExpr>> "%" <rhs:Spn<MultExpr>> => {
+	<lhs:Spn<MultExpr>> "%" <rhs:Spn<PowerExpr>> => {
 		Expr::Binary(BinaryOp::Modulo, Box::new(lhs), Box::new(rhs))
 	},
-	<lhs:Spn<PowerExpr>> "/" <rhs:Spn<MultExpr>> => {
+	<lhs:Spn<MultExpr>> "/" <rhs:Spn<PowerExpr>> => {
 		Expr::Binary(BinaryOp::Divide, Box::new(lhs), Box::new(rhs))
 	},
-	<lhs:Spn<PowerExpr>> "//" <rhs:Spn<MultExpr>> => {
+	<lhs:Spn<MultExpr>> "//" <rhs:Spn<PowerExpr>> => {
 		Expr::Binary(BinaryOp::IntDivide, Box::new(lhs), Box::new(rhs))
 	},
 	<PowerExpr> => <>,

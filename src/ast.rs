@@ -69,7 +69,7 @@ impl<'a> Arbitrary<'a> for RcStr {
 
 #[derive(Logos, Debug, PartialEq, Clone, derive_more::Display)]
 pub enum Token {
-    #[regex("(-)?[0-9][0-9_]*", |lex| lex.slice().parse())]
+    #[regex("(-)?[0-9][0-9_]*", |lex| lex.slice().parse(), priority = 2)]
     #[regex("0?x[0-9a-fA-F][0-9a-fA-F_]*", |lex|
         i64::from_str_radix(
             lex.slice().trim_start_matches("0x").trim_start_matches('x'),
@@ -84,6 +84,11 @@ pub enum Token {
     )]
     #[display(fmt = "<number:{}>", _0)]
     Number(i64),
+    #[regex("[-+]?[0-9]+([eE][-+]?[0-9]+)?", |lex| lex.slice().parse())]
+    #[regex("[-+]?\\.[0-9]+([eE][-+]?[0-9]+)?", |lex| lex.slice().parse())]
+    #[regex("[-+]?[0-9]+\\.[0-9]*([eE][-+]?[0-9]+)?", |lex| lex.slice().parse())]
+    #[display(fmt = "<float:{}>", _0)]
+    Float(f64),
     #[token("|")]
     #[display(fmt = "|")]
     Pipe,
@@ -182,6 +187,7 @@ pub enum Token {
 
 #[derive(Debug, Clone, Arbitrary)]
 pub enum Literal {
+    Float(f64),
     Number(i64),
     String(String),
 }

@@ -388,7 +388,24 @@ fn zero(
     Ok(Value::new_number(0, call_span))
 }
 
+fn ty(
+    args: Vec<Val>,
+    named: HashMap<SpannedValue<RcStr>, Val>,
+    call_span: &Span,
+) -> Result<Val, RuntimeError> {
+    named_args! {
+        struct Named {
+        }
+    }
+    let _named = Named::from_named(named)?;
+
+    let arg = args[0].borrow().name();
+
+    Ok(Value::new_str(arg.into(), call_span))
+}
+
 define_builtin! {
+    ty(1) => ty;
     X(1) => hex;
     B(1) => bin;
     int(1) => parse_int;
