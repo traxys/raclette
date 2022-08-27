@@ -29,6 +29,7 @@ pub enum FunctionKind {
     Mapper(Val),
     User {
         args: Vec<String>,
+        scope: Vec<Scope>,
         ret: SpannedValue<ast::Expr>,
     },
     SpecifyNamed {
@@ -47,10 +48,11 @@ impl Debug for FunctionKind {
                 .finish(),
             Self::Folder(arg0) => f.debug_tuple("Folder").field(arg0).finish(),
             Self::Mapper(arg0) => f.debug_tuple("Mapper").field(arg0).finish(),
-            Self::User { args, ret } => f
+            Self::User { args, ret, scope: _ } => f
                 .debug_struct("User")
                 .field("args", args)
                 .field("ret", ret)
+                .field("scope", &"<...>")
                 .finish(),
             Self::SpecifyNamed { func, named } => f
                 .debug_struct("SpecifyNamed")
@@ -67,7 +69,7 @@ impl FunctionValue {
         &self,
         args: Vec<Val>,
         named: HashMap<SpannedValue<RcStr>, Val>,
-        scope: &mut Interpreter,
+        interpreter: &mut Interpreter,
         call_span: &Span,
     ) -> Result<Val> {
         if args.len() != self.arity {
@@ -90,7 +92,7 @@ impl FunctionValue {
                         named.insert(key.clone(), val.clone());
                     }
                 }
-                func.call(args, named, scope, call_span)
+                func.call(args, named, interpreter, call_span)
             }
             FunctionKind::Folder(folder) => {
                 let iter = args[0].borrow();
@@ -105,7 +107,7 @@ impl FunctionValue {
                             }
 
                             for item in iter {
-                                f.int_accumulate(item, scope)?;
+                                f.int_accumulate(item, interpreter)?;
                             }
 
                             f.finish(call_span)
@@ -117,7 +119,7 @@ impl FunctionValue {
                                 first
                                     .map(|n| Value::new_number(n, call_span))
                                     .unwrap_or_else(|| def.clone()),
-                                |acc, e| func.call(vec![acc, e], HashMap::new(), scope, call_span),
+                                |acc, e| func.call(vec![acc, e], HashMap::new(), interpreter, call_span),
                             )
                         }
                     }
@@ -132,7 +134,7 @@ impl FunctionValue {
                             }
 
                             for item in iter {
-                                f.accumulate(&item, scope)?;
+                                f.accumulate(&item, interpreter)?;
                             }
 
                             f.finish(call_span)
@@ -141,7 +143,7 @@ impl FunctionValue {
                             let v = f.borrow();
                             let func = v.cast_function(&v)?;
                             iter.try_fold(first.unwrap_or_else(|| def.clone()), |acc, e| {
-                                func.call(vec![acc, e], HashMap::new(), scope, call_span)
+                                func.call(vec![acc, e], HashMap::new(), interpreter, call_span)
                             })
                         }
                     }
@@ -156,7 +158,7 @@ impl FunctionValue {
                         let mut new_map = map.clone();
                         for (_, v) in new_map.iter_mut() {
                             let spn = &v.borrow().span();
-                            *v = mapper.call(vec![v.clone()], HashMap::new(), scope, spn)?;
+                            *v = mapper.call(vec![v.clone()], HashMap::new(), interpreter, spn)?;
                         }
 
                         Ok(Value::new_map(new_map, call_span))
@@ -167,7 +169,7 @@ impl FunctionValue {
                                 mapper.call(
                                     vec![e.clone()],
                                     HashMap::new(),
-                                    scope,
+                                    interpreter,
                                     &e.borrow().span(),
                                 )
                             })
@@ -177,14 +179,15 @@ impl FunctionValue {
                     _ => Err(RuntimeError::not_iterable(iter.name().into(), &iter)),
                 }
             }
-            FunctionKind::User { args: names, ret } => {
+            FunctionKind::User { args: names, ret, scope } => {
                 let s = Scope {
                     vars: names.iter().cloned().zip(args).collect(),
                 };
 
-                scope.push_scope(s);
-                let ret = scope.run_expr(ret.clone());
-                scope.pop_scope();
+                let mut scoped = interpreter.closure_scope(scope.clone());
+                scoped.push_scope(s);
+                let ret = scoped.run_expr(ret.clone());
+                scoped.pop_scope();
                 ret
             }
             FunctionKind::Shell(cmd) => {

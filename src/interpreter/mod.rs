@@ -1,4 +1,10 @@
-use std::{collections::HashMap, fmt::Debug, io::Read, process::ExitStatus};
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    io::Read,
+    ops::{Deref, DerefMut},
+    process::ExitStatus,
+};
 
 use crate::{
     ast::{self, RangeExpr},
@@ -213,7 +219,8 @@ pub struct Interpreter {
     global: Scope,
 }
 
-struct Scope {
+#[derive(Clone)]
+pub struct Scope {
     vars: HashMap<String, Val>,
 }
 
@@ -222,7 +229,40 @@ type RangeIteratorDef = (
     usize,
 );
 
+struct ClosureScoped<'a> {
+    interpreter: &'a mut Interpreter,
+    old_scope: Vec<Scope>,
+}
+
+impl<'a> Deref for ClosureScoped<'a> {
+    type Target = Interpreter;
+
+    fn deref(&self) -> &Self::Target {
+        self.interpreter
+    }
+}
+
+impl<'a> DerefMut for ClosureScoped<'a> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.interpreter
+    }
+}
+
+impl<'a> Drop for ClosureScoped<'a> {
+    fn drop(&mut self) {
+        self.interpreter.scopes = std::mem::take(&mut self.old_scope);
+    }
+}
+
 impl Interpreter {
+    pub(in crate::interpreter) fn closure_scope(&mut self, mut scope: Vec<Scope>) -> ClosureScoped {
+        std::mem::swap(&mut scope, &mut self.scopes);
+        ClosureScoped {
+            interpreter: self,
+            old_scope: scope,
+        }
+    }
+
     pub fn resolve(&self, name: &SpannedValue<String>) -> Result<Val> {
         for scope in self.scopes.iter().rev() {
             if let Some(v) = scope.vars.get(&**name) {
@@ -503,7 +543,11 @@ impl Interpreter {
             ast::Expr::FuncDef { args, ret } => Ok(Value::new_function(
                 FunctionValue {
                     arity: args.len(),
-                    action: FunctionKind::User { args, ret: *ret },
+                    action: FunctionKind::User {
+                        args,
+                        ret: *ret,
+                        scope: self.scopes.clone(),
+                    },
                 },
                 expr_span,
             )),
