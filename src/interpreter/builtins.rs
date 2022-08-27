@@ -492,6 +492,39 @@ fn fn_def(
     Ok(Value::new_str(def, call_span))
 }
 
+macro_rules! define_f64_fn {
+    ($name:ident) => {
+        fn $name(
+            args: Vec<Val>,
+            named: HashMap<SpannedValue<RcStr>, Val>,
+            call_span: &Span,
+            _: &mut Interpreter,
+        ) -> Result<Val, RuntimeError> {
+            named_args! {
+                struct Named {
+                }
+            }
+            let _named = Named::from_named(named)?;
+
+            let arg = args[0].borrow().cast_num(&args[0].borrow())?.f64();
+
+            Ok(Value::new_float(arg.$name(), call_span))
+        }
+    };
+}
+
+define_f64_fn! {cos}
+define_f64_fn! {sin}
+define_f64_fn! {tan}
+define_f64_fn! {acos}
+define_f64_fn! {asin}
+define_f64_fn! {atan}
+define_f64_fn! {exp}
+define_f64_fn! {ln}
+define_f64_fn! {log2}
+define_f64_fn! {ceil}
+define_f64_fn! {floor}
+
 define_builtin! {
     ty(1) => ty;
     X(1) => hex;
@@ -505,4 +538,15 @@ define_builtin! {
     zero(1) => zero;
     __vars(0) => dump_vars;
     __fndef(1) => fn_def;
+    cos(1) => cos;
+    sin(1) => sin;
+    tan(1) => tan;
+    acos(1) => acos;
+    asin(1) => asin;
+    atan(1) => atan;
+    exp(1) => exp;
+    ln(1) => ln;
+    log2(1) => log2;
+    ceil(1) => ceil;
+    floor(1) => floor;
 }
