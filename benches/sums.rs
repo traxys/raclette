@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use raclette::{
     raclette::ExprParser,
@@ -8,9 +10,9 @@ mod perf;
 
 fn ast(input: &str, parser: &ExprParser) -> SpannedValue<raclette::ast::Expr> {
     parser
-        .parse(raclette::ast::lexer(input))
+        .parse(&Arc::from(input), raclette::ast::lexer(input))
         .unwrap()
-        .spanned(UNKNOWN_SPAN)
+        .spanned(&*UNKNOWN_SPAN)
 }
 
 fn sums(c: &mut Criterion) {
