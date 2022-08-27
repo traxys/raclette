@@ -1,0 +1,1 @@
+convert = \source,dest = (\s = (s |> des{fmt = source} |> ser{fmt = dest}))

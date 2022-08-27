@@ -2,7 +2,8 @@ use itertools::Itertools;
 
 use crate::{
     ast::RcStr,
-    span::{GenerationSpan, SpannedValue, Spanning, SpanningExt, UNKNOWN_SPAN},
+    interpreter::SerdeError,
+    span::{Span, SpannedValue, SpanningExt, UNKNOWN_SPAN},
     Val, Value,
 };
 use once_cell::unsync::Lazy;
@@ -19,7 +20,7 @@ use super::{
         func::{FunctionKind, FunctionValue},
         HashableValue,
     },
-    RuntimeError, SpannedResult,
+    RuntimeError,
 };
 
 macro_rules! define_builtin {
@@ -34,7 +35,7 @@ macro_rules! define_builtin {
                     Value::new_function(FunctionValue {
                         arity: $arity,
                         action: FunctionKind::Builtin($func),
-                    }, UNKNOWN_SPAN, 0)
+                    }, &*UNKNOWN_SPAN)
                 );
             )*
             map
@@ -76,21 +77,21 @@ macro_rules! named_args {
                 #[allow(non_upper_case_globals)]
                 static $field: Lazy<SpannedValue<RcStr>> = Lazy::new(|| {
                     let s: RcStr = RcStr(Rc::from(stringify!($field)));
-                    s.spanned(UNKNOWN_SPAN)
+                    s.spanned(&*UNKNOWN_SPAN)
                 });
             )*
         }
 
 
         impl $name {
-            pub fn from_named(named: HashMap<SpannedValue<RcStr>, Val>, gen: u64) -> Result<$name, RuntimeError> {
+            pub fn from_named(named: HashMap<SpannedValue<RcStr>, Val>) -> Result<$name, RuntimeError> {
                 if let Some(name) = named.keys().find(|key|
                     ![$(stringify!($field))*].contains(&(***key).deref())
                 ) {
-                    return Err(RuntimeError::InvalidNamedArgument {
-                        location: name.span().with_generation(gen).source_span(gen),
-                        name: name.value.to_string(),
-                    });
+                    return Err(RuntimeError::invalid_named_argument(
+                        name.value.to_string(),
+                        &name.span(),
+                    ));
                 }
 
 
@@ -100,7 +101,7 @@ macro_rules! named_args {
                             None => Ok(None),
                             Some(v) => {
                                 let v = v.borrow();
-                                Ok(Some(v.$caster().with_span(&*v)?))
+                                Ok(Some(v.$caster(&*v)?))
                             }
                         }})?
                     )*
@@ -113,64 +114,55 @@ macro_rules! named_args {
 fn hex(
     args: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
-    span: GenerationSpan,
-    gen: u64,
+    call_span: &Span,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
             sep with cast_number(i64)
         }
     }
-    let named = Named::from_named(named, gen)?;
+    let named = Named::from_named(named)?;
 
-    let v = args[0]
-        .borrow()
-        .cast_number()
-        .with_span(&*args[0].borrow())?;
+    let v = args[0].borrow().cast_number(&*args[0].borrow())?;
     let str = format!("{v:#x}");
     match named.sep {
-        None => Ok(Value::new_str(str, &span, gen)),
-        Some(v) => Ok(Value::new_str(separate_string(str, v), &span, gen)),
+        None => Ok(Value::new_str(str, call_span)),
+        Some(v) => Ok(Value::new_str(separate_string(str, v), call_span)),
     }
 }
 
 fn bin(
     args: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
-    span: GenerationSpan,
-    gen: u64,
+    call_span: &Span,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
             sep with cast_number(i64)
         }
     }
-    let named = Named::from_named(named, gen)?;
+    let named = Named::from_named(named)?;
 
-    let v = args[0]
-        .borrow()
-        .cast_number()
-        .with_span(&*args[0].borrow())?;
+    let v = args[0].borrow().cast_number(&*args[0].borrow())?;
     let str = format!("{v:#b}");
     match named.sep {
-        None => Ok(Value::new_str(str, &span, gen)),
-        Some(v) => Ok(Value::new_str(separate_string(str, v), &span, gen)),
+        None => Ok(Value::new_str(str, call_span)),
+        Some(v) => Ok(Value::new_str(separate_string(str, v), call_span)),
     }
 }
 
 fn parse_int(
     args: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
-    span: GenerationSpan,
-    gen: u64,
+    call_span: &Span,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
         }
     }
-    let _named = Named::from_named(named, gen)?;
+    let _named = Named::from_named(named)?;
 
-    let v = args[0].borrow().cast_str().with_span(&*args[0].borrow())?;
+    let v = args[0].borrow().cast_str(&*args[0].borrow())?;
     let n = if v.starts_with("0x") {
         i64::from_str_radix(v.trim_start_matches("0x"), 16)
     } else if v.starts_with("0b") {
@@ -178,42 +170,40 @@ fn parse_int(
     } else {
         v.parse()
     }
-    .map_err(|_| RuntimeError::ParseIntError)?;
+    .map_err(|_| RuntimeError::parse_int_error(&*args[0].borrow()))?;
 
-    Ok(Value::new_number(n, &span, gen))
+    Ok(Value::new_number(n, call_span))
 }
 
 fn open_file(
     args: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
-    span: GenerationSpan,
-    gen: u64,
+    call_span: &Span,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
         }
     }
-    let _named = Named::from_named(named, gen)?;
+    let _named = Named::from_named(named)?;
 
-    let v = args[0].borrow().cast_str().with_span(&*args[0].borrow())?;
-    let f = File::open(&*v).map_err(Into::into).with_span(&span)?;
+    let v = args[0].borrow().cast_str(&*args[0].borrow())?;
+    let f = File::open(&*v).map_err(|e| RuntimeError::io_error(e, &args[0].borrow()))?;
 
-    Ok(Value::new_file(f, &span, gen))
+    Ok(Value::new_file(f, call_span))
 }
 
 fn ser_value(
     args: Vec<Val>,
     named_map: HashMap<SpannedValue<RcStr>, Val>,
-    span: GenerationSpan,
-    gen: u64,
+    call_span: &Span,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
             fmt with cast_str(RcStr)
         }
     }
-    let fmt_span = fmt.with(|k| named_map.get(k).map(|v| v.borrow().source_span(gen)));
-    let named = Named::from_named(named_map, gen)?;
+    let fmt_span = fmt.with(|k| named_map.get(k).map(|v| v.borrow().span()));
+    let named = Named::from_named(named_map)?;
 
     enum Format {
         Yaml,
@@ -230,48 +220,48 @@ fn ser_value(
             "ron" => Format::Ron,
             "json" => Format::Json,
             _ => {
-                return Err(RuntimeError::UnsupportedSerdeFormat {
-                    format: s.to_string(),
-                    location: fmt_span.flatten(),
-                });
+                return Err(RuntimeError::unsupported_serde_format(
+                    s.to_string(),
+                    &fmt_span.unwrap(),
+                ));
             }
         },
     };
 
     let arg = args[0].borrow();
 
+    let serde_error = |s: SerdeError| RuntimeError::serde_error(s, &*arg);
+
     let stringified = match format {
         Format::Json => serde_json::to_string(&**arg)
             .map_err(Into::into)
-            .map_err(RuntimeError::SerdeError),
+            .map_err(serde_error),
         Format::Yaml => serde_yaml::to_string(&**arg)
             .map_err(Into::into)
-            .map_err(RuntimeError::SerdeError),
+            .map_err(serde_error),
         Format::Ron => ron::to_string(&**arg)
             .map_err(Into::into)
-            .map_err(RuntimeError::SerdeError),
+            .map_err(serde_error),
         Format::Toml => toml::to_string(&**arg)
             .map_err(Into::into)
-            .map_err(RuntimeError::SerdeError),
-    }
-    .with_span(&*arg)?;
+            .map_err(serde_error),
+    }?;
 
-    Ok(Value::new_str(stringified, &span, gen))
+    Ok(Value::new_str(stringified, call_span))
 }
 
 fn deser_value(
     args: Vec<Val>,
     named_map: HashMap<SpannedValue<RcStr>, Val>,
-    span: GenerationSpan,
-    gen: u64,
+    call_span: &Span,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
             fmt with cast_str(RcStr)
         }
     }
-    let fmt_span = fmt.with(|k| named_map.get(k).map(|v| v.borrow().source_span(gen)));
-    let named = Named::from_named(named_map, gen)?;
+    let fmt_span = fmt.with(|k| named_map.get(k).map(|v| v.borrow().span()));
+    let named = Named::from_named(named_map)?;
 
     enum Format {
         Yaml,
@@ -288,121 +278,114 @@ fn deser_value(
             "ron" => Format::Ron,
             "json" => Format::Json,
             _ => {
-                return Err(RuntimeError::UnsupportedSerdeFormat {
-                    format: s.to_string(),
-                    location: fmt_span.flatten(),
-                });
+                return Err(RuntimeError::unsupported_serde_format(
+                    s.to_string(),
+                    &fmt_span.unwrap(),
+                ));
             }
         },
     };
 
-    let arg_span = args[0].borrow().gen_span();
+    let arg_span = args[0].borrow().span();
+    let serde_error = |s: SerdeError| RuntimeError::serde_error(s, &arg_span);
+
     let parsed: Value = match &mut **args[0].borrow_mut() {
         Value::File(f) => {
             let mut buf_reader = BufReader::new(f);
             match format {
                 Format::Json => serde_json::from_reader(&mut buf_reader)
                     .map_err(Into::into)
-                    .map_err(RuntimeError::SerdeError)?,
+                    .map_err(serde_error)?,
                 Format::Yaml => serde_yaml::from_reader(&mut buf_reader)
                     .map_err(Into::into)
-                    .map_err(RuntimeError::SerdeError)?,
+                    .map_err(serde_error)?,
                 Format::Ron => ron::de::from_reader(&mut buf_reader)
                     .map_err(Into::into)
-                    .map_err(RuntimeError::SerdeError)?,
+                    .map_err(serde_error)?,
                 Format::Toml => {
                     let mut data = Vec::new();
-                    buf_reader.read_to_end(&mut data)?;
+                    buf_reader
+                        .read_to_end(&mut data)
+                        .map_err(|e| RuntimeError::io_error(e, &arg_span))?;
                     toml::de::from_slice(&data)
                         .map_err(Into::into)
-                        .map_err(RuntimeError::SerdeError)?
+                        .map_err(serde_error)?
                 }
             }
         }
         Value::Hashable(HashableValue::Str(s)) => match format {
             Format::Json => serde_json::from_str(s)
                 .map_err(Into::into)
-                .map_err(RuntimeError::SerdeError)?,
+                .map_err(serde_error)?,
             Format::Yaml => serde_yaml::from_str(s)
                 .map_err(Into::into)
-                .map_err(RuntimeError::SerdeError)?,
-            Format::Ron => ron::from_str(s)
-                .map_err(Into::into)
-                .map_err(RuntimeError::SerdeError)?,
-            Format::Toml => toml::from_str(s)
-                .map_err(Into::into)
-                .map_err(RuntimeError::SerdeError)?,
+                .map_err(serde_error)?,
+            Format::Ron => ron::from_str(s).map_err(Into::into).map_err(serde_error)?,
+            Format::Toml => toml::from_str(s).map_err(Into::into).map_err(serde_error)?,
         },
         v => {
-            return Err(RuntimeError::CastError {
-                into: "str-like".into(),
-                from: v.name().into(),
-                location: arg_span.source_span(gen),
-            })
+            return Err(RuntimeError::cast_error(
+                "str-like".into(),
+                v.name().into(),
+                &arg_span,
+            ))
         }
     };
 
-    Ok(Value::new(parsed.spanned_gen(&span, gen)))
+    Ok(Value::new(parsed.respan(call_span)))
 }
 
 fn shell_function(
     args: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
-    span: GenerationSpan,
-    gen: u64,
+    call_span: &Span,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
         }
     }
-    let _named = Named::from_named(named, gen)?;
+    let _named = Named::from_named(named)?;
 
-    let arg = args[0]
-        .borrow()
-        .cast_str()
-        .with_span(&args[0].borrow().span())?;
+    let arg = args[0].borrow().cast_str(&args[0].borrow())?;
 
     Ok(Value::new_function(
         FunctionValue {
             arity: 1,
             action: FunctionKind::Shell(arg),
         },
-        &span,
-        gen,
+        call_span,
     ))
 }
 
 fn to_list(
     args: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
-    span: GenerationSpan,
-    gen: u64,
+    call_span: &Span,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
         }
     }
-    let _named = Named::from_named(named, gen)?;
+    let _named = Named::from_named(named)?;
 
     let arg = args[0].borrow();
-    let iter = arg.cast_iterable().with_span(&args[0].borrow().span())?;
+    let iter = arg.cast_iterable(&args[0].borrow())?;
 
-    Ok(Value::new_array(iter.collect(), &span, gen))
+    Ok(Value::new_array(iter.collect(), call_span))
 }
 
 fn zero(
     _: Vec<Val>,
     named: HashMap<SpannedValue<RcStr>, Val>,
-    span: GenerationSpan,
-    gen: u64,
+    call_span: &Span,
 ) -> Result<Val, RuntimeError> {
     named_args! {
         struct Named {
         }
     }
-    let _named = Named::from_named(named, gen)?;
+    let _named = Named::from_named(named)?;
 
-    Ok(Value::new_number(0, &span, gen))
+    Ok(Value::new_number(0, call_span))
 }
 
 define_builtin! {

@@ -1,4 +1,9 @@
-use std::{collections::HashMap, fmt::Display, ops::{Range, Deref}, rc::Rc};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    ops::{Deref, Range},
+    rc::Rc,
+};
 
 use arbitrary::Arbitrary;
 use logos::Logos;

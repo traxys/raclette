@@ -8,16 +8,16 @@ use std::{cell::RefCell, collections::HashMap, fmt::Display, fs::File, rc::Rc};
 
 use crate::{
     ast::RcStr,
-    span::{GenerationSpan, GenerationSpanned, SpannedValue, Spanning, SpanningExt, UNKNOWN_SPAN},
+    span::{Span, SpannedValue, SpanningExt, UNKNOWN_SPAN},
 };
 
-use super::{Result, RuntimeError, SpannedResult};
+use super::{Result, RuntimeError};
 
 pub mod func;
 
 use func::FunctionValue;
 
-pub type Val = Rc<RefCell<GenerationSpanned<Value>>>;
+pub type Val = Rc<RefCell<SpannedValue<Value>>>;
 
 #[derive(Copy, Clone)]
 pub(super) enum Num {
@@ -163,7 +163,7 @@ impl<'de> Deserialize<'de> for Value {
                 let mut vec = Vec::new();
 
                 while let Some(v) = seq.next_element::<Value>()? {
-                    vec.push(Value::new(v.spanned_gen(UNKNOWN_SPAN, 0)))
+                    vec.push(Value::new(v.spanned(&*UNKNOWN_SPAN)))
                 }
 
                 Ok(Value::Array(vec))
@@ -178,7 +178,7 @@ impl<'de> Deserialize<'de> for Value {
                 loop {
                     match visitor.next_entry::<_, Value>() {
                         Ok(Some((k, v))) => {
-                            values.insert(k, Value::new(v.spanned_gen(UNKNOWN_SPAN, 0)));
+                            values.insert(k, Value::new(v.spanned(&*UNKNOWN_SPAN)));
                         }
                         Ok(None) => break,
                         Err(e) => return Err(e),
@@ -316,20 +316,11 @@ impl Display for HashableValue {
 }
 
 impl Value {
-    pub fn index(
-        &self,
-        idx: Val,
-        expr_span: &GenerationSpan,
-        index_span: &GenerationSpan,
-        gen: u64,
-    ) -> Result<Val> {
+    pub fn index(&self, idx: Val, expr_span: &Span, index_span: &Span) -> Result<Val> {
         match (self, &**idx.borrow()) {
             (Value::Array(a), &Value::Hashable(HashableValue::Number(n))) => {
                 if (n >= 0 && n as usize >= a.len()) || (n < 0 && (-n) as usize > a.len()) {
-                    return Err(RuntimeError::NoSuchIndex {
-                        idx: n.to_string(),
-                        location: index_span.source_span(gen),
-                    });
+                    return Err(RuntimeError::no_such_index(n.to_string(), index_span));
                 }
 
                 if n >= 0 {
@@ -340,33 +331,24 @@ impl Value {
             }
             (Value::Range(r), &Value::Hashable(HashableValue::Number(n))) => {
                 if n < 0 {
-                    return Err(RuntimeError::NoSuchIndex {
-                        idx: n.to_string(),
-                        location: index_span.source_span(gen),
-                    });
+                    return Err(RuntimeError::no_such_index(n.to_string(), index_span));
                 }
 
                 match r.clone().nth(n as usize) {
-                    Some(v) => Ok(Value::new_number(v, expr_span, gen)),
-                    None => Err(RuntimeError::NoSuchIndex {
-                        idx: n.to_string(),
-                        location: index_span.source_span(gen),
-                    }),
+                    Some(v) => Ok(Value::new_number(v, expr_span)),
+                    None => Err(RuntimeError::no_such_index(n.to_string(), index_span)),
                 }
             }
             (Value::Map(m), Value::Hashable(h)) => match m.get(h) {
-                None => Err(RuntimeError::NoSuchIndex {
-                    idx: h.to_string(),
-                    location: index_span.source_span(gen),
-                }),
+                None => Err(RuntimeError::no_such_index(h.to_string(), index_span)),
                 Some(v) => Ok(v.clone()),
             },
-            (e, i) => Err(RuntimeError::NotIndexableWith {
-                ty: e.name().into(),
-                idx_ty: i.name().into(),
-                location: expr_span.source_span(gen),
-                idx_location: index_span.source_span(gen),
-            }),
+            (e, i) => Err(RuntimeError::not_indexable_with(
+                e.name().into(),
+                i.name().into(),
+                index_span.into(),
+                expr_span,
+            )),
         }
     }
 
@@ -374,17 +356,13 @@ impl Value {
         &mut self,
         idx: Val,
         value: Val,
-        expr_span: &GenerationSpan,
-        index_span: &GenerationSpan,
-        gen: u64,
+        expr_span: &Span,
+        index_span: &Span,
     ) -> Result<()> {
         match (self, &**idx.borrow()) {
             (Value::Array(a), &Value::Hashable(HashableValue::Number(n))) => {
                 if (n >= 0 && n as usize >= a.len()) || (n < 0 && -n as usize > a.len()) {
-                    return Err(RuntimeError::NoSuchIndex {
-                        idx: n.to_string(),
-                        location: index_span.source_span(gen),
-                    });
+                    return Err(RuntimeError::no_such_index(n.to_string(), index_span));
                 }
 
                 if n >= 0 {
@@ -398,28 +376,25 @@ impl Value {
             }
             (Value::Range(_), &Value::Hashable(HashableValue::Number(n))) => {
                 if n < 0 {
-                    return Err(RuntimeError::NoSuchIndex {
-                        idx: n.to_string(),
-                        location: index_span.source_span(gen),
-                    });
+                    return Err(RuntimeError::no_such_index(n.to_string(), index_span));
                 }
 
-                Err(RuntimeError::IndexNotAssignable {
-                    idx: n.to_string(),
-                    location: index_span.source_span(gen),
-                })
+                Err(RuntimeError::index_not_assignable(
+                    n.to_string(),
+                    index_span,
+                ))
             }
             (Value::Map(m), Value::Hashable(h)) => {
                 m.insert(h.clone(), value);
 
                 Ok(())
             }
-            (e, i) => Err(RuntimeError::NotIndexableWith {
-                ty: e.name().into(),
-                idx_ty: i.name().into(),
-                location: expr_span.source_span(gen),
-                idx_location: index_span.source_span(gen),
-            }),
+            (e, i) => Err(RuntimeError::not_indexable_with(
+                e.name().into(),
+                i.name().into(),
+                expr_span.into(),
+                index_span,
+            )),
         }
     }
 
@@ -436,91 +411,87 @@ impl Value {
                 m.insert(HashableValue::Str(field.value), value);
                 Ok(())
             }
-            _ => Err(RuntimeError::FieldNotAssignable {
-                field: field.value.to_string(),
-                location: None,
-            })
-            .with_span(&field),
+            _ => Err(RuntimeError::field_not_assignable(
+                field.value.to_string(),
+                &field,
+            )),
         }
     }
 
-    pub fn cast_slice(&self) -> Result<&[Val]> {
+    pub fn cast_slice<U>(&self, span: &SpannedValue<U>) -> Result<&[Val]> {
         match self {
             Value::Array(a) => Ok(a),
-            v => Err(RuntimeError::CastError {
-                into: "array".into(),
-                from: v.name().into(),
-                location: None,
-            }),
+            v => Err(RuntimeError::cast_error(
+                "array".into(),
+                v.name().into(),
+                span,
+            )),
         }
     }
 
-    pub(super) fn cast_num(&self) -> Result<Num> {
+    pub(super) fn cast_num<U>(&self, span: &SpannedValue<U>) -> Result<Num> {
         match self {
             &Value::Hashable(HashableValue::Number(n)) => Ok(Num::Int(n)),
             &Value::Float(f) => Ok(Num::Float(f)),
-            v => Err(RuntimeError::CastError {
-                into: "num".into(),
-                from: v.name().into(),
-                location: None,
-            }),
+            v => Err(RuntimeError::cast_error(
+                "num".into(),
+                v.name().into(),
+                span,
+            )),
         }
     }
 
-    pub fn cast_number(&self) -> Result<i64> {
+    pub fn cast_number<U>(&self, span: &SpannedValue<U>) -> Result<i64> {
         match self {
             &Value::Hashable(HashableValue::Number(n)) => Ok(n),
-            v => Err(RuntimeError::CastError {
-                into: "number".into(),
-                from: v.name().into(),
-                location: None,
-            }),
+            v => Err(RuntimeError::cast_error(
+                "number".into(),
+                v.name().into(),
+                span,
+            )),
         }
     }
 
-    pub fn cast_function(&self) -> Result<FunctionValue> {
+    pub fn cast_function<U>(&self, span: &SpannedValue<U>) -> Result<FunctionValue> {
         match self {
             Value::Func(f) => Ok(f.clone()),
-            v => Err(RuntimeError::CastError {
-                into: "function".into(),
-                from: v.name().into(),
-                location: None,
-            }),
+            v => Err(RuntimeError::cast_error(
+                "function".into(),
+                v.name().into(),
+                span,
+            )),
         }
     }
 
-    pub fn cast_str(&self) -> Result<RcStr> {
+    pub fn cast_str<U>(&self, span: &SpannedValue<U>) -> Result<RcStr> {
         match self {
             Value::Hashable(HashableValue::Str(f)) => Ok(f.clone()),
-            v => Err(RuntimeError::CastError {
-                into: "str".into(),
-                from: v.name().into(),
-                location: None,
-            }),
+            v => Err(RuntimeError::cast_error(
+                "str".into(),
+                v.name().into(),
+                span,
+            )),
         }
     }
 
-    pub fn cast_hashable(&self) -> Result<HashableValue> {
+    pub fn cast_hashable<U>(&self, span: &SpannedValue<U>) -> Result<HashableValue> {
         match self {
             Value::Hashable(h) => Ok(h.clone()),
-            _ => Err(RuntimeError::NotHashable {
-                ty: self.name().into(),
-                location: None,
-            }),
+            _ => Err(RuntimeError::not_hashable(self.name().into(), span)),
         }
     }
 
-    pub fn cast_iterable(&self) -> Result<Box<dyn Iterator<Item = Val> + '_>> {
+    pub fn cast_iterable<U>(
+        &self,
+        span: &SpannedValue<U>,
+    ) -> Result<Box<dyn Iterator<Item = Val> + '_>> {
         match self {
             Value::Map(v) => Ok(Box::new(v.values().cloned())),
             Value::Array(a) => Ok(Box::new(a.iter().cloned())),
             Value::Range(r) => Ok(Box::new(
-                r.clone().map(|v| Value::new_number(v, UNKNOWN_SPAN, 0)),
+                r.clone().map(|v| Value::new_number(v, &*UNKNOWN_SPAN)),
             )),
-            _ => Err(RuntimeError::NotIterable {
-                ty: self.name().into(),
-                location: None,
-            }),
+            _ => Err(RuntimeError::not_iterable(self.name().into(), span)),
         }
     }
 
@@ -531,74 +502,100 @@ impl Value {
         }
     }
 
-    pub(in crate::interpreter) fn new_num<U, S>(v: Num, span: &S, gen: u64) -> Val
-    where
-        S: Spanning<U>,
-    {
+    pub(in crate::interpreter) fn new_num<U>(v: Num, span: &SpannedValue<U>) -> Val {
         match v {
-            Num::Float(f) => Self::new_float(f, span, gen),
-            Num::Int(i) => Self::new_number(i, span, gen),
+            Num::Float(f) => Self::new_float(f, span),
+            Num::Int(i) => Self::new_number(i, span),
         }
     }
 
-    pub fn new_range_iterator<U, S>(v: RangeIterator, span: &S, gen: u64) -> Val
-    where
-        S: Spanning<U>,
-    {
-        Self::new(Self::Range(v).spanned_gen(span, gen))
+    pub fn new_range_iterator<U>(v: RangeIterator, span: &SpannedValue<U>) -> Val {
+        Self::new(Self::Range(v).spanned(span))
     }
 
-    pub fn new_file<U, S>(v: File, span: &S, gen: u64) -> Val
-    where
-        S: Spanning<U>,
-    {
-        Self::new(Self::File(v).spanned_gen(span, gen))
+    pub fn new_file<U>(v: File, span: &SpannedValue<U>) -> Val {
+        Self::new(Self::File(v).spanned(span))
     }
 
-    pub fn new_float<U, S>(v: f64, span: &S, gen: u64) -> Val
-    where
-        S: Spanning<U>,
-    {
-        Self::new(Self::Float(v).spanned_gen(span, gen))
+    pub fn new_float<U>(v: f64, span: &SpannedValue<U>) -> Val {
+        Self::new(Self::Float(v).spanned(span))
     }
 
-    pub fn new_number<U, S>(v: i64, span: &S, gen: u64) -> Val
-    where
-        S: Spanning<U>,
-    {
-        Self::new(Self::Hashable(HashableValue::Number(v)).spanned_gen(span, gen))
+    pub fn new_number<U>(v: i64, span: &SpannedValue<U>) -> Val {
+        Self::new(Self::Hashable(HashableValue::Number(v)).spanned(span))
     }
 
-    pub fn new_function<U, S>(v: FunctionValue, span: &S, gen: u64) -> Val
-    where
-        S: Spanning<U>,
-    {
-        Self::new(Self::Func(v).spanned_gen(span, gen))
+    pub fn new_function<U>(v: FunctionValue, span: &SpannedValue<U>) -> Val {
+        Self::new(Self::Func(v).spanned(span))
     }
 
-    pub fn new_str<U, S>(v: String, span: &S, gen: u64) -> Val
-    where
-        S: Spanning<U>,
-    {
-        Self::new(Self::Hashable(HashableValue::Str(RcStr(Rc::from(v)))).spanned_gen(span, gen))
+    pub fn new_str<U>(v: String, span: &SpannedValue<U>) -> Val {
+        Self::new(Self::Hashable(HashableValue::Str(RcStr(Rc::from(v)))).spanned(span))
     }
 
-    pub fn new_map<U, S>(v: HashMap<HashableValue, Val>, span: &S, gen: u64) -> Val
-    where
-        S: Spanning<U>,
-    {
-        Self::new(Self::Map(v).spanned_gen(span, gen))
+    pub fn new_map<U>(v: HashMap<HashableValue, Val>, span: &SpannedValue<U>) -> Val {
+        Self::new(Self::Map(v).spanned(span))
     }
 
-    pub fn new_array<U, S>(v: Vec<Val>, span: &S, gen: u64) -> Val
-    where
-        S: Spanning<U>,
-    {
-        Self::new(Self::Array(v).spanned_gen(span, gen))
+    pub fn new_array<U>(v: Vec<Val>, span: &SpannedValue<U>) -> Val {
+        Self::new(Self::Array(v).spanned(span))
     }
 
-    pub(crate) fn new(v: GenerationSpanned<Value>) -> Val {
+    pub(crate) fn new(v: SpannedValue<Value>) -> Val {
         Rc::new(RefCell::new(v))
+    }
+
+    fn respan_in_place(&mut self, span: &Span) {
+        match self {
+            Value::Range(_) => (),
+            Value::Func(_) => (),
+            Value::File(_) => (),
+            Value::Float(_) => (),
+            Value::Hashable(_) => (),
+            Value::Map(m) => {
+                for v in m.values() {
+                    let mut v = v.borrow_mut();
+                    v.respan_in_place(span);
+                    v.swap_span(span);
+                }
+            }
+            Value::Array(a) => {
+                for v in a.iter() {
+                    let mut v = v.borrow_mut();
+                    v.respan_in_place(span);
+                    v.swap_span(span);
+                }
+            }
+        }
+    }
+
+    pub(crate) fn respan(self, span: &Span) -> SpannedValue<Value> {
+        let value = match self {
+            Value::Range(_) => self,
+            Value::Func(_) => self,
+            Value::File(_) => self,
+            Value::Hashable(_) => self,
+            Value::Float(_) => self,
+            Value::Map(m) => Value::Map(
+                m.into_iter()
+                    .map(|(k, v)| {
+                        (k, {
+                            v.borrow_mut().respan_in_place(span);
+                            v
+                        })
+                    })
+                    .collect(),
+            ),
+            Value::Array(a) => Value::Array(
+                a.into_iter()
+                    .map(|v| {
+                        v.borrow_mut().respan_in_place(span);
+                        v
+                    })
+                    .collect(),
+            ),
+        };
+        value.spanned(span)
     }
 
     pub(crate) fn name(&self) -> &'static str {

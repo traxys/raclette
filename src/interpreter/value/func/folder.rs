@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use crate::{
-    interpreter::{Interpreter, Result, SpannedResult},
-    span::{GenerationSpan, Spanning, UNKNOWN_SPAN},
+    interpreter::{Interpreter, Result},
+    span::{Span, UNKNOWN_SPAN},
     Val,
 };
 
@@ -40,13 +40,10 @@ pub trait NativeFolder {
     fn seed(&mut self, v: Val) -> Result<()>;
 
     fn accumulate(&mut self, value: &Val, interpreter: &mut Interpreter) -> Result<()>;
-    fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val>;
+    fn finish(&self, span: &Span) -> Result<Val>;
 
     fn int_accumulate(&mut self, value: i64, interpreter: &mut Interpreter) -> Result<()> {
-        self.accumulate(
-            &Value::new_number(value, UNKNOWN_SPAN, interpreter.generation),
-            interpreter,
-        )
+        self.accumulate(&Value::new_number(value, &*UNKNOWN_SPAN), interpreter)
     }
 
     fn kind(&self) -> &'static str;
@@ -70,12 +67,12 @@ macro_rules! int_folder {
             }
 
             fn seed(&mut self, v: Val) -> Result<()> {
-                self.current = v.borrow().cast_number().with_span(&*v.borrow())?;
+                self.current = v.borrow().cast_number(&*v.borrow())?;
                 Ok(())
             }
 
             fn accumulate(&mut self, value: &Val, inter: &mut Interpreter) -> Result<()> {
-                let v = value.borrow().cast_number().with_span(&*value.borrow())?;
+                let v = value.borrow().cast_number(&*value.borrow())?;
                 self.int_accumulate(v, inter)
             }
 
@@ -84,8 +81,8 @@ macro_rules! int_folder {
                 Ok(())
             }
 
-            fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val> {
-                Ok(Value::new_number(self.current, span, generation))
+            fn finish(&self, span: &Span) -> Result<Val> {
+                Ok(Value::new_number(self.current, span))
             }
 
             fn kind(&self) -> &'static str {
@@ -129,12 +126,12 @@ macro_rules! num_folder {
             }
 
             fn seed(&mut self, v: Val) -> Result<()> {
-                self.current = v.borrow().cast_num().with_span(&*v.borrow())?;
+                self.current = v.borrow().cast_num(&v.borrow())?;
                 Ok(())
             }
 
             fn accumulate(&mut self, value: &Val, _: &mut Interpreter) -> Result<()> {
-                let v = value.borrow().cast_num().with_span(&*value.borrow())?;
+                let v = value.borrow().cast_num(&value.borrow())?;
                 self.current = nums_op!((self.current, v).into(), $op);
 
                 Ok(())
@@ -146,8 +143,8 @@ macro_rules! num_folder {
                 Ok(())
             }
 
-            fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val> {
-                Ok(Value::new_num(self.current, span, generation))
+            fn finish(&self, span: &Span) -> Result<Val> {
+                Ok(Value::new_num(self.current, span))
             }
 
             fn kind(&self) -> &'static str {
@@ -180,19 +177,19 @@ impl NativeFolder for PowerFolder {
     }
 
     fn seed(&mut self, v: Val) -> Result<()> {
-        self.current = v.borrow().cast_num().with_span(&*v.borrow())?;
+        self.current = v.borrow().cast_num(&v.borrow())?;
         Ok(())
     }
 
     fn accumulate(&mut self, value: &Val, _: &mut Interpreter) -> Result<()> {
-        let v = value.borrow().cast_num().with_span(&*value.borrow())?;
+        let v = value.borrow().cast_num(&value.borrow())?;
         self.current = power_nums(self.current, v);
 
         Ok(())
     }
 
-    fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val> {
-        Ok(Value::new_num(self.current, span, generation))
+    fn finish(&self, span: &Span) -> Result<Val> {
+        Ok(Value::new_num(self.current, span))
     }
 
     fn kind(&self) -> &'static str {
@@ -217,19 +214,19 @@ impl NativeFolder for DivideFolder {
     }
 
     fn seed(&mut self, v: Val) -> Result<()> {
-        self.current = v.borrow().cast_num().with_span(&*v.borrow())?.f64();
+        self.current = v.borrow().cast_num(&*v.borrow())?.f64();
         Ok(())
     }
 
     fn accumulate(&mut self, value: &Val, _: &mut Interpreter) -> Result<()> {
-        let v = value.borrow().cast_num().with_span(&*value.borrow())?;
+        let v = value.borrow().cast_num(&*value.borrow())?;
         self.current /= v.f64();
 
         Ok(())
     }
 
-    fn finish(&self, span: &GenerationSpan, generation: u64) -> Result<Val> {
-        Ok(Value::new_float(self.current, span, generation))
+    fn finish(&self, span: &Span) -> Result<Val> {
+        Ok(Value::new_float(self.current, span))
     }
 
     fn kind(&self) -> &'static str {
@@ -247,7 +244,7 @@ impl NativeFolder for RedirectFolder {
         Self: Sized,
     {
         Box::new(Self {
-            current: Value::new_number(0, UNKNOWN_SPAN, 0),
+            current: Value::new_number(0, &*UNKNOWN_SPAN),
         })
     }
 
@@ -261,21 +258,20 @@ impl NativeFolder for RedirectFolder {
     }
 
     fn accumulate(&mut self, value: &Val, interpreter: &mut Interpreter) -> Result<()> {
-        let v = value.borrow().cast_function().with_span(&*value.borrow())?;
+        let v = value.borrow().cast_function(&*value.borrow())?;
         self.current = v.call(
             vec![self.current.clone()],
             HashMap::new(),
             interpreter,
-            &UNKNOWN_SPAN.with_generation(0),
+            &UNKNOWN_SPAN,
         )?;
 
         Ok(())
     }
 
-    fn finish(&self, span: &GenerationSpan, gen: u64) -> Result<Val> {
+    fn finish(&self, span: &Span) -> Result<Val> {
         let v = self.current.clone();
         v.borrow_mut().swap_span(span);
-        v.borrow_mut().set_gen(gen);
         Ok(v)
     }
 

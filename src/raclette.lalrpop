@@ -1,11 +1,11 @@
 use crate::{
 	ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder, RangeExpr, RcStr},
-	span::{SpannedValue, UNKNOWN_SPAN, SpanningExt}
+	span::{SpannedValue, UNKNOWN_SPAN, SpanningExt, ArcStr}
 };
 use std::rc::Rc;
 use std::collections::HashMap;
 
-grammar;
+grammar(source: &std::sync::Arc<str>);
 
 extern {
 	type Location = usize;
@@ -56,7 +56,12 @@ Comma<T>: Vec<T> = {
 };
 
 Spn<T>: SpannedValue<T> = {
-	<start:@L> <value:T> <end:@R> => SpannedValue {start, value, end}
+	<start:@L> <value:T> <end:@R> => SpannedValue {
+		start, 
+		value, 
+		end, 
+		source: ArcStr(source.clone())
+	}
 };
 
 Literal: Literal = {
@@ -210,23 +215,24 @@ PrefixMapperExpr: Expr = {
 RangeExpr: RangeExpr = {
 	"[" <start:Spn<ShiftExpr>?> ":" <end:Spn<ShiftExpr>?> "]" => RangeExpr {
 		start: start.unwrap_or_else(||
-			Expr::Literal(Literal::Number(0).spanned(UNKNOWN_SPAN)).spanned(UNKNOWN_SPAN)
+			Expr::Literal(Literal::Number(0).spanned(&*UNKNOWN_SPAN)).spanned(&*UNKNOWN_SPAN)
 		),
-		end: end,
-		step: Expr::Literal(Literal::Number(1).spanned(UNKNOWN_SPAN)).spanned(UNKNOWN_SPAN),
+		end,
+		step: Expr::Literal(Literal::Number(1).spanned(&*UNKNOWN_SPAN)).spanned(&*UNKNOWN_SPAN),
 	},
 	"[" <start:Spn<ShiftExpr>?> ":" <end:Spn<ShiftExpr>?> ":" <step:Spn<ShiftExpr>> "]" => RangeExpr {
 		start: start.unwrap_or_else(||
-			Expr::Literal(Literal::Number(0).spanned(UNKNOWN_SPAN)).spanned(UNKNOWN_SPAN)
+			Expr::Literal(Literal::Number(0).spanned(&*UNKNOWN_SPAN)).spanned(&*UNKNOWN_SPAN)
 		),
-		end: end,
-		step: step,
+		end,
+		step,
 	},
 };
 
 LiteralExpr: Expr = {
 	<RangeExpr> => Expr::Range(Box::new(<>)),
 	<start:@L> "%" <op:BinaryOp> <end:@R> => Expr::Fold(SpannedValue {
+		source: ArcStr(source.clone()),
 		start,
 		end,
 		value: Folder::Operator(op)
@@ -235,7 +241,8 @@ LiteralExpr: Expr = {
 		SpannedValue {
 			start,
 			end,
-			value: Folder::Args{func: Box::new(func), def: Box::new(def)}
+			value: Folder::Args{func: Box::new(func), def: Box::new(def)},
+			source: ArcStr(source.clone()),
 		}
 	),
 	<Spn<FuncDef>> "@" => Expr::Mapper(Box::new(<>)),

@@ -1,159 +1,111 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
 use arbitrary::Arbitrary;
 use derivative::Derivative;
 use miette::SourceSpan;
+use once_cell::sync::Lazy;
 
-#[derive(Debug, Clone, Copy, Derivative, Eq, Arbitrary)]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ArcStr(pub Arc<str>);
+
+impl<'a> Arbitrary<'a> for ArcStr {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let data = String::arbitrary(u)?;
+        Ok(Self(Arc::from(data)))
+    }
+}
+
+#[derive(Debug, Clone, Derivative, Eq, Arbitrary)]
 #[derivative(PartialEq, Hash)]
 pub struct SpannedValue<T> {
     #[derivative(PartialEq = "ignore", Hash = "ignore")]
     pub start: usize,
     #[derivative(PartialEq = "ignore", Hash = "ignore")]
     pub end: usize,
+    #[derivative(PartialEq = "ignore", Hash = "ignore")]
+    pub source: ArcStr,
     pub value: T,
 }
 
-#[derive(Debug, Clone, Derivative, Eq)]
-#[derivative(PartialEq, Hash)]
-pub struct GenerationSpanned<T> {
-    #[derivative(PartialEq = "ignore", Hash = "ignore")]
-    pub generation: Option<u64>,
-    pub span: SpannedValue<T>,
-}
-
 pub type Span = SpannedValue<()>;
-pub type GenerationSpan = GenerationSpanned<()>;
 
-impl<T> GenerationSpanned<T> {
-    pub fn gen_span(&self) -> GenerationSpan {
-        GenerationSpan {
-            generation: self.generation,
-            span: ().spanned(self),
-        }
-    }
-
-    pub fn set_gen(&mut self, gen: u64) {
-        self.generation = Some(gen);
-    }
-
-    pub fn source_span(&self, current_gen: u64) -> Option<SourceSpan> {
-        if Some(current_gen) == self.generation {
-            Some(SourceSpan::from(self.span.start..self.span.end))
-        } else {
-            None
-        }
+impl<T> From<SpannedValue<T>> for SourceSpan {
+    fn from(t: SpannedValue<T>) -> Self {
+        (&t).into()
     }
 }
 
-pub const UNKNOWN_SPAN: &Span = &Span {
+impl<T> From<&SpannedValue<T>> for SourceSpan {
+    fn from(t: &SpannedValue<T>) -> Self {
+        (t.start..t.end).into()
+    }
+}
+
+pub static UNKNOWN_SPAN: Lazy<Span> = Lazy::new(|| Span {
     start: 1,
     end: 0,
+    source: ArcStr(Arc::from("")),
     value: (),
-};
-
-pub trait Spanning<T> {
-    fn span(&self) -> Span;
-    fn with_span_unit(value: T, s: &Span) -> Self;
-    fn swap_span<U, S>(&mut self, span: &S)
-    where
-        S: Spanning<U>,
-        Self: Sized;
-
-    fn with_span<U, S>(value: T, other: &S) -> Self
-    where
-        S: Spanning<U>,
-        Self: Sized,
-    {
-        let other = other.span();
-        Self::with_span_unit(value, &other)
-    }
-
-    fn with_generation(&self, generation: u64) -> GenerationSpan {
-        GenerationSpan {
-            generation: Some(generation),
-            span: self.span(),
-        }
-    }
-}
+});
 
 pub trait SpanningExt {
-    fn spanned<U, S>(self, span: &S) -> SpannedValue<Self>
+    fn spanned<U>(self, span: &SpannedValue<U>) -> SpannedValue<Self>
     where
         Self: Sized,
-        S: Spanning<U>,
     {
         SpannedValue::with_span(self, span)
-    }
-
-    fn spanned_gen<U, S>(self, span: &S, generation: u64) -> GenerationSpanned<Self>
-    where
-        Self: Sized,
-        S: Spanning<U>,
-    {
-        let mut s = GenerationSpanned::with_span(self, span);
-        s.generation = Some(generation);
-        s
     }
 }
 
 impl<T> SpanningExt for T {}
 
-impl<T> Spanning<T> for SpannedValue<T> {
-    fn span(&self) -> Span {
+impl<T> SpannedValue<T> {
+    pub fn span(&self) -> Span {
         Span {
+            source: self.source.clone(),
             start: self.start,
             end: self.end,
             value: (),
         }
     }
 
+    fn with_span<U>(value: T, other: &SpannedValue<U>) -> Self {
+        let other = other.span();
+        Self::with_span_unit(value, &other)
+    }
+
     fn with_span_unit(value: T, other: &Span) -> Self {
         Self {
+            source: other.source.clone(),
             start: other.start,
             end: other.end,
             value,
         }
     }
 
-    fn swap_span<U, S>(&mut self, span: &S)
+    pub fn swap_span<U>(&mut self, span: &SpannedValue<U>)
     where
-        S: Spanning<U>,
         Self: Sized,
     {
         self.start = span.span().start;
         self.end = span.span().end;
     }
-}
 
-impl<T> Spanning<T> for GenerationSpanned<T> {
-    fn span(&self) -> Span {
-        self.span.span()
-    }
-
-    fn with_span_unit(value: T, s: &Span) -> Self {
-        Self {
-            generation: None,
-            span: SpannedValue::with_span_unit(value, s),
-        }
-    }
-
-    fn swap_span<U, S>(&mut self, span: &S)
-    where
-        S: Spanning<U>,
-        Self: Sized,
-    {
-        self.span.swap_span(span)
-    }
-}
-
-impl<T> SpannedValue<T> {
     pub fn map<F, U>(self, f: F) -> SpannedValue<U>
     where
         F: FnOnce(T) -> U,
     {
-        let SpannedValue { start, end, value } = self;
+        let SpannedValue {
+            start,
+            end,
+            value,
+            source,
+        } = self;
         SpannedValue {
+            source,
             value: f(value),
             start,
             end,
@@ -165,12 +117,15 @@ impl<T> SpannedValue<T> {
         F: FnOnce(Self) -> U,
     {
         SpannedValue {
+            source: self.source.clone(),
             start: self.start,
             end: self.end,
             value: f(self),
         }
     }
 }
+
+impl<T> SpannedValue<T> {}
 
 impl<T> Deref for SpannedValue<T> {
     type Target = T;
@@ -183,18 +138,5 @@ impl<T> Deref for SpannedValue<T> {
 impl<T> DerefMut for SpannedValue<T> {
     fn deref_mut(&mut self) -> &mut T {
         &mut self.value
-    }
-}
-impl<T> Deref for GenerationSpanned<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.span.deref()
-    }
-}
-
-impl<T> DerefMut for GenerationSpanned<T> {
-    fn deref_mut(&mut self) -> &mut T {
-        self.span.deref_mut()
     }
 }

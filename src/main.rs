@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, path::PathBuf};
+use std::{ffi::OsStr, path::PathBuf, sync::Arc};
 
 use clap::Parser;
 use miette::{Context, Diagnostic, IntoDiagnostic, NamedSource, Result, SourceCode, SourceSpan};
@@ -6,7 +6,7 @@ use rustyline::{error::ReadlineError, Editor};
 
 use raclette::{
     ast, interpreter,
-    span::{Span, SpanningExt},
+    span::{ArcStr, Span, SpanningExt},
 };
 
 #[derive(Parser, Debug)]
@@ -113,17 +113,16 @@ fn main() -> Result<()> {
 
     if let Some(command) = args.command {
         let parser = raclette::raclette::ExprParser::new();
+        let source = Arc::from(&*command);
         let expr = parser
-            .parse(ast::lexer(&command))
+            .parse(&source, ast::lexer(&command))
             .into_report(command.clone())?;
-        let value = interpreter
-            .run_expr(expr.spanned(&Span {
-                start: 0,
-                end: command.len(),
-                value: (),
-            }))
-            .map_err(Into::into)
-            .map_err(|e: miette::Report| e.with_source_code(command))?;
+        let value = interpreter.run_expr(expr.spanned(&Span {
+            source: ArcStr(source),
+            start: 0,
+            end: command.len(),
+            value: (),
+        }))?;
 
         println!("{}", **value.borrow());
 
@@ -152,7 +151,9 @@ fn main() -> Result<()> {
                 match rl.readline(">> ") {
                     Ok(line) => {
                         rl.add_history_entry(&line);
-                        let parsed = match parser.parse(ast::lexer(&line)).into_report(line.clone())
+                        let parsed = match parser
+                            .parse(&Arc::from(&*line), ast::lexer(&line))
+                            .into_report(line.clone())
                         {
                             Ok(p) => p,
                             Err(e) => {
@@ -181,8 +182,6 @@ fn main() -> Result<()> {
                                 }
                             }
                         }
-
-                        interpreter.new_generation();
                     }
                     Err(ReadlineError::Interrupted) => {
                         println!("Interrupted");
@@ -213,7 +212,7 @@ fn main() -> Result<()> {
                 input.clone(),
             );
             let parsed = raclette::raclette::FileParser::new()
-                .parse(ast::lexer(&input))
+                .parse(&Arc::from(&*input), ast::lexer(&input))
                 .into_report(source)?;
             dbg!(parsed);
         }

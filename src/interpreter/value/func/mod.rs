@@ -1,9 +1,9 @@
-use std::{collections::HashMap, io::Write, process::Stdio};
+use std::{collections::HashMap, fmt::Debug, io::Write, process::Stdio};
 
 use crate::{
     ast::{self, RcStr},
-    interpreter::{Interpreter, Result, RuntimeError, Scope, SpannedResult},
-    span::{GenerationSpan, SpannedValue, Spanning},
+    interpreter::{Interpreter, Result, RuntimeError, Scope},
+    span::{Span, SpannedValue},
     Val,
 };
 
@@ -19,10 +19,10 @@ pub struct FunctionValue {
     pub(crate) action: FunctionKind,
 }
 
-type BuiltinFn =
-    fn(Vec<Val>, HashMap<SpannedValue<RcStr>, Val>, GenerationSpan, u64) -> Result<Val>;
+type BuiltinFnSpec<'a> = fn(Vec<Val>, HashMap<SpannedValue<RcStr>, Val>, &'a Span) -> Result<Val>;
+type BuiltinFn = fn(Vec<Val>, HashMap<SpannedValue<RcStr>, Val>, &Span) -> Result<Val>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum FunctionKind {
     Builtin(BuiltinFn),
     Folder(folder::Folder),
@@ -38,24 +38,49 @@ pub enum FunctionKind {
     Shell(RcStr),
 }
 
+impl Debug for FunctionKind {
+    fn fmt<'a>(&'a self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Builtin(arg0) => f
+                .debug_tuple("Builtin")
+                .field(&(*arg0 as BuiltinFnSpec<'a>) as &dyn Debug)
+                .finish(),
+            Self::Folder(arg0) => f.debug_tuple("Folder").field(arg0).finish(),
+            Self::Mapper(arg0) => f.debug_tuple("Mapper").field(arg0).finish(),
+            Self::User { args, ret } => f
+                .debug_struct("User")
+                .field("args", args)
+                .field("ret", ret)
+                .finish(),
+            Self::SpecifyNamed { func, named } => f
+                .debug_struct("SpecifyNamed")
+                .field("func", func)
+                .field("named", named)
+                .finish(),
+            Self::Shell(arg0) => f.debug_tuple("Shell").field(arg0).finish(),
+        }
+    }
+}
+
 impl FunctionValue {
     pub fn call(
         &self,
         args: Vec<Val>,
-        mut named: HashMap<SpannedValue<RcStr>, Val>,
+        named: HashMap<SpannedValue<RcStr>, Val>,
         scope: &mut Interpreter,
-        span: &GenerationSpan,
+        call_span: &Span,
     ) -> Result<Val> {
         if args.len() != self.arity {
-            return Err(RuntimeError::ArgumentCountMismatch {
-                expected: self.arity,
-                got: args.len(),
-                location: None,
-            });
+            return Err(RuntimeError::argument_count_mismatch(
+                self.arity,
+                args.len(),
+                call_span,
+            ));
         }
 
+        let mut named = named;
         match &self.action {
-            FunctionKind::Builtin(f) => f(args, named, span.clone(), scope.generation),
+            FunctionKind::Builtin(f) => f(args, named, call_span),
             FunctionKind::SpecifyNamed {
                 func,
                 named: already_specified,
@@ -65,7 +90,7 @@ impl FunctionValue {
                         named.insert(key.clone(), val.clone());
                     }
                 }
-                func.call(args, named, scope, span)
+                func.call(args, named, scope, call_span)
             }
             FunctionKind::Folder(folder) => {
                 let iter = args[0].borrow();
@@ -76,32 +101,28 @@ impl FunctionValue {
                         Folder::Op(f) => {
                             let mut f = f.restart();
                             if let Some(first) = first {
-                                f.seed(Value::new_number(first, span, scope.generation))?;
+                                f.seed(Value::new_number(first, call_span))?;
                             }
 
                             for item in iter {
                                 f.int_accumulate(item, scope)?;
                             }
 
-                            f.finish(span, scope.generation)
+                            f.finish(call_span)
                         }
                         Folder::User(f, def) => {
                             let v = f.borrow();
-                            let func = v.cast_function()?;
-                            let gen = scope.generation;
-                            iter.map(|n| Value::new_number(n, span, gen)).try_fold(
+                            let func = v.cast_function(&v)?;
+                            iter.map(|n| Value::new_number(n, call_span)).try_fold(
                                 first
-                                    .map(|n| Value::new_number(n, span, gen))
+                                    .map(|n| Value::new_number(n, call_span))
                                     .unwrap_or_else(|| def.clone()),
-                                |acc, e| {
-                                    let spn = e.borrow().gen_span();
-                                    func.call(vec![acc, e], HashMap::new(), scope, &spn)
-                                },
+                                |acc, e| func.call(vec![acc, e], HashMap::new(), scope, call_span),
                             )
                         }
                     }
                 } else {
-                    let mut iter = iter.cast_iterable()?;
+                    let mut iter = iter.cast_iterable(&iter)?;
                     let first = iter.next();
                     match folder {
                         Folder::Op(f) => {
@@ -114,14 +135,13 @@ impl FunctionValue {
                                 f.accumulate(&item, scope)?;
                             }
 
-                            f.finish(span, scope.generation)
+                            f.finish(call_span)
                         }
                         Folder::User(f, def) => {
                             let v = f.borrow();
-                            let func = v.cast_function()?;
+                            let func = v.cast_function(&v)?;
                             iter.try_fold(first.unwrap_or_else(|| def.clone()), |acc, e| {
-                                let spn = e.borrow().gen_span();
-                                func.call(vec![acc, e], HashMap::new(), scope, &spn)
+                                func.call(vec![acc, e], HashMap::new(), scope, call_span)
                             })
                         }
                     }
@@ -130,16 +150,16 @@ impl FunctionValue {
             FunctionKind::Mapper(m) => {
                 let iter = args[0].borrow();
                 let m = m.borrow();
-                let mapper = m.cast_function()?;
+                let mapper = m.cast_function(&m)?;
                 match &**iter {
                     Value::Map(map) => {
                         let mut new_map = map.clone();
                         for (_, v) in new_map.iter_mut() {
-                            let spn = &v.borrow().gen_span();
+                            let spn = &v.borrow().span();
                             *v = mapper.call(vec![v.clone()], HashMap::new(), scope, spn)?;
                         }
 
-                        Ok(Value::new_map(new_map, span, scope.generation))
+                        Ok(Value::new_map(new_map, call_span))
                     }
                     Value::Array(a) => Ok(Value::new_array(
                         a.iter()
@@ -148,17 +168,13 @@ impl FunctionValue {
                                     vec![e.clone()],
                                     HashMap::new(),
                                     scope,
-                                    &e.borrow().gen_span(),
+                                    &e.borrow().span(),
                                 )
                             })
                             .collect::<Result<_>>()?,
-                        span,
-                        scope.generation,
+                        call_span,
                     )),
-                    _ => Err(RuntimeError::NotIterable {
-                        ty: iter.name().into(),
-                        location: None,
-                    }),
+                    _ => Err(RuntimeError::not_iterable(iter.name().into(), &iter)),
                 }
             }
             FunctionKind::User { args: names, ret } => {
@@ -173,7 +189,9 @@ impl FunctionValue {
             }
             FunctionKind::Shell(cmd) => {
                 let arg = args[0].borrow();
-                let arg = arg.cast_str().with_span(&arg.span())?;
+                let arg = arg.cast_str(&arg)?;
+
+                let io_error = |s: std::io::Error| RuntimeError::io_error(s, call_span);
 
                 let mut command = std::process::Command::new("/bin/sh");
                 let mut process = command
@@ -183,61 +201,46 @@ impl FunctionValue {
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .spawn()
-                    .map_err(Into::into)
-                    .with_span(span)?;
+                    .map_err(io_error)?;
 
                 let stdin = process.stdin.as_mut().unwrap();
-                stdin
-                    .write_all(arg.as_bytes())
-                    .map_err(Into::into)
-                    .with_span(span)?;
+                stdin.write_all(arg.as_bytes()).map_err(io_error)?;
 
-                let output = process
-                    .wait_with_output()
-                    .map_err(Into::into)
-                    .with_span(span)?;
+                let output = process.wait_with_output().map_err(io_error)?;
 
                 if !output.status.success() {
-                    return Err(RuntimeError::ProcessFailure {
-                        error: output.stderr.into(),
-                        status: output.status,
-                        location: span.source_span(scope.generation),
-                    });
+                    return Err(RuntimeError::process_failure(
+                        output.status,
+                        output.stderr.into(),
+                        call_span,
+                    ));
                 }
 
-                let output =
-                    String::from_utf8(output.stdout).map_err(|_| RuntimeError::InvalidUtf8 {
-                        location: span.source_span(scope.generation),
-                    })?;
+                let output = String::from_utf8(output.stdout)
+                    .map_err(|_| RuntimeError::invalid_utf8(call_span))?;
 
-                Ok(Value::new_str(output, span, scope.generation))
+                Ok(Value::new_str(output, call_span))
             }
         }
     }
 
-    pub fn user_folder(f: Val, def: Val, gen: u64) -> Val {
-        let span = def.borrow().span();
+    pub fn user_folder(f: Val, def: Val, def_span: &Span) -> Val {
         Value::new_function(
             FunctionValue {
                 arity: 1,
                 action: FunctionKind::Folder(Folder::User(f, def)),
             },
-            &span,
-            gen,
+            def_span,
         )
     }
 
-    pub fn op_folder<S, U>(f: Box<dyn NativeFolder>, span: &S, gen: u64) -> Val
-    where
-        S: Spanning<U>,
-    {
+    pub fn op_folder<U>(f: Box<dyn NativeFolder>, span: &SpannedValue<U>) -> Val {
         Value::new_function(
             FunctionValue {
                 arity: 1,
                 action: FunctionKind::Folder(Folder::Op(f)),
             },
             span,
-            gen,
         )
     }
 }
