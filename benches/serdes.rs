@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use raclette::{
     raclette::ExprParser,
@@ -23,7 +21,7 @@ fn des_ast(
 
     parser
         .parse(
-            &Arc::from(""),
+            &"".into(),
             std::iter::once(Ok((0, raclette::ast::Token::String(input.to_string()), 0)))
                 .chain(raclette::ast::lexer(&des)),
         )

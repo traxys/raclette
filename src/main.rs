@@ -1,4 +1,4 @@
-use std::{ffi::OsStr, path::PathBuf, sync::Arc};
+use std::{ffi::OsStr, path::PathBuf};
 
 use clap::Parser;
 use miette::{Context, Diagnostic, IntoDiagnostic, NamedSource, Result, SourceCode, SourceSpan};
@@ -6,7 +6,7 @@ use rustyline::{error::ReadlineError, Editor};
 
 use raclette::{
     ast, interpreter,
-    span::{ArcStr, Span, SpanningExt},
+    span::{Span, SpanningExt},
 };
 
 #[derive(Parser, Debug)]
@@ -113,12 +113,11 @@ fn main() -> Result<()> {
 
     if let Some(command) = args.command {
         let parser = raclette::raclette::ExprParser::new();
-        let source = Arc::from(&*command);
         let expr = parser
-            .parse(&source, ast::lexer(&command))
+            .parse(&command.as_str().into(), ast::lexer(&command))
             .into_report(command.clone())?;
         let value = interpreter.run_expr(expr.spanned(&Span {
-            source: ArcStr(source),
+            source: command.as_str().into(),
             start: 0,
             end: command.len(),
             value: (),
@@ -152,7 +151,7 @@ fn main() -> Result<()> {
                     Ok(line) => {
                         rl.add_history_entry(&line);
                         let parsed = match parser
-                            .parse(&Arc::from(&*line), ast::lexer(&line))
+                            .parse(&line.as_str().into(), ast::lexer(&line))
                             .into_report(line.clone())
                         {
                             Ok(p) => p,
@@ -169,7 +168,7 @@ fn main() -> Result<()> {
                                     }
                                     Err(e) => {
                                         let report: miette::Report = e.into();
-                                        println!("Error: {:?}", report.with_source_code(line));
+                                        println!("Error: {:?}", report);
                                         continue;
                                     }
                                 };
@@ -177,7 +176,7 @@ fn main() -> Result<()> {
                             _ => {
                                 if let Err(e) = interpreter.run_statement(parsed) {
                                     let report: miette::Report = e.into();
-                                    println!("Error: {:?}", report.with_source_code(line));
+                                    println!("Error: {:?}", report);
                                     continue;
                                 }
                             }
@@ -212,7 +211,7 @@ fn main() -> Result<()> {
                 input.clone(),
             );
             let parsed = raclette::raclette::FileParser::new()
-                .parse(&Arc::from(&*input), ast::lexer(&input))
+                .parse(&input.as_str().into(), ast::lexer(&input))
                 .into_report(source)?;
             dbg!(parsed);
         }

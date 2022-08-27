@@ -5,8 +5,48 @@ use std::{
 
 use arbitrary::Arbitrary;
 use derivative::Derivative;
-use miette::SourceSpan;
+use miette::{NamedSource, SourceCode, SourceSpan};
 use once_cell::sync::Lazy;
+
+#[derive(Clone, Debug)]
+pub enum MaybeNamed {
+    Named(Arc<NamedSource>),
+    Unamed(ArcStr),
+}
+
+impl From<NamedSource> for MaybeNamed {
+    fn from(n: NamedSource) -> Self {
+        MaybeNamed::Named(Arc::new(n))
+    }
+}
+
+impl From<&str> for MaybeNamed {
+    fn from(s: &str) -> Self {
+        MaybeNamed::Unamed(ArcStr(Arc::from(s)))
+    }
+}
+
+impl SourceCode for MaybeNamed {
+    fn read_span<'a>(
+        &'a self,
+        span: &SourceSpan,
+        context_lines_before: usize,
+        context_lines_after: usize,
+    ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
+        match self {
+            MaybeNamed::Named(s) => s.read_span(span, context_lines_before, context_lines_after),
+            MaybeNamed::Unamed(s) => {
+                s.0.read_span(span, context_lines_before, context_lines_after)
+            }
+        }
+    }
+}
+
+impl<'a> Arbitrary<'a> for MaybeNamed {
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        Ok(Self::Unamed(ArcStr::arbitrary(u)?))
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArcStr(pub Arc<str>);
@@ -18,15 +58,15 @@ impl<'a> Arbitrary<'a> for ArcStr {
     }
 }
 
-#[derive(Debug, Clone, Derivative, Eq, Arbitrary)]
-#[derivative(PartialEq, Hash)]
+#[derive(Debug, Clone, Derivative, Arbitrary)]
+#[derivative(PartialEq, Hash, Eq)]
 pub struct SpannedValue<T> {
     #[derivative(PartialEq = "ignore", Hash = "ignore")]
     pub start: usize,
     #[derivative(PartialEq = "ignore", Hash = "ignore")]
     pub end: usize,
     #[derivative(PartialEq = "ignore", Hash = "ignore")]
-    pub source: ArcStr,
+    pub source: MaybeNamed,
     pub value: T,
 }
 
@@ -47,7 +87,7 @@ impl<T> From<&SpannedValue<T>> for SourceSpan {
 pub static UNKNOWN_SPAN: Lazy<Span> = Lazy::new(|| Span {
     start: 1,
     end: 0,
-    source: ArcStr(Arc::from("")),
+    source: NamedSource::new("<unknown>", "").into(),
     value: (),
 });
 

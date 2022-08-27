@@ -2,13 +2,19 @@ use std::{
     collections::HashMap,
     fmt::Display,
     ops::{Deref, Range},
-    rc::Rc,
+    rc::Rc, sync::Arc,
 };
 
 use arbitrary::Arbitrary;
 use logos::Logos;
+use miette::NamedSource;
 
 use crate::span::SpannedValue;
+
+pub enum MaybeNamed {
+    Named(Arc<NamedSource>),
+    Unamed(Arc<str>),
+}
 
 fn escape_string(input: &str) -> String {
     if !input.contains('\\') {

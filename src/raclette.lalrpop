@@ -1,11 +1,11 @@
 use crate::{
 	ast::{Expr, Statement, Token, Literal, BinaryOp, Place, Folder, RangeExpr, RcStr},
-	span::{SpannedValue, UNKNOWN_SPAN, SpanningExt, ArcStr}
+	span::{SpannedValue, UNKNOWN_SPAN, SpanningExt}
 };
 use std::rc::Rc;
 use std::collections::HashMap;
 
-grammar(source: &std::sync::Arc<str>);
+grammar(source: &crate::span::MaybeNamed);
 
 extern {
 	type Location = usize;
@@ -60,7 +60,7 @@ Spn<T>: SpannedValue<T> = {
 		start, 
 		value, 
 		end, 
-		source: ArcStr(source.clone())
+		source: source.clone()
 	}
 };
 
@@ -232,7 +232,7 @@ RangeExpr: RangeExpr = {
 LiteralExpr: Expr = {
 	<RangeExpr> => Expr::Range(Box::new(<>)),
 	<start:@L> "%" <op:BinaryOp> <end:@R> => Expr::Fold(SpannedValue {
-		source: ArcStr(source.clone()),
+		source: source.clone(),
 		start,
 		end,
 		value: Folder::Operator(op)
@@ -242,7 +242,7 @@ LiteralExpr: Expr = {
 			start,
 			end,
 			value: Folder::Args{func: Box::new(func), def: Box::new(def)},
-			source: ArcStr(source.clone()),
+			source: source.clone(),
 		}
 	),
 	<Spn<FuncDef>> "@" => Expr::Mapper(Box::new(<>)),

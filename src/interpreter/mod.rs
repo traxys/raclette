@@ -1,13 +1,13 @@
-use std::{collections::HashMap, fmt::Debug, io::Read, process::ExitStatus, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, io::Read, process::ExitStatus};
 
 use crate::{
     ast::{self, RangeExpr},
     raclette::FileParser,
-    span::SpannedValue,
+    span::{MaybeNamed, SpannedValue},
 };
 use bstr::BString;
 use either::Either;
-use miette::{Diagnostic, SourceSpan};
+use miette::{Diagnostic, NamedSource, SourceSpan};
 
 mod builtins;
 pub mod value;
@@ -54,7 +54,7 @@ macro_rules! define_error {
                     #[label($loc)]
                     location: SourceSpan,
                     #[source_code]
-                    src: Arc<str>,
+                    src: MaybeNamed,
                     __private: (),
                 },
             )*
@@ -67,7 +67,7 @@ macro_rules! define_error {
                     Self::$item {
                         $($field,)*
                         location: (span.start..span.end).into(),
-                        src: span.source.0.clone(),
+                        src: span.source.clone(),
                         __private: (),
                     }
                 }
@@ -273,7 +273,10 @@ impl Interpreter {
         };
 
         let stdlib = FileParser::new()
-            .parse(&Arc::from(STDLIB), ast::lexer(STDLIB))
+            .parse(
+                &NamedSource::new("stdlib", STDLIB).into(),
+                ast::lexer(STDLIB),
+            )
             .expect("could not parse stdlib");
 
         for statement in stdlib {
