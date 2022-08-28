@@ -7,7 +7,7 @@ use crate::{
     span::{Span, SpannedValue, SpanningExt, UNKNOWN_SPAN},
     Val, Value,
 };
-use once_cell::unsync::Lazy;
+use once_cell::sync::Lazy;
 use std::{
     collections::HashMap,
     fs::File,
@@ -24,6 +24,13 @@ use super::{
     Interpreter, RuntimeError,
 };
 
+static BUILTIN_SPAN: Lazy<Span> = Lazy::new(|| Span {
+    start: 0,
+    end: "<builtin>".len(),
+    source: "<builtin>".into(),
+    value: (),
+});
+
 macro_rules! define_builtin {
     ($(
         $name:ident($arity:literal) => $func:ident;
@@ -36,7 +43,7 @@ macro_rules! define_builtin {
                     Value::new_function(FunctionValue {
                         arity: $arity,
                         action: FunctionKind::Builtin($func),
-                    }, &*UNKNOWN_SPAN)
+                    }, &*BUILTIN_SPAN)
                 );
             )*
             map
