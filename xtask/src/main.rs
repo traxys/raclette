@@ -13,6 +13,7 @@ struct Args {
 #[derive(Parser, Debug)]
 enum Commands {
     Test,
+    Benches,
 }
 
 fn main() -> color_eyre::Result<()> {
@@ -29,6 +30,13 @@ fn main() -> color_eyre::Result<()> {
 
     match args.cmd {
         None => Args::into_app().print_help()?,
+        Some(Commands::Benches) => {
+            cmd!(env!("CARGO"), "criterion").run()?;
+            cmd!(env!("CARGO"), "build", "--release").run()?;
+            cmd!(workspace_root.join("benches/cmp_python/cmp.sh"))
+                .dir(workspace_root.join("benches/cmp_python"))
+                .run()?;
+        }
         Some(Commands::Test) => {
             let expr_dir = workspace_root.join("tests/expr");
 
