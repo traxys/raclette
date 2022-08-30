@@ -49,3 +49,9 @@ harness = false
 [[bench]]
 name = "serdes"
 harness = false
+
+[workspace]
+members = [
+	".",
+	"xtask"
+]
