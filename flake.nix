@@ -60,6 +60,7 @@
           pkgs.rustup
           pkgs.cargo-flamegraph
           pkgs.cargo-criterion
+          pkgs.cargo-tarpaulin
           pkgs.hyperfine
           pkgs.glow
           hf-scripts
