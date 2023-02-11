@@ -54,6 +54,9 @@ pub enum Token {
     #[token(":")]
     #[display(fmt = ":")]
     Colon,
+    #[token("_(")]
+    #[display(fmt = "_(")]
+    UnitParen,
     #[regex("(-)?[0-9][0-9_]*", |lex| lex.slice().parse(), priority = 2)]
     #[regex("0?x[0-9a-fA-F][0-9a-fA-F_]*", |lex|
         i64::from_str_radix(

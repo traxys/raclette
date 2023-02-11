@@ -27,6 +27,7 @@ extern {
 		"\\" => Token::Backslash,
 		"." => Token::Dot,
 		":" => Token::Colon,
+		"_(" => Token::UnitParen,
 		num => Token::Number(<i64>),
 		float => Token::Float(<f64>),
 		ident => Token::Ident(<Arc<str>>),
@@ -76,9 +77,22 @@ Unit: (Arc<str>, i16) = {
 	<u:unit> "-" <e:num> => (u, (-e) as i16),
 };
 
+UnitId: (Arc<str>, i16) = {
+	ident => (<>, 1),
+	ident num => (<> as i16),
+	<u:ident> "-" <e:num> => (u, (-e) as i16),
+	"/" <ident> => (<>, -1),
+	"/" <u:ident> <e:num> => (u, (-e) as i16),
+};
+
+ManyUnit: Vec<SpannedValue<(Arc<str>, i16)>> = {
+	Spn<Unit>+ => <>,
+	"_(" <Spn<UnitId>+> ")" => <>,
+};
+
 ExprLiteral: Expr = {
 	Spn<Literal> => Expr::Literal(<>),
-	Spn<Literal> Spn<Unit>+ => Expr::DimensionalLiteral(<>),
+	Spn<Literal> ManyUnit => Expr::DimensionalLiteral(<>),
 	Spn<Variable> => Expr::Variable(<>),
 	"(" <Expr> ")" => <>,
 };
