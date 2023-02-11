@@ -107,7 +107,7 @@ fn main() -> Result<()> {
     let _args = Args::parse();
 
     let data_dir = dirs_next::data_dir().map(|mut p| {
-        p.push("rcalc");
+        p.push("raclette");
         p
     });
 
@@ -125,7 +125,7 @@ fn main() -> Result<()> {
             p.push("history");
             p
         })
-        .unwrap_or_else(|| "rcalc-history".into());
+        .unwrap_or_else(|| "raclette-history".into());
 
     if let Err(e) = rl.load_history(&path) {
         if path.exists() {
@@ -171,6 +171,8 @@ fn main() -> Result<()> {
             }
         }
     }
+
+    rl.save_history(&path).into_diagnostic()?;
 
     Ok(())
 }
