@@ -636,16 +636,16 @@ impl Runner {
                         .unit
                         .dimensions
                         .iter()
-                        .map(|(dim, &scale)| {
+                        .filter_map(|(dim, &scale)| {
                             let name = match dim {
                                 Dimension::Byte => "B",
                                 Dimension::Length => "m",
                                 Dimension::Time => "s",
                             };
-                            if scale == 1 {
-                                name.to_string()
-                            } else {
-                                format!("{name}{scale}")
+                            match scale {
+                                0 => None,
+                                1 => Some(name.to_string()),
+                                s => Some(format!("{name}{s}")),
                             }
                         })
                         .join(".");
