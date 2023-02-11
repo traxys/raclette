@@ -1,148 +1,20 @@
-use std::{
-    collections::HashMap,
-    fmt::Display,
-    ops::{Deref, Range},
-    rc::Rc, sync::Arc,
-};
+use std::{ops::Range, sync::Arc};
 
-use arbitrary::Arbitrary;
 use logos::Logos;
-use miette::NamedSource;
 
 use crate::span::SpannedValue;
 
-pub enum MaybeNamed {
-    Named(Arc<NamedSource>),
-    Unamed(Arc<str>),
-}
-
-fn escape_string(input: &str) -> String {
-    if !input.contains('\\') {
-        input.into()
-    } else {
-        let mut val = Vec::new();
-        let mut escape = false;
-        for x in input.bytes() {
-            if x == b'\\' {
-                escape = true;
-            } else if escape {
-                match x {
-                    b't' => val.push(b'\t'),
-                    b'n' => val.push(b'\n'),
-                    _ => {
-                        val.push(b'\\');
-                        val.push(x);
-                    }
-                }
-                escape = false;
-            } else {
-                val.push(x);
-            }
-        }
-        String::from_utf8(val).expect("should not produce garbage")
-    }
-}
-
-#[derive(Debug, Clone, Hash, Eq, PartialEq)]
-pub struct RcStr(pub Rc<str>);
-
-impl Deref for RcStr {
-    type Target = str;
-
-    fn deref(&self) -> &Self::Target {
-        self.0.deref()
-    }
-}
-
-impl Display for RcStr {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl<'a> Arbitrary<'a> for RcStr {
-    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-        let data = String::arbitrary(u)?;
-        Ok(Self(Rc::from(data)))
-    }
-}
-
-#[derive(Logos, Debug, PartialEq, Clone, derive_more::Display)]
+#[derive(Debug, derive_more::Display, Logos, Clone)]
 pub enum Token {
-    #[regex("(-)?[0-9][0-9_]*", |lex| lex.slice().parse(), priority = 2)]
-    #[regex("0?x[0-9a-fA-F][0-9a-fA-F_]*", |lex|
-        i64::from_str_radix(
-            lex.slice().trim_start_matches("0x").trim_start_matches('x'),
-            16,
-        )
-    )]
-    #[regex("0?b[0-1][0-1_]*", |lex|
-        i64::from_str_radix(
-            lex.slice().trim_start_matches("0b").trim_start_matches('b'),
-            2,
-        )
-    )]
-    #[display(fmt = "<number:{}>", _0)]
-    Number(i64),
-    #[regex("[-+]?[0-9]+([eE][-+]?[0-9]+)?", |lex| lex.slice().parse())]
-    #[regex("[-+]?\\.[0-9]+([eE][-+]?[0-9]+)?", |lex| lex.slice().parse())]
-    #[regex("[-+]?[0-9]+\\.[0-9]*([eE][-+]?[0-9]+)?", |lex| lex.slice().parse())]
-    #[display(fmt = "<float:{}>", _0)]
-    Float(f64),
-    #[token("|")]
-    #[display(fmt = "|")]
-    Pipe,
-    #[token("&")]
-    #[display(fmt = "&")]
-    And,
-    #[token("|>")]
-    #[display(fmt = "|>")]
-    Redirect,
-    #[token("\n")]
-    #[display(fmt = r#"\n"#)]
-    Newline,
-    #[regex("[a-zA-Z_][a-zA-Z0-9_]*", callback = |lex| lex.slice().to_string())]
-    #[display(fmt = "identifier({})", _0)]
-    Identifier(String),
     #[token("(")]
     #[display(fmt = "(")]
     LParen,
     #[token(")")]
     #[display(fmt = ")")]
     RParen,
-    #[token("~")]
-    #[display(fmt = "~")]
-    Tilde,
-    #[regex(r#""(\\[^\n]|[^"\n])*""#, |lex| {
-        let s = lex.slice();
-        escape_string(&s[1..s.len() - 1])
-    })]
-    #[display(fmt = "'{}'", _0)]
-    String(String),
-    #[token("{")]
-    #[display(fmt = "{{")]
-    LBrace,
-    #[token("}")]
-    #[display(fmt = "}}")]
-    RBrace,
-    #[token("[")]
-    #[display(fmt = "[")]
-    LBracket,
-    #[token("]")]
-    #[display(fmt = "]")]
-    RBracket,
-    #[token(".")]
-    #[display(fmt = ".")]
-    Dot,
-    #[token("%")]
-    #[display(fmt = "%")]
-    Percent,
-    #[token(",")]
-    #[display(fmt = ",")]
-    Comma,
-    #[token("@")]
-    #[display(fmt = "@")]
-    At,
+    #[token("|>")]
+    #[display(fmt = "|>")]
+    Redirect,
     #[token("=")]
     #[display(fmt = "=")]
     Equal,
@@ -167,107 +39,161 @@ pub enum Token {
     #[token(">>")]
     #[display(fmt = ">>")]
     RShift,
-    #[token(":")]
-    #[display(fmt = ":")]
-    Colon,
     #[token("<<")]
     #[display(fmt = "<<")]
     LShift,
-    #[token("->")]
-    #[display(fmt = "->")]
-    Arrow,
+    #[token("%")]
+    #[display(fmt = "%")]
+    Percent,
     #[token("\\")]
     #[display(fmt = "\\")]
     Backslash,
+    #[token(".")]
+    #[display(fmt = ".")]
+    Dot,
+    #[token(":")]
+    #[display(fmt = ":")]
+    Colon,
+    #[regex("(-)?[0-9][0-9_]*", |lex| lex.slice().parse(), priority = 2)]
+    #[regex("0?x[0-9a-fA-F][0-9a-fA-F_]*", |lex|
+        i64::from_str_radix(
+            lex.slice().trim_start_matches("0x").trim_start_matches('x'),
+            16,
+        )
+    )]
+    #[regex("0?b[0-1][0-1_]*", |lex|
+        i64::from_str_radix(
+            lex.slice().trim_start_matches("0b").trim_start_matches('b'),
+            2,
+        )
+    )]
+    #[display(fmt = "<number:{}>", _0)]
+    Number(i64),
+    #[regex("[-+]?[0-9]+([eE][-+]?[0-9]+)?", |lex| lex.slice().parse())]
+    #[regex("[-+]?\\.[0-9]+([eE][-+]?[0-9]+)?", |lex| lex.slice().parse())]
+    #[regex("[-+]?[0-9]+\\.[0-9]*([eE][-+]?[0-9]+)?", |lex| lex.slice().parse())]
+    #[display(fmt = "<float:{}>", _0)]
+    Float(f64),
+    #[regex("[a-zA-Z][a-zA-Z0-9_]*", callback = |lex| Arc::from(lex.slice()))]
+    #[display(fmt = "identifier({})", _0)]
+    Ident(Arc<str>),
+    #[regex("\\$[a-zA-Z][a-zA-Z0-9_]*", callback = |lex| Arc::from(&lex.slice()[1..]))]
+    #[display(fmt = "identifier({})", _0)]
+    Binding(Arc<str>),
+    #[regex("_[a-zA-Z]*", callback = |lex| Arc::from(&lex.slice()[1..]))]
+    #[display(fmt = "unit({})", _0)]
+    Unit(Arc<str>),
     #[error]
     #[regex(r"[ \t\f]+", logos::skip)]
     #[display(fmt = "<error>")]
     Error,
 }
 
-#[derive(Debug, Clone, Arbitrary)]
+#[derive(PartialEq, Eq, Hash, Clone)]
+pub struct Variable(pub Vec<Arc<str>>);
+
+impl std::fmt::Debug for Variable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "< ")?;
+        for word in &self.0 {
+            write!(f, "{} ", word)?;
+        }
+        write!(f, ">")
+    }
+}
+
 pub enum Literal {
-    Float(f64),
     Number(i64),
-    String(String),
+    Float(f64),
+    Atom(Arc<str>),
 }
 
-#[derive(Debug, Clone, Arbitrary)]
-pub enum Folder {
-    Operator(BinaryOp),
-    Args {
-        func: Box<SpannedValue<Expr>>,
-        def: Box<SpannedValue<Expr>>,
-    },
+impl std::fmt::Debug for Literal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Number(arg0) => write!(f, "{}", arg0),
+            Self::Float(arg0) => write!(f, "{}", arg0),
+            Self::Atom(s) => write!(f, ":{}", s),
+        }
+    }
 }
 
-#[derive(Debug, Clone, Arbitrary)]
-pub struct RangeExpr {
-    pub start: SpannedValue<Expr>,
-    pub end: Option<SpannedValue<Expr>>,
-    pub step: SpannedValue<Expr>,
-}
-
-#[derive(Debug, Clone, Arbitrary)]
-pub enum Expr {
-    Slice {
-        iterable: Box<SpannedValue<Expr>>,
-        slice: Box<SpannedValue<RangeExpr>>,
-    },
-    Range(Box<RangeExpr>),
-    Literal(SpannedValue<Literal>),
-    Place(SpannedValue<Place>),
-    Binary(BinaryOp, Box<SpannedValue<Expr>>, Box<SpannedValue<Expr>>),
-    Map(Vec<(SpannedValue<Expr>, SpannedValue<Expr>)>),
-    Array(Vec<SpannedValue<Expr>>),
-    Tilde(Box<SpannedValue<Expr>>),
-    Fold(SpannedValue<Folder>),
-    Mapper(Box<SpannedValue<Expr>>),
-    FuncDef {
-        args: Vec<String>,
-        ret: Box<SpannedValue<Expr>>,
-    },
-    NamedCall {
-        func: Box<SpannedValue<Expr>>,
-        named: HashMap<SpannedValue<RcStr>, SpannedValue<Expr>>,
-    },
-    Call {
-        func: Box<SpannedValue<Expr>>,
-        args: Vec<SpannedValue<Expr>>,
-    },
-}
-
-#[derive(Debug, Clone, Arbitrary)]
-pub enum BinaryOp {
-    BitwiseOr,
-    BitwiseAnd,
-    Redirect,
-    Plus,
-    Minus,
+pub enum BinOpKind {
     Times,
     Divide,
-    IntDivide,
-    Power,
-    Modulo,
-    LShift,
-    RShift,
 }
 
-#[derive(Debug, Clone, Arbitrary)]
-pub enum Place {
-    Ident(SpannedValue<String>),
-    Deref(Box<SpannedValue<Expr>>, SpannedValue<RcStr>),
-    Index(Box<SpannedValue<Expr>>, Box<SpannedValue<Expr>>),
+impl std::fmt::Debug for BinOpKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Times => write!(f, "*"),
+            Self::Divide => write!(f, "/"),
+        }
+    }
 }
 
-#[derive(Debug, Arbitrary)]
-pub enum Statement {
-    Expr(SpannedValue<Expr>),
-    Assign(SpannedValue<Place>, SpannedValue<Expr>),
+pub struct BinOp {
+    pub lhs: Box<SpannedValue<Expr>>,
+    pub kind: BinOpKind,
+    pub rhs: Box<SpannedValue<Expr>>,
+}
+
+impl std::fmt::Debug for BinOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({:?}) {:?} ({:?})", **self.lhs, self.kind, **self.rhs)
+    }
+}
+
+pub enum InputStatement {
+    Expr(Expr),
+    LastRedirect(Function),
+    Command(SpannedValue<Arc<str>>, SpannedValue<Expr>),
+}
+
+impl std::fmt::Debug for InputStatement {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Expr(arg0) => write!(f, "{arg0:?}"),
+            Self::LastRedirect(arg0) => write!(f, "|> ({arg0:?})"),
+            Self::Command(name, value) => write!(f, ".{:?}={:?}", name, value),
+        }
+    }
+}
+
+pub enum Function {
+    Ref(SpannedValue<Variable>),
+}
+
+impl std::fmt::Debug for Function {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Function::Ref(a) => write!(f, "{:?}", **a),
+        }
+    }
+}
+
+pub enum Expr {
+    DimensionalLiteral(SpannedValue<Literal>, Vec<SpannedValue<(Arc<str>, i16)>>),
+    Literal(SpannedValue<Literal>),
+    Variable(SpannedValue<Variable>),
+    Assign(SpannedValue<Variable>, Box<SpannedValue<Expr>>),
+    BinOp(BinOp),
+}
+
+impl std::fmt::Debug for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::DimensionalLiteral(l, d) => write!(f, "{:?}_{:?}", **l, d),
+            Self::Literal(arg0) => write!(f, "{:?}", **arg0),
+            Self::Variable(arg0) => f.debug_tuple("&").field(&**arg0).finish(),
+            Self::Assign(arg0, arg1) => write!(f, "{:?} = ({:?})", **arg0, ***arg1),
+            Self::BinOp(arg0) => write!(f, "({:?})", arg0),
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
-#[error("unknown token: {token}")]
+#[error("unknown token: '{token}'")]
 pub struct UnknownToken {
     pub token: String,
     pub span: Range<usize>,

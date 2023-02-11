@@ -1,2 +1,0 @@
-import json; f = open("../data/canada.json"); json.load(f); print(0)
-open("../data/canada.json") |> des |> zero

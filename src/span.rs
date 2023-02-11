@@ -3,15 +3,14 @@ use std::{
     sync::Arc,
 };
 
-use arbitrary::Arbitrary;
 use derivative::Derivative;
 use miette::{NamedSource, SourceCode, SourceSpan};
-use once_cell::sync::Lazy;
+//use once_cell::sync::Lazy;
 
 #[derive(Clone, Debug)]
 pub enum MaybeNamed {
     Named(Arc<NamedSource>),
-    Unamed(ArcStr),
+    Unamed(Arc<str>),
 }
 
 impl From<NamedSource> for MaybeNamed {
@@ -22,7 +21,7 @@ impl From<NamedSource> for MaybeNamed {
 
 impl From<&str> for MaybeNamed {
     fn from(s: &str) -> Self {
-        MaybeNamed::Unamed(ArcStr(Arc::from(s)))
+        MaybeNamed::Unamed(Arc::from(s))
     }
 }
 
@@ -36,29 +35,13 @@ impl SourceCode for MaybeNamed {
         match self {
             MaybeNamed::Named(s) => s.read_span(span, context_lines_before, context_lines_after),
             MaybeNamed::Unamed(s) => {
-                s.0.read_span(span, context_lines_before, context_lines_after)
+                s.read_span(span, context_lines_before, context_lines_after)
             }
         }
     }
 }
 
-impl<'a> Arbitrary<'a> for MaybeNamed {
-    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-        Ok(Self::Unamed(ArcStr::arbitrary(u)?))
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ArcStr(pub Arc<str>);
-
-impl<'a> Arbitrary<'a> for ArcStr {
-    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
-        let data = String::arbitrary(u)?;
-        Ok(Self(Arc::from(data)))
-    }
-}
-
-#[derive(Debug, Clone, Derivative, Arbitrary)]
+#[derive(Debug, Clone, Derivative)]
 #[derivative(PartialEq, Hash, Eq)]
 pub struct SpannedValue<T> {
     #[derivative(PartialEq = "ignore", Hash = "ignore")]
@@ -84,12 +67,12 @@ impl<T> From<&SpannedValue<T>> for SourceSpan {
     }
 }
 
-pub static UNKNOWN_SPAN: Lazy<Span> = Lazy::new(|| Span {
+/* pub static UNKNOWN_SPAN: Lazy<Span> = Lazy::new(|| Span {
     start: 1,
     end: 0,
     source: NamedSource::new("<unknown>", "").into(),
     value: (),
-});
+}); */
 
 pub trait SpanningExt {
     fn spanned<U>(self, span: &SpannedValue<U>) -> SpannedValue<Self>

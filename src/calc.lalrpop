@@ -1,0 +1,90 @@
+use crate::{
+	ast::{Token, Expr, Literal, Variable, BinOp, BinOpKind, InputStatement, Function},
+	span::SpannedValue,
+};
+use std::sync::Arc;
+
+grammar(source: &crate::span::MaybeNamed);
+
+extern {
+	type Location = usize;
+	type Error = crate::ast::UnknownToken;
+
+	enum Token {
+		"(" => Token::LParen,
+		")" => Token::RParen,
+		"|>" => Token::Redirect,
+		"=" => Token::Equal,
+		"+" => Token::Plus,
+		"-" => Token::Minus,
+		"*" => Token::Times,
+		"**" => Token::Power,
+		"/" => Token::Divide,
+		"//" => Token::IntDivide,
+		">>" => Token::RShift,
+		"<<" => Token::LShift,
+		"%" => Token::Percent,
+		"\\" => Token::Backslash,
+		"." => Token::Dot,
+		":" => Token::Colon,
+		num => Token::Number(<i64>),
+		float => Token::Float(<f64>),
+		ident => Token::Ident(<Arc<str>>),
+		unit => Token::Unit(<Arc<str>>),
+		binding => Token::Binding(<Arc<str>>),
+	}
+}
+
+Spn<T>: SpannedValue<T> = {
+    <start:@L> <value:T> <end:@R> => SpannedValue {
+        start, 
+        value, 
+        end, 
+        source: source.clone()
+    }
+};
+
+Variable: Variable = ident+ => Variable(<>);
+SpnBox<T>: Box<SpannedValue<T>> = Spn<T> => Box::new(<>);
+
+pub InputStatement: SpannedValue<InputStatement> = Spn<InputStatementInner> => <>;
+
+InputStatementInner: InputStatement = {
+	"|>" <Function> => InputStatement::LastRedirect(<>),
+	Expr => InputStatement::Expr(<>),
+	"." <Spn<ident>> "=" <Spn<Expr>> => InputStatement::Command(<>),
+};
+
+Function: Function = {
+	Spn<Variable> => Function::Ref(<>),
+};
+
+pub Expr: Expr = {
+	<Spn<Variable>> "=" <SpnBox<Expr>> => Expr::Assign(<>),
+	ExprMult => <>,
+};
+
+ExprMult: Expr = {
+	<lhs:SpnBox<ExprLiteral>> "/" <rhs:SpnBox<ExprMult>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Divide}),
+	<lhs:SpnBox<ExprLiteral>> "*" <rhs:SpnBox<ExprMult>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Times}),
+	ExprLiteral => <>,
+};
+
+Unit: (Arc<str>, i16) = {
+	unit => (<>, 1),
+	unit num => (<> as i16),
+	<u:unit> "-" <e:num> => (u, (-e) as i16),
+};
+
+ExprLiteral: Expr = {
+	Spn<Literal> => Expr::Literal(<>),
+	Spn<Literal> Spn<Unit>+ => Expr::DimensionalLiteral(<>),
+	Spn<Variable> => Expr::Variable(<>),
+	"(" <Expr> ")" => <>,
+};
+
+Literal: Literal = {
+	num => Literal::Number(<>),
+	float => Literal::Float(<>),
+	":" <ident> => Literal::Atom(<>),
+};

@@ -1,2 +1,0 @@
-import yaml; f = open("../data/canada.yaml"); yaml.load(f, Loader=yaml.CLoader); print(0)
-open("../data/canada.yaml") |> des{fmt = "yaml"} |> zero

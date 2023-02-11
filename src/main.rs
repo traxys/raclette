@@ -1,31 +1,39 @@
-use std::{ffi::OsStr, path::PathBuf};
+use std::path::PathBuf;
 
 use clap::Parser;
-use miette::{Context, Diagnostic, IntoDiagnostic, NamedSource, Result, SourceCode, SourceSpan};
+use lalrpop_util::lalrpop_mod;
+use miette::{Context, Diagnostic, IntoDiagnostic, Result, SourceCode, SourceSpan};
 use rustyline::{error::ReadlineError, Editor};
-
-use raclette::{
-    ast, interpreter,
-    span::{Span, SpanningExt},
-};
 
 #[derive(Parser, Debug)]
 struct Args {
     #[clap(short, long)]
     file: Option<PathBuf>,
-    #[clap(short, long, conflicts_with = "file")]
-    command: Option<String>,
 }
+
+lalrpop_mod!(
+    #[allow(
+        clippy::just_underscores_and_digits,
+        clippy::clone_on_copy,
+        clippy::too_many_arguments,
+        clippy::type_complexity,
+    )]
+    pub calc
+);
+
+mod ast;
+mod runner;
+mod span;
 
 #[derive(thiserror::Error, Debug, Diagnostic)]
 enum ParseError {
-    #[diagnostic(code(raclette::parsing::invalid_token))]
+    #[diagnostic(code(calc::parsing::invalid_token))]
     #[error("Token is invalid")]
     Invalid {
         #[label]
         position: SourceSpan,
     },
-    #[diagnostic(code(raclette::parsing::unrecognized_token))]
+    #[diagnostic(code(calc::parsing::unrecognized_token))]
     #[error("Unrecognized token: {token}.\nExpected one of: {}", expected.join(", "))]
     Unrecognized {
         token: ast::Token,
@@ -33,14 +41,14 @@ enum ParseError {
         #[label("this token is not valid in this context")]
         location: SourceSpan,
     },
-    #[diagnostic(code(raclette::parsing::unknown_token))]
+    #[diagnostic(code(calc::parsing::unknown_token))]
     #[error("Unknown token: {token}")]
     Unknown {
         token: String,
         #[label("this is not a valid token")]
         location: SourceSpan,
     },
-    #[diagnostic(code(raclette::parsing::eof))]
+    #[diagnostic(code(calc::parsing::eof))]
     #[error("Unexpected end of file.\nExpected one of: {}", expected.join(", "))]
     Eof {
         expected: Vec<String>,
@@ -96,10 +104,10 @@ impl<T> ParseDiagnosticExt<T> for Result<T, LalrpopParseError> {
 }
 
 fn main() -> Result<()> {
-    let args = Args::parse();
+    let _args = Args::parse();
 
     let data_dir = dirs_next::data_dir().map(|mut p| {
-        p.push("raclette");
+        p.push("rcalc");
         p
     });
 
@@ -109,111 +117,58 @@ fn main() -> Result<()> {
             .wrap_err("Could not create data directory")?;
     };
 
-    let mut interpreter = interpreter::Interpreter::new();
+    let parser = calc::InputStatementParser::new();
+    let mut rl = Editor::<()>::new().into_diagnostic()?;
 
-    if let Some(command) = args.command {
-        let parser = raclette::raclette::ExprParser::new();
-        let expr = parser
-            .parse(&command.as_str().into(), ast::lexer(&command))
-            .into_report(command.clone())?;
-        let value = interpreter.run_expr(expr.spanned(&Span {
-            source: command.as_str().into(),
-            start: 0,
-            end: command.len(),
-            value: (),
-        }))?;
+    let path = data_dir
+        .map(|mut p| {
+            p.push("history");
+            p
+        })
+        .unwrap_or_else(|| "rcalc-history".into());
 
-        println!("{}", **value.borrow());
+    if let Err(e) = rl.load_history(&path) {
+        if path.exists() {
+            println!("Error loading history: {:?}", e)
+        }
+    };
 
-        return Ok(());
-    }
+    let mut runner = runner::Runner::new();
 
-    match args.file {
-        None => {
-            let parser = raclette::raclette::StatementParser::new();
-            let mut rl = Editor::<()>::new().into_diagnostic()?;
-
-            let path = data_dir
-                .map(|mut p| {
-                    p.push("history");
-                    p
-                })
-                .unwrap_or_else(|| "raclette-history".into());
-
-            if let Err(e) = rl.load_history(&path) {
-                if path.exists() {
-                    println!("Error loading history: {:?}", e)
-                }
-            };
-
-            loop {
-                match rl.readline(">> ") {
-                    Ok(line) => {
-                        rl.add_history_entry(&line);
-                        let parsed = match parser
-                            .parse(&line.as_str().into(), ast::lexer(&line))
-                            .into_report(line.clone())
-                        {
-                            Ok(p) => p,
-                            Err(e) => {
-                                println!("Parsing error: {:?}", e);
-                                continue;
-                            }
-                        };
-                        match parsed {
-                            ast::Statement::Expr(exp) => {
-                                match interpreter.run_expr(exp).map(|v| v.borrow().to_string()) {
-                                    Ok(v) => {
-                                        println!("{}", v);
-                                    }
-                                    Err(e) => {
-                                        let report: miette::Report = e.into();
-                                        println!("Error: {:?}", report);
-                                        continue;
-                                    }
-                                };
-                            }
-                            _ => {
-                                if let Err(e) = interpreter.run_statement(parsed) {
-                                    let report: miette::Report = e.into();
-                                    println!("Error: {:?}", report);
-                                    continue;
-                                }
-                            }
-                        }
-                    }
-                    Err(ReadlineError::Interrupted) => {
-                        println!("Interrupted");
+    loop {
+        match rl.readline(">> ") {
+            Ok(line) => {
+                rl.add_history_entry(&line);
+                let parsed = match parser
+                    .parse(&line.as_str().into(), ast::lexer(&line))
+                    .into_report(line.clone())
+                {
+                    Ok(p) => p,
+                    Err(e) => {
+                        println!("Parsing error: {:?}", e);
                         continue;
                     }
-                    Err(ReadlineError::Eof) => {
-                        break;
-                    }
+                };
+                match runner.eval_input_statement(parsed) {
                     Err(e) => {
-                        println!("Error: {e}");
-                        break;
+                        println!("Runtime error: {e:?}");
+                        continue;
                     }
-                }
+                    Ok(Some(v)) => println!("{}", runner.display_value(&v)),
+                    Ok(None) => (),
+                };
             }
-
-            rl.save_history(&path)
-                .into_diagnostic()
-                .wrap_err("Could not save history")?;
-        }
-        Some(p) => {
-            let input = std::fs::read_to_string(&p)
-                .into_diagnostic()
-                .wrap_err("Could not open input file")?;
-            let source = NamedSource::new(
-                p.file_name()
-                    .map(OsStr::to_string_lossy)
-                    .unwrap_or_else(|| "<source-file>".into()),
-                input.clone(),
-            );
-            let parsed = raclette::raclette::FileParser::new()
-                .parse(&input.as_str().into(), ast::lexer(&input))
-                .into_report(source)?;
-            dbg!(parsed);
+            Err(ReadlineError::Interrupted) => {
+                println!("Interrupted");
+                continue;
+            }
+            Err(ReadlineError::Eof) => {
+                break;
+            }
+            Err(e) => {
+                println!("Error: {e}");
+                break;
+            }
         }
     }
 
