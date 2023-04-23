@@ -886,6 +886,19 @@ impl Runner {
                 };
                 Ok(())
             }
+            "help" => {
+                match value {
+                    None => {
+                        println!("Commands:");
+                        println!("  round = :none | number (default is 2)");
+                        println!("  byte_scale = :binary | :metric (default is :binary)");
+                        println!("  default_scale = :binary | :metric (default is :metric)");
+                    }
+                    Some(_) => todo!(),
+                };
+
+                Ok(())
+            }
             _ => Err(RunnerError::UnknownCommand { location, src }),
         }
     }
