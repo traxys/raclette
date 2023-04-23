@@ -86,6 +86,8 @@ pub enum Dimension {
     Length,
     // Expressed in Seconds
     Time,
+    // Expressed in Kilograms
+    Mass,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -96,7 +98,7 @@ pub struct Unit {
 impl Unit {
     fn dimensionless() -> Self {
         Self {
-            dimensions: EnumMap::from_array([0; 3]),
+            dimensions: EnumMap::from_array([0; 4]),
         }
     }
 
@@ -134,6 +136,7 @@ impl std::ops::Div for Unit {
 enum ScaleType {
     Metric,
     TimeMetric,
+    ShiftedMetric,
     Binary,
 }
 
@@ -143,6 +146,7 @@ impl ScaleType {
             ScaleType::Metric => METRIC_SCALE,
             ScaleType::TimeMetric => TIME_METRIC_SCALE,
             ScaleType::Binary => BINARY_SCALE,
+            ScaleType::ShiftedMetric => SHIFTED_METRIC_SCALE,
         }
     }
 
@@ -250,6 +254,57 @@ static BINARY_SCALE: &[ScaleStep] = &[
     ScaleStep {
         render: ScaleRender::AsIs,
         order: 1.,
+    },
+];
+
+#[allow(clippy::eq_op)]
+static SHIFTED_METRIC_SCALE: &[ScaleStep] = &[
+    ScaleStep {
+        render: ScaleRender::Prefix("E"),
+        order: 1000000000000000000. / 1000.,
+    },
+    ScaleStep {
+        render: ScaleRender::Prefix("P"),
+        order: 1000000000000000. / 1000.,
+    },
+    ScaleStep {
+        render: ScaleRender::Prefix("T"),
+        order: 1000000000000. / 1000.,
+    },
+    ScaleStep {
+        render: ScaleRender::Prefix("G"),
+        order: 1000000000. / 1000.,
+    },
+    ScaleStep {
+        render: ScaleRender::Prefix("M"),
+        order: 1000000. / 1000.,
+    },
+    ScaleStep {
+        render: ScaleRender::Prefix("k"),
+        order: 1000. / 1000.,
+    },
+    ScaleStep {
+        render: ScaleRender::AsIs,
+        order: 1. / 1000.,
+    },
+    ScaleStep {
+        render: ScaleRender::Prefix("m"),
+        order: 0.001 / 1000.,
+    },
+    ScaleStep {
+        render: ScaleRender::EitherPrefix {
+            main: "μ",
+            alternative: "u",
+        },
+        order: 0.000001 / 1000.,
+    },
+    ScaleStep {
+        render: ScaleRender::Prefix("n"),
+        order: 0.000000001 / 1000.,
+    },
+    ScaleStep {
+        render: ScaleRender::Prefix("p"),
+        order: 0.000000000001 / 1000.,
     },
 ];
 
@@ -551,6 +606,12 @@ pub static BYTE_UNIT: Lazy<Unit> = Lazy::new(|| {
     unit
 });
 
+pub static MASS_UNIT: Lazy<Unit> = Lazy::new(|| {
+    let mut unit = Unit::dimensionless();
+    unit.dimensions[Dimension::Mass] += 1;
+    unit
+});
+
 pub static KNOWN_UNITS: Lazy<HashMap<Unit, &'static str>> = Lazy::new(|| {
     use Dimension::*;
 
@@ -565,6 +626,8 @@ pub static KNOWN_UNITS: Lazy<HashMap<Unit, &'static str>> = Lazy::new(|| {
     let mut unit = Unit::dimensionless();
     unit.dimensions[Time] += 1;
     units.insert(unit, "s");
+
+    units.insert(*MASS_UNIT, "g");
 
     let mut unit = Unit::dimensionless();
     unit.dimensions[Time] -= 1;
@@ -595,6 +658,7 @@ impl Runner {
             ScaleType::TimeMetric,
         );
         scales.insert(*BYTE_UNIT, ScaleType::Binary);
+        scales.insert(*MASS_UNIT, ScaleType::ShiftedMetric);
 
         Self {
             last: None,
@@ -648,6 +712,7 @@ impl Runner {
                                 Dimension::Byte => "B",
                                 Dimension::Length => "m",
                                 Dimension::Time => "s",
+                                Dimension::Mass => "kg",
                             };
                             match scale {
                                 0 => None,
@@ -735,6 +800,11 @@ impl Runner {
                 "B" => vec![(Dimension::Byte, 1)],
                 "m" => vec![(Dimension::Length, 1)],
                 "s" => vec![(Dimension::Time, 1)],
+                "Hz" => vec![(Dimension::Time, -1)],
+                "g" => {
+                    multiplier /= 1000.;
+                    vec![(Dimension::Mass, 1)]
+                }
                 _ => {
                     return Err(RunnerError::InvalidUnit {
                         unit: unit.to_string(),
