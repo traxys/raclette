@@ -13,6 +13,7 @@ use crate::{
 
 use self::functions::ValueFn;
 
+mod commands;
 mod functions;
 
 #[derive(Debug, Clone, Copy)]
@@ -862,7 +863,7 @@ impl Runner {
         let rhs = self.eval_expr(&b.rhs)?;
         match b.kind {
             ast::BinOpKind::Times => (lhs.spanned(&lhs_span) * rhs.spanned(&rhs_span))
-                .wrap_err("could not multily operands"),
+                .wrap_err("could not multiply operands"),
             ast::BinOpKind::Divide => {
                 if rhs.is_zero() {
                     return Err(RunnerError::DivideByZero {
@@ -899,76 +900,9 @@ impl Runner {
     ) -> Result<(), RunnerError> {
         let location = (name.start..name.end).into();
         let src = name.source;
-        match &*name.value {
-            "round" => {
-                match value {
-                    None => return Err(RunnerError::MissingCommandValue { location, src }),
-                    Some(Value::Atom(v)) if &*v == "none" => self.round = None,
-                    Some(Value::Numeric(NumericValue {
-                        magnitude: ValueMagnitude::Int(n),
-                        unit,
-                    })) if unit.is_dimensionless() => self.round = Some(n as _),
-                    Some(v) => {
-                        return Err(RunnerError::InvalidCommandValue {
-                            val: self.display_value(&v),
-                            location,
-                            src,
-                        })
-                    }
-                };
-                Ok(())
-            }
-            "byte_scale" => {
-                match value {
-                    None => return Err(RunnerError::MissingCommandValue { location, src }),
-                    Some(Value::Atom(v)) if &*v == "binary" => {
-                        self.scales.insert(*BYTE_UNIT, ScaleType::Binary);
-                    }
-                    Some(Value::Atom(v)) if &*v == "metric" => {
-                        self.scales.insert(*BYTE_UNIT, ScaleType::Metric);
-                    }
-                    Some(v) => {
-                        return Err(RunnerError::InvalidCommandValue {
-                            val: self.display_value(&v),
-                            location,
-                            src,
-                        })
-                    }
-                };
-                Ok(())
-            }
-            "default_scale" => {
-                match value {
-                    None => return Err(RunnerError::MissingCommandValue { location, src }),
-                    Some(Value::Atom(v)) if &*v == "binary" => {
-                        self.default_scale = ScaleType::Binary
-                    }
-                    Some(Value::Atom(v)) if &*v == "metric" => {
-                        self.default_scale = ScaleType::Metric
-                    }
-                    Some(v) => {
-                        return Err(RunnerError::InvalidCommandValue {
-                            val: self.display_value(&v),
-                            location,
-                            src,
-                        })
-                    }
-                };
-                Ok(())
-            }
-            "help" => {
-                match value {
-                    None => {
-                        println!("Commands:");
-                        println!("  round = :none | number (default is 2)");
-                        println!("  byte_scale = :binary | :metric (default is :binary)");
-                        println!("  default_scale = :binary | :metric (default is :metric)");
-                    }
-                    Some(_) => todo!(),
-                };
 
-                Ok(())
-            }
+        match commands::COMMANDS.get(&*name.value) {
+            Some(cmd) => cmd.run(self, value, location, src),
             _ => Err(RunnerError::UnknownCommand { location, src }),
         }
     }
