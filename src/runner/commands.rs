@@ -149,13 +149,34 @@ impl RunnerCommand for Help {
     }
 }
 
+struct Functions;
+impl NoParamCommand for Functions {
+    fn name(&self) -> &'static str {
+        "functions"
+    }
+
+    fn help(&self) -> &'static str {
+        "Display a list of available functions"
+    }
+
+    fn run(&self, _: &mut super::Runner) -> Result<(), RunnerError> {
+        println!("Functions:");
+        for name in super::functions::FUNCTIONS.keys() {
+            println!("  - {}", name.0.join(" "))
+        }
+
+        Ok(())
+    }
+}
+
 pub(super) static COMMANDS: Lazy<HashMap<&'static str, Box<dyn RunnerCommand + Send + Sync>>> =
     Lazy::new(|| {
         let cmds: Vec<Box<dyn RunnerCommand + Send + Sync>> = vec![
-            Box::new(Round),
-            Box::new(ByteScale),
-            Box::new(DefaultScale),
+            Box::new(PR(Round)),
+            Box::new(PR(ByteScale)),
+            Box::new(PR(DefaultScale)),
             Box::new(Help),
+            Box::new(NP(Functions)),
         ];
         let mut commands = HashMap::new();
 
@@ -192,13 +213,15 @@ trait ParamRunnerCommand {
     ) -> Result<(), RunnerError>;
 }
 
-impl<T: ParamRunnerCommand> RunnerCommand for T {
+struct PR<T>(T);
+
+impl<T: ParamRunnerCommand> RunnerCommand for PR<T> {
     fn name(&self) -> &'static str {
-        self.name()
+        self.0.name()
     }
 
     fn help(&self) -> &'static str {
-        self.help()
+        self.0.help()
     }
 
     fn run(
@@ -209,8 +232,43 @@ impl<T: ParamRunnerCommand> RunnerCommand for T {
         src: MaybeNamed,
     ) -> Result<(), RunnerError> {
         match value {
-            Some(v) => self.run(state, v, location, src),
+            Some(v) => self.0.run(state, v, location, src),
             None => Err(RunnerError::MissingCommandValue { location, src }),
+        }
+    }
+}
+
+trait NoParamCommand {
+    fn name(&self) -> &'static str;
+    fn help(&self) -> &'static str;
+
+    fn run(&self, state: &mut super::Runner) -> Result<(), RunnerError>;
+}
+
+struct NP<T>(T);
+impl<T: NoParamCommand> RunnerCommand for NP<T> {
+    fn name(&self) -> &'static str {
+        self.0.name()
+    }
+
+    fn help(&self) -> &'static str {
+        self.0.help()
+    }
+
+    fn run(
+        &self,
+        state: &mut super::Runner,
+        value: Option<Value>,
+        location: SourceSpan,
+        src: MaybeNamed,
+    ) -> Result<(), RunnerError> {
+        match value {
+            Some(v) => Err(RunnerError::InvalidCommandValue {
+                val: state.display_value(&v),
+                location,
+                src,
+            }),
+            None => self.0.run(state),
         }
     }
 }
