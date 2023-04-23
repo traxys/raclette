@@ -53,8 +53,10 @@ pub InputStatement: SpannedValue<InputStatement> = Spn<InputStatementInner> => <
 InputStatementInner: InputStatement = {
 	"|>" <Function> => InputStatement::LastRedirect(<>),
 	Expr => InputStatement::Expr(<>),
-	"." <Spn<ident>> "=" <Spn<Expr>> => InputStatement::Command(<>),
+	"." <Spn<ident>> <CommandValue?> => InputStatement::Command(<>),
 };
+
+CommandValue: SpannedValue<Expr> = "=" <Spn<Expr>> => <>;
 
 Function: Function = {
 	Spn<Variable> => Function::Ref(<>),

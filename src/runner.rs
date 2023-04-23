@@ -528,6 +528,13 @@ pub enum RunnerError {
         #[source_code]
         src: MaybeNamed,
     },
+    #[error("Value missing for this command")]
+    MissingCommandValue {
+        #[label("this command requires a value")]
+        location: SourceSpan,
+        #[source_code]
+        src: MaybeNamed,
+    },
 }
 
 pub struct Runner {
@@ -818,21 +825,24 @@ impl Runner {
     pub fn handle_command(
         &mut self,
         name: SpannedValue<Arc<str>>,
-        value: Value,
+        value: Option<Value>,
     ) -> Result<(), RunnerError> {
-        match &**name {
+        let location = (name.start..name.end).into();
+        let src = name.source;
+        match &*name.value {
             "round" => {
                 match value {
-                    Value::Atom(v) if &*v == "none" => self.round = None,
-                    Value::Numeric(NumericValue {
+                    None => return Err(RunnerError::MissingCommandValue { location, src }),
+                    Some(Value::Atom(v)) if &*v == "none" => self.round = None,
+                    Some(Value::Numeric(NumericValue {
                         magnitude: ValueMagnitude::Int(n),
                         unit,
-                    }) if unit.is_dimensionless() => self.round = Some(n as _),
-                    v => {
+                    })) if unit.is_dimensionless() => self.round = Some(n as _),
+                    Some(v) => {
                         return Err(RunnerError::InvalidCommandValue {
                             val: self.display_value(&v),
-                            location: (name.start..name.end).into(),
-                            src: name.source,
+                            location,
+                            src,
                         })
                     }
                 };
@@ -840,17 +850,18 @@ impl Runner {
             }
             "byte_scale" => {
                 match value {
-                    Value::Atom(v) if &*v == "binary" => {
+                    None => return Err(RunnerError::MissingCommandValue { location, src }),
+                    Some(Value::Atom(v)) if &*v == "binary" => {
                         self.scales.insert(*BYTE_UNIT, ScaleType::Binary);
                     }
-                    Value::Atom(v) if &*v == "metric" => {
+                    Some(Value::Atom(v)) if &*v == "metric" => {
                         self.scales.insert(*BYTE_UNIT, ScaleType::Metric);
                     }
-                    v => {
+                    Some(v) => {
                         return Err(RunnerError::InvalidCommandValue {
                             val: self.display_value(&v),
-                            location: (name.start..name.end).into(),
-                            src: name.source,
+                            location,
+                            src,
                         })
                     }
                 };
@@ -858,22 +869,24 @@ impl Runner {
             }
             "default_scale" => {
                 match value {
-                    Value::Atom(v) if &*v == "binary" => self.default_scale = ScaleType::Binary,
-                    Value::Atom(v) if &*v == "metric" => self.default_scale = ScaleType::Metric,
-                    v => {
+                    None => return Err(RunnerError::MissingCommandValue { location, src }),
+                    Some(Value::Atom(v)) if &*v == "binary" => {
+                        self.default_scale = ScaleType::Binary
+                    }
+                    Some(Value::Atom(v)) if &*v == "metric" => {
+                        self.default_scale = ScaleType::Metric
+                    }
+                    Some(v) => {
                         return Err(RunnerError::InvalidCommandValue {
                             val: self.display_value(&v),
-                            location: (name.start..name.end).into(),
-                            src: name.source,
+                            location,
+                            src,
                         })
                     }
                 };
                 Ok(())
             }
-            _ => Err(RunnerError::UnknownCommand {
-                location: (name.start..name.end).into(),
-                src: name.source,
-            }),
+            _ => Err(RunnerError::UnknownCommand { location, src }),
         }
     }
 
@@ -884,7 +897,7 @@ impl Runner {
         let span = expr.span();
         let value = match expr.value {
             ast::InputStatement::Command(name, val) => {
-                let v = self.eval_expr(&val)?;
+                let v = val.as_ref().map(|e| self.eval_expr(e)).transpose()?;
                 self.handle_command(name, v)?;
                 return Ok(self.last.clone().map(|v| v.value));
             }
