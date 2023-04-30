@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, fmt::Display, sync::Arc};
 
 use either::Either;
 use enum_map::{Enum, EnumMap};
@@ -79,6 +79,40 @@ impl std::ops::Div for ValueMagnitude {
     }
 }
 
+impl std::ops::Add for ValueMagnitude {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => ValueMagnitude::Int(a + b),
+            (ValueMagnitude::Int(a), ValueMagnitude::Float(b)) => {
+                ValueMagnitude::Float(a as f64 + b)
+            }
+            (ValueMagnitude::Float(a), ValueMagnitude::Int(b)) => {
+                ValueMagnitude::Float(a + b as f64)
+            }
+            (ValueMagnitude::Float(a), ValueMagnitude::Float(b)) => ValueMagnitude::Float(a + b),
+        }
+    }
+}
+
+impl std::ops::Sub for ValueMagnitude {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => ValueMagnitude::Int(a - b),
+            (ValueMagnitude::Int(a), ValueMagnitude::Float(b)) => {
+                ValueMagnitude::Float(a as f64 - b)
+            }
+            (ValueMagnitude::Float(a), ValueMagnitude::Int(b)) => {
+                ValueMagnitude::Float(a - b as f64)
+            }
+            (ValueMagnitude::Float(a), ValueMagnitude::Float(b)) => ValueMagnitude::Float(a - b),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Enum)]
 pub enum Dimension {
     // Expressed in Bytes
@@ -89,6 +123,17 @@ pub enum Dimension {
     Time,
     // Expressed in Kilograms
     Mass,
+}
+
+impl Display for Dimension {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Dimension::Byte => write!(f, "B"),
+            Dimension::Length => write!(f, "m"),
+            Dimension::Time => write!(f, "s"),
+            Dimension::Mass => write!(f, "kg"),
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -131,6 +176,30 @@ impl std::ops::Div for Unit {
         }
 
         self
+    }
+}
+
+impl Display for Unit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match KNOWN_UNITS.get(self) {
+            Some(v) => write!(f, "{v}"),
+            None if self.is_dimensionless() => write!(f, "scalar"),
+            None => {
+                write!(
+                    f,
+                    "{}",
+                    self.dimensions
+                        .iter()
+                        .filter(|(_, &p)| p != 0)
+                        .map(|(u, &p)| if p != 1 {
+                            format!("{u}{p}")
+                        } else {
+                            u.to_string()
+                        })
+                        .join(".")
+                )
+            }
+        }
     }
 }
 
@@ -359,7 +428,7 @@ static METRIC_SCALE: &[ScaleStep] = &[
     },
 ];
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct NumericValue {
     pub magnitude: ValueMagnitude,
     pub unit: Unit,
@@ -384,6 +453,36 @@ impl std::ops::Mul for NumericValue {
             magnitude: self.magnitude * rhs.magnitude,
             unit: self.unit * rhs.unit,
         }
+    }
+}
+
+impl std::ops::Add for NumericValue {
+    type Output = Result<Self, ()>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        if self.unit != rhs.unit {
+            return Err(());
+        }
+
+        Ok(Self {
+            magnitude: self.magnitude + rhs.magnitude,
+            unit: self.unit,
+        })
+    }
+}
+
+impl std::ops::Sub for NumericValue {
+    type Output = Result<Self, ()>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        if self.unit != rhs.unit {
+            return Err(());
+        }
+
+        Ok(Self {
+            magnitude: self.magnitude - rhs.magnitude,
+            unit: self.unit,
+        })
     }
 }
 
@@ -446,6 +545,92 @@ impl std::ops::Mul for SpannedValue<Value> {
     fn mul(self, rhs: Self) -> Self::Output {
         match (self.value, rhs.value) {
             (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(a * b)),
+            (Value::Str(_), _) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+        }
+    }
+}
+
+impl std::ops::Add for SpannedValue<Value> {
+    type Output = Result<Value, RunnerError>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let l_span = self.span();
+        let r_span = rhs.span();
+
+        match (self.value, rhs.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => {
+                Ok(Value::Numeric((a + b).map_err(|_| {
+                    RunnerError::UnitMismatch {
+                        lhs: (l_span.start..l_span.end).into(),
+                        lhs_unit: a.unit.to_string(),
+                        rhs: (r_span.start..r_span.end).into(),
+                        rhs_unit: b.unit.to_string(),
+                        src: self.source,
+                    }
+                })?))
+            }
+            (Value::Str(_), _) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+        }
+    }
+}
+
+impl std::ops::Sub for SpannedValue<Value> {
+    type Output = Result<Value, RunnerError>;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        let l_span = self.span();
+        let r_span = rhs.span();
+
+        match (self.value, rhs.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => {
+                Ok(Value::Numeric((a - b).map_err(|_| {
+                    RunnerError::UnitMismatch {
+                        lhs: (l_span.start..l_span.end).into(),
+                        lhs_unit: a.unit.to_string(),
+                        rhs: (r_span.start..r_span.end).into(),
+                        rhs_unit: b.unit.to_string(),
+                        src: self.source,
+                    }
+                })?))
+            }
             (Value::Str(_), _) => Err(RunnerError::InvalidType {
                 ty: "str",
                 location: (self.start..self.end).into(),
@@ -588,6 +773,17 @@ pub enum RunnerError {
     MissingCommandValue {
         #[label("this command requires a value")]
         location: SourceSpan,
+        #[source_code]
+        src: MaybeNamed,
+    },
+    #[error("Unit mismatches")]
+    UnitMismatch {
+        #[label("this value is of unit {lhs_unit}")]
+        lhs: SourceSpan,
+        lhs_unit: String,
+        #[label("this value is of unit {rhs_unit}")]
+        rhs: SourceSpan,
+        rhs_unit: String,
         #[source_code]
         src: MaybeNamed,
     },
@@ -876,6 +1072,11 @@ impl Runner {
                 (lhs.spanned(&lhs_span) / rhs.spanned(&rhs_span))
                     .with_context(|| "could not divide operands")
             }
+            ast::BinOpKind::Sum => {
+                (lhs.spanned(&lhs_span) + rhs.spanned(&rhs_span)).wrap_err("could not add operands")
+            }
+            ast::BinOpKind::Diff => (lhs.spanned(&lhs_span) - rhs.spanned(&rhs_span))
+                .wrap_err("could not substract operands"),
         }
     }
 

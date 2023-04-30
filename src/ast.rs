@@ -124,6 +124,8 @@ impl std::fmt::Debug for Literal {
 pub enum BinOpKind {
     Times,
     Divide,
+    Sum,
+    Diff,
 }
 
 impl std::fmt::Debug for BinOpKind {
@@ -131,6 +133,8 @@ impl std::fmt::Debug for BinOpKind {
         match self {
             Self::Times => write!(f, "*"),
             Self::Divide => write!(f, "/"),
+            Self::Sum => write!(f, "+"),
+            Self::Diff => write!(f, "-"),
         }
     }
 }

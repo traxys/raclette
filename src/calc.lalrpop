@@ -64,6 +64,12 @@ Function: Function = {
 
 pub Expr: Expr = {
 	<Spn<Variable>> "=" <SpnBox<Expr>> => Expr::Assign(<>),
+	ExprAdd => <>,
+};
+
+ExprAdd: Expr = {
+	<lhs:SpnBox<ExprAdd>> "+" <rhs:SpnBox<ExprMult>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Sum}),
+	<lhs:SpnBox<ExprAdd>> "-" <rhs:SpnBox<ExprMult>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Diff}),
 	ExprMult => <>,
 };
 
@@ -76,7 +82,7 @@ ExprMult: Expr = {
 Unit: (Arc<str>, i16) = {
 	unit => (<>, 1),
 	unit num => (<> as i16),
-	<u:unit> "-" <e:num> => (u, (-e) as i16),
+	"(" <u:unit> "-" <e:num> ")"=> (u, (-e) as i16),
 };
 
 UnitId: (Arc<str>, i16) = {
