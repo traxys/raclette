@@ -991,21 +991,24 @@ impl Runner {
             }
 
             let unit = match unit_proper {
-                "B" => vec![(Dimension::Byte, 1)],
-                "m" => vec![(Dimension::Length, 1)],
-                "s" => vec![(Dimension::Time, 1)],
-                "Hz" => vec![(Dimension::Time, -1)],
                 "g" => {
                     multiplier /= 1000.;
                     vec![(Dimension::Mass, 1)]
                 }
-                _ => {
-                    return Err(RunnerError::InvalidUnit {
-                        unit: unit.to_string(),
-                        location: (span.start..span.end).into(),
-                        src: span.source.clone(),
-                    })
-                }
+                u => match KNOWN_UNITS.iter().find(|(_, &n)| n == u) {
+                    None => {
+                        return Err(RunnerError::InvalidUnit {
+                            unit: unit.to_string(),
+                            location: (span.start..span.end).into(),
+                            src: span.source.clone(),
+                        })
+                    }
+                    Some((unit, _)) => unit
+                        .dimensions
+                        .iter()
+                        .filter_map(|(d, &v)| if v == 0 { None } else { Some((d, v)) })
+                        .collect(),
+                },
             };
 
             for (dim, dim_scale) in unit {
