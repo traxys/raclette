@@ -74,6 +74,11 @@ Function: Function = {
 
 pub Expr: Expr = {
 	<Spn<Variable>> "=" <SpnBox<Expr>> => Expr::Assign(<>),
+	ExprPipe => <>,
+};
+
+ExprPipe: Expr = {
+	<val:Spn<ExprPipe>> "|>" <fun:Spn<Function>> => Expr::Call(Call {fun, args: vec![val]}),
 	ExprAdd => <>,
 };
 
