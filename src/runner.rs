@@ -876,19 +876,16 @@ impl Runner {
 
     fn resolve_function(
         &self,
-        func: ast::Function,
+        func: &ast::Function,
     ) -> Result<&(dyn ValueFn + Send + Sync), RunnerError> {
         match func {
-            ast::Function::Ref(name) => {
-                functions::FUNCTIONS
-                    .get(&*name)
-                    .copied()
-                    .ok_or(RunnerError::UndefinedIdentifier {
-                        name: name.value,
-                        location: (name.start..name.end).into(),
-                        src: name.source,
-                    })
-            }
+            ast::Function::Ref(name) => functions::FUNCTIONS.get(name).copied().ok_or_else(|| {
+                RunnerError::UndefinedIdentifier {
+                    name: name.value.clone(),
+                    location: (name.start..name.end).into(),
+                    src: name.source.clone(),
+                }
+            }),
         }
     }
 
@@ -1049,6 +1046,18 @@ impl Runner {
                 Ok(expr)
             }
             ast::Expr::BinOp(b) => self.eval_bin_op(b),
+            ast::Expr::Call(c) => {
+                let args = c
+                    .args
+                    .iter()
+                    .map(|e| {
+                        let span = e.span();
+                        self.eval_expr(e).map(|v| v.spanned(&span))
+                    })
+                    .collect::<Result<_, _>>()?;
+                let f = self.resolve_function(&c.fun)?;
+                f.invoke(args)
+            }
         }
     }
 
@@ -1123,7 +1132,7 @@ impl Runner {
             ast::InputStatement::LastRedirect(func) => match &self.last {
                 None => Err(RunnerError::NoStoredValue)?,
                 Some(last) => {
-                    let f = self.resolve_function(func)?;
+                    let f = self.resolve_function(&func)?;
                     f.invoke(vec![last.clone()])?
                 }
             },

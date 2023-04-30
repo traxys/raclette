@@ -1,5 +1,5 @@
 use crate::{
-	ast::{Token, Expr, Literal, Variable, BinOp, BinOpKind, InputStatement, Function},
+	ast::{Token, Expr, Literal, Variable, BinOp, BinOpKind, InputStatement, Function, Call},
 	span::SpannedValue,
 };
 use std::sync::Arc;
@@ -28,6 +28,7 @@ extern {
 		"." => Token::Dot,
 		":" => Token::Colon,
 		"_(" => Token::UnitParen,
+		"," => Token::Comma,
 		num => Token::Number(<i64>),
 		float => Token::Float(<f64>),
 		ident => Token::Ident(<Arc<str>>),
@@ -47,6 +48,15 @@ Spn<T>: SpannedValue<T> = {
 
 Variable: Variable = ident+ => Variable(<>);
 SpnBox<T>: Box<SpannedValue<T>> = Spn<T> => Box::new(<>);
+Comma<T>: Vec<T> = {
+    <mut v:(<T> ",")*> <e:T?> => match e {
+        None => v,
+        Some(e) => {
+            v.push(e);
+            v
+        }
+    }
+};
 
 pub InputStatement: SpannedValue<InputStatement> = Spn<InputStatementInner> => <>;
 
@@ -98,10 +108,15 @@ ManyUnit: Vec<SpannedValue<(Arc<str>, i16)>> = {
 	"_(" <Spn<UnitId>+> ")" => <>,
 };
 
+Call: Call = {
+	<fun:Spn<Function>> "(" <args:Comma<Spn<Expr>>> ")" => Call { <> },
+};
+
 ExprLiteral: Expr = {
 	Spn<Literal> => Expr::Literal(<>),
 	Spn<Literal> ManyUnit => Expr::DimensionalLiteral(<>),
 	Spn<Variable> => Expr::Variable(<>),
+	Call => Expr::Call(<>),
 	"(" <Expr> ")" => <>,
 };
 

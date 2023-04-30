@@ -54,6 +54,9 @@ pub enum Token {
     #[token(":")]
     #[display(fmt = ":")]
     Colon,
+    #[token(",")]
+    #[display(fmt = ",")]
+    Comma,
     #[token("_(")]
     #[display(fmt = "_(")]
     UnitParen,
@@ -167,6 +170,24 @@ impl std::fmt::Debug for InputStatement {
     }
 }
 
+pub struct Call {
+    pub fun: SpannedValue<Function>,
+    pub args: Vec<SpannedValue<Expr>>,
+}
+
+impl std::fmt::Debug for Call {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "({:?})(", self.fun)?;
+        if !self.args.is_empty() {
+            write!(f, "{:?}", self.args[0])?;
+            for arg in self.args.iter().skip(1) {
+                write!(f, ", {arg:?}")?;
+            }
+        }
+        write!(f, ")")
+    }
+}
+
 pub enum Function {
     Ref(SpannedValue<Variable>),
 }
@@ -185,6 +206,7 @@ pub enum Expr {
     Variable(SpannedValue<Variable>),
     Assign(SpannedValue<Variable>, Box<SpannedValue<Expr>>),
     BinOp(BinOp),
+    Call(Call),
 }
 
 impl std::fmt::Debug for Expr {
@@ -195,6 +217,7 @@ impl std::fmt::Debug for Expr {
             Self::Variable(arg0) => f.debug_tuple("&").field(&**arg0).finish(),
             Self::Assign(arg0, arg1) => write!(f, "{:?} = ({:?})", **arg0, ***arg1),
             Self::BinOp(arg0) => write!(f, "({:?})", arg0),
+            Self::Call(arg0) => write!(f, "{arg0:?}")
         }
     }
 }
