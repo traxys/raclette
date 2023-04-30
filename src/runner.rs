@@ -830,6 +830,12 @@ pub static KNOWN_UNITS: Lazy<HashMap<Unit, &'static str>> = Lazy::new(|| {
     unit.dimensions[Time] -= 1;
     units.insert(unit, "Hz");
 
+    let mut unit = Unit::dimensionless();
+    unit.dimensions[Mass] += 1;
+    unit.dimensions[Length] += 1;
+    unit.dimensions[Time] -= 2;
+    units.insert(unit, "N");
+
     units
 });
 
@@ -973,45 +979,41 @@ impl Runner {
                 continue;
             };
 
-            let mut unit_proper: &str = unit;
-            for (prefix, mult) in ScaleType::all_prefix() {
-                if unit.len() <= prefix.len() {
-                    continue;
+            let (prefix, &real_unit) = match KNOWN_UNITS.iter().find(|(_, n)| unit.ends_with(**n)) {
+                Some((u, n)) => (unit.strip_suffix(n).unwrap(), u),
+                None => {
+                    return Err(RunnerError::InvalidUnit {
+                        unit: unit.to_string(),
+                        location: (span.start..span.end).into(),
+                        src: span.source.clone(),
+                    })
                 }
+            };
 
-                if let Some(u) = unit.strip_prefix(prefix) {
-                    if *scale > 0 {
-                        multiplier *= mult;
-                    } else {
-                        multiplier /= mult;
-                    }
-                    unit_proper = u;
-                    break;
-                }
-            }
+            if real_unit == *MASS_UNIT {
+                multiplier /= 1000.;
+            };
 
-            let unit = match unit_proper {
-                "g" => {
-                    multiplier /= 1000.;
-                    vec![(Dimension::Mass, 1)]
-                }
-                u => match KNOWN_UNITS.iter().find(|(_, &n)| n == u) {
+            if !prefix.is_empty() {
+                match ScaleType::all_prefix().find(|&(p, _)| p == prefix) {
                     None => {
                         return Err(RunnerError::InvalidUnit {
                             unit: unit.to_string(),
                             location: (span.start..span.end).into(),
                             src: span.source.clone(),
-                        })
+                        });
                     }
-                    Some((unit, _)) => unit
-                        .dimensions
-                        .iter()
-                        .filter_map(|(d, &v)| if v == 0 { None } else { Some((d, v)) })
-                        .collect(),
-                },
+                    Some((_, mult)) => {
+                        if *scale > 0 {
+                            multiplier *= mult;
+                        } else {
+                            multiplier /= mult;
+                        }
+                    }
+                }
             };
 
-            for (dim, dim_scale) in unit {
+            for (dim, dim_scale) in real_unit.dimensions {
                 unit_acc.dimensions[dim] += scale * dim_scale;
             }
         }
