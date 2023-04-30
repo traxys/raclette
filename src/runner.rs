@@ -816,25 +816,31 @@ pub static KNOWN_UNITS: Lazy<HashMap<Unit, &'static str>> = Lazy::new(|| {
 
     units.insert(*BYTE_UNIT, "B");
 
-    let mut unit = Unit::dimensionless();
-    unit.dimensions[Length] += 1;
-    units.insert(unit, "m");
+    let mut len = Unit::dimensionless();
+    len.dimensions[Length] += 1;
+    units.insert(len, "m");
 
-    let mut unit = Unit::dimensionless();
-    unit.dimensions[Time] += 1;
-    units.insert(unit, "s");
+    let mut time = Unit::dimensionless();
+    time.dimensions[Time] += 1;
+    units.insert(time, "s");
 
     units.insert(*MASS_UNIT, "g");
 
-    let mut unit = Unit::dimensionless();
-    unit.dimensions[Time] -= 1;
-    units.insert(unit, "Hz");
+    let mut freq = Unit::dimensionless();
+    freq.dimensions[Time] -= 1;
+    units.insert(freq, "Hz");
 
-    let mut unit = Unit::dimensionless();
-    unit.dimensions[Mass] += 1;
-    unit.dimensions[Length] += 1;
-    unit.dimensions[Time] -= 2;
-    units.insert(unit, "N");
+    let force = *MASS_UNIT * len / time / time;
+    units.insert(force, "N");
+
+    let pressure = force / len / len;
+    units.insert(pressure, "Pa");
+
+    let energy = force * len;
+    units.insert(energy, "J");
+
+    let power = energy / time;
+    units.insert(power, "W");
 
     units
 });
