@@ -68,8 +68,8 @@ pub Expr: Expr = {
 };
 
 ExprMult: Expr = {
-	<lhs:SpnBox<ExprLiteral>> "/" <rhs:SpnBox<ExprMult>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Divide}),
-	<lhs:SpnBox<ExprLiteral>> "*" <rhs:SpnBox<ExprMult>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Times}),
+	<lhs:SpnBox<ExprMult>> "/" <rhs:SpnBox<ExprLiteral>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Divide}),
+	<lhs:SpnBox<ExprMult>> "*" <rhs:SpnBox<ExprLiteral>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Times}),
 	ExprLiteral => <>,
 };
 
