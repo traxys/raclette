@@ -61,7 +61,7 @@ pub enum Token {
     #[token("_(")]
     #[display(fmt = "_(")]
     UnitParen,
-    #[regex("(-)?[0-9][0-9_]*", |lex| lex.slice().parse::<i64>().unwrap(), priority = 2)]
+    #[regex("[0-9][0-9_]*", |lex| lex.slice().parse::<i64>().unwrap(), priority = 2)]
     #[regex("0?x[0-9a-fA-F][0-9a-fA-F_]*", |lex|
         i64::from_str_radix(
             lex.slice().trim_start_matches("0x").trim_start_matches('x'),
@@ -76,9 +76,9 @@ pub enum Token {
     )]
     #[display(fmt = "<number:{}>", _0)]
     Number(i64),
-    #[regex("[-+]?[0-9]+([eE][-+]?[0-9]+)?", |lex| lex.slice().parse::<f64>().unwrap())]
-    #[regex("[-+]?\\.[0-9]+([eE][-+]?[0-9]+)?", |lex| lex.slice().parse::<f64>().unwrap())]
-    #[regex("[-+]?[0-9]+\\.[0-9]*([eE][-+]?[0-9]+)?", |lex| lex.slice().parse::<f64>().unwrap())]
+    #[regex("[0-9]+([eE][-+]?[0-9]+)?", |lex| lex.slice().parse::<f64>().unwrap())]
+    #[regex("\\.[0-9]+([eE][-+]?[0-9]+)?", |lex| lex.slice().parse::<f64>().unwrap())]
+    #[regex("[0-9]+\\.[0-9]*([eE][-+]?[0-9]+)?", |lex| lex.slice().parse::<f64>().unwrap())]
     #[display(fmt = "<float:{}>", _0)]
     Float(f64),
     #[regex("[a-zA-Z][a-zA-Z0-9_]*", callback = |lex| Arc::from(lex.slice()))]
