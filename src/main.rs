@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use clap::Parser;
 use lalrpop_util::lalrpop_mod;
 use miette::{Context, Diagnostic, IntoDiagnostic, Result, SourceCode, SourceSpan};
-use rustyline::{error::ReadlineError, Editor};
+use rustyline::{error::ReadlineError, history::FileHistory, Editor};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -92,7 +92,7 @@ impl<T> ParseDiagnosticExt<T> for Result<T, LalrpopParseError> {
                 token,
                 location: span.into(),
             }),
-            Err(LalrpopParseError::UnrecognizedEOF { location, expected }) => {
+            Err(LalrpopParseError::UnrecognizedEof { location, expected }) => {
                 Err(ParseError::Eof {
                     expected,
                     location: location.into(),
@@ -118,7 +118,7 @@ fn main() -> Result<()> {
     };
 
     let parser = calc::InputStatementParser::new();
-    let mut rl = Editor::<()>::new().into_diagnostic()?;
+    let mut rl = Editor::<(), FileHistory>::new().into_diagnostic()?;
 
     let path = data_dir
         .map(|mut p| {
@@ -138,7 +138,10 @@ fn main() -> Result<()> {
     loop {
         match rl.readline(">> ") {
             Ok(line) => {
-                rl.add_history_entry(&line);
+                if let Err(e) = rl.add_history_entry(&line) {
+                    println!("History error: {e:?}");
+                };
+
                 let parsed = match parser
                     .parse(&line.as_str().into(), ast::lexer(&line))
                     .into_report(line.clone())
