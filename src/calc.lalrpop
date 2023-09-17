@@ -91,6 +91,12 @@ pub Expr: Expr = {
 
 ExprPipe: Expr = {
 	<val:Spn<ExprPipe>> "|>" <fun:Spn<Function>> => Expr::Call(Call {fun, args: vec![val]}),
+	ExprShift => <>,
+};
+
+ExprShift: Expr = {
+	<lhs:SpnBox<ExprShift>> "<<" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LeftShift}),
+	<lhs:SpnBox<ExprShift>> ">>" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::RightShift}),
 	ExprAdd => <>,
 };
 

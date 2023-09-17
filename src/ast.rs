@@ -126,6 +126,8 @@ pub enum BinOpKind {
     Divide,
     Sum,
     Diff,
+    LeftShift,
+    RightShift,
 }
 
 impl std::fmt::Debug for BinOpKind {
@@ -135,6 +137,8 @@ impl std::fmt::Debug for BinOpKind {
             Self::Divide => write!(f, "/"),
             Self::Sum => write!(f, "+"),
             Self::Diff => write!(f, "-"),
+            Self::LeftShift => write!(f, "<<"),
+            Self::RightShift => write!(f, ">>"),
         }
     }
 }

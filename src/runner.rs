@@ -22,6 +22,21 @@ pub enum ValueMagnitude {
     Float(f64),
 }
 
+impl TryFrom<SpannedValue<ValueMagnitude>> for u64 {
+    type Error = RunnerError;
+
+    fn try_from(value: SpannedValue<ValueMagnitude>) -> Result<Self, Self::Error> {
+        match value.value {
+            ValueMagnitude::Int(i) if i >= 0 => Ok(i as u64),
+            ValueMagnitude::Float(f) if f == (f as u64) as f64 => Ok(f as u64),
+            _ => Err(RunnerError::UintConversion {
+                location: (value.start..value.end).into(),
+                src: value.source,
+            }),
+        }
+    }
+}
+
 impl ValueMagnitude {
     fn as_string(&self, precision: Option<usize>) -> String {
         match self {
@@ -121,6 +136,28 @@ impl std::ops::Neg for ValueMagnitude {
             ValueMagnitude::Int(i) => ValueMagnitude::Int(-i),
             ValueMagnitude::Float(f) => ValueMagnitude::Float(f),
         }
+    }
+}
+
+impl std::ops::Shl for SpannedValue<ValueMagnitude> {
+    type Output = Result<ValueMagnitude, RunnerError>;
+
+    fn shl(self, rhs: Self) -> Self::Output {
+        let lhs: u64 = self.try_into()?;
+        let rhs: u64 = rhs.try_into()?;
+
+        Ok(ValueMagnitude::Int((lhs << rhs) as i64))
+    }
+}
+
+impl std::ops::Shr for SpannedValue<ValueMagnitude> {
+    type Output = Result<ValueMagnitude, RunnerError>;
+
+    fn shr(self, rhs: Self) -> Self::Output {
+        let lhs: u64 = self.try_into()?;
+        let rhs: u64 = rhs.try_into()?;
+
+        Ok(ValueMagnitude::Int((lhs >> rhs) as i64))
     }
 }
 
@@ -497,6 +534,46 @@ impl std::ops::Sub for NumericValue {
     }
 }
 
+impl std::ops::Shl for SpannedValue<NumericValue> {
+    type Output = Result<NumericValue, RunnerError>;
+
+    fn shl(self, rhs: Self) -> Self::Output {
+        if !rhs.unit.is_dimensionless() {
+            return Err(RunnerError::InvalidType {
+                ty: "dimensioned numeric value",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            });
+        }
+
+        Ok(NumericValue {
+            magnitude: (self.magnitude.spanned(&self.span())
+                << rhs.magnitude.spanned(&rhs.span()))?,
+            unit: self.unit,
+        })
+    }
+}
+
+impl std::ops::Shr for SpannedValue<NumericValue> {
+    type Output = Result<NumericValue, RunnerError>;
+
+    fn shr(self, rhs: Self) -> Self::Output {
+        if !rhs.unit.is_dimensionless() {
+            return Err(RunnerError::InvalidType {
+                ty: "dimensioned numeric value",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            });
+        }
+
+        Ok(NumericValue {
+            magnitude: (self.magnitude.spanned(&self.span())
+                >> rhs.magnitude.spanned(&rhs.span()))?,
+            unit: self.unit,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub enum Void {}
 
@@ -652,6 +729,76 @@ impl std::ops::Neg for SpannedValue<Value> {
                 ty: "atom",
                 location: (self.start..self.end).into(),
                 src: self.source,
+            }),
+        }
+    }
+}
+
+impl std::ops::Shl for SpannedValue<Value> {
+    type Output = Result<Value, RunnerError>;
+
+    fn shl(self, rhs: Self) -> Self::Output {
+        let l_span = self.span();
+        let r_span = rhs.span();
+
+        match (self.value, rhs.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => {
+                Ok(Value::Numeric((a.spanned(&l_span) << b.spanned(&r_span))?))
+            }
+            (Value::Str(_), _) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+        }
+    }
+}
+
+impl std::ops::Shr for SpannedValue<Value> {
+    type Output = Result<Value, RunnerError>;
+
+    fn shr(self, rhs: Self) -> Self::Output {
+        let l_span = self.span();
+        let r_span = rhs.span();
+
+        match (self.value, rhs.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => {
+                Ok(Value::Numeric((a.spanned(&l_span) >> b.spanned(&r_span))?))
+            }
+            (Value::Str(_), _) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
             }),
         }
     }
@@ -817,6 +964,13 @@ pub enum RunnerError {
     #[error("Value missing for this command")]
     MissingCommandValue {
         #[label("this command requires a value")]
+        location: SourceSpan,
+        #[source_code]
+        src: MaybeNamed,
+    },
+    #[error("Value is not an unsigned integer")]
+    UintConversion {
+        #[label("This number is not an unsigned integer")]
         location: SourceSpan,
         #[source_code]
         src: MaybeNamed,
@@ -1154,6 +1308,10 @@ impl Runner {
             }
             ast::BinOpKind::Diff => (lhs.spanned(&lhs_span) - rhs.spanned(&rhs_span))
                 .wrap_err("could not substract operands"),
+            ast::BinOpKind::LeftShift => (lhs.spanned(&lhs_span) << rhs.spanned(&rhs_span))
+                .wrap_err("could not shift operands"),
+            ast::BinOpKind::RightShift => (lhs.spanned(&lhs_span) >> rhs.spanned(&rhs_span))
+                .wrap_err("could not shift operands"),
         }
     }
 
