@@ -113,6 +113,17 @@ impl std::ops::Sub for ValueMagnitude {
     }
 }
 
+impl std::ops::Neg for ValueMagnitude {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        match self {
+            ValueMagnitude::Int(i) => ValueMagnitude::Int(-i),
+            ValueMagnitude::Float(f) => ValueMagnitude::Float(f),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Enum)]
 pub enum Dimension {
     // Expressed in Bytes
@@ -486,6 +497,20 @@ impl std::ops::Sub for NumericValue {
     }
 }
 
+#[derive(Debug)]
+pub enum Void {}
+
+impl std::ops::Neg for NumericValue {
+    type Output = Result<Self, Void>;
+
+    fn neg(self) -> Self::Output {
+        Ok(Self {
+            magnitude: -self.magnitude,
+            unit: self.unit,
+        })
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Value {
     Numeric(NumericValue),
@@ -607,6 +632,26 @@ impl std::ops::Add for SpannedValue<Value> {
                 ty: "atom",
                 location: (rhs.start..rhs.end).into(),
                 src: rhs.source,
+            }),
+        }
+    }
+}
+
+impl std::ops::Neg for SpannedValue<Value> {
+    type Output = Result<Value, RunnerError>;
+
+    fn neg(self) -> Self::Output {
+        match self.value {
+            Value::Numeric(n) => Ok(Value::Numeric((-n).unwrap())),
+            Value::Str(_) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            Value::Atom(_) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (self.start..self.end).into(),
+                src: self.source,
             }),
         }
     }
@@ -1057,6 +1102,7 @@ impl Runner {
                 Ok(expr)
             }
             ast::Expr::BinOp(b) => self.eval_bin_op(b),
+            ast::Expr::UnaryOp(u) => self.eval_unary_op(u),
             ast::Expr::Call(c) => {
                 let args = c
                     .args
@@ -1069,6 +1115,17 @@ impl Runner {
                 let f = self.resolve_function(&c.fun)?;
                 f.invoke(args)
             }
+        }
+    }
+
+    fn eval_unary_op(&mut self, u: &ast::UnaryOp) -> Result<Value, miette::Report> {
+        let value_span = u.operand.span();
+        let value = self.eval_expr(&u.operand)?;
+        match u.kind {
+            ast::UnaryOpKind::Minus => {
+                (-value.spanned(&value_span)).wrap_err("could not negate operand")
+            }
+            ast::UnaryOpKind::Plus => Ok(value),
         }
     }
 

@@ -197,6 +197,31 @@ impl std::fmt::Debug for Function {
     }
 }
 
+pub enum UnaryOpKind {
+    Minus,
+    Plus,
+}
+
+impl std::fmt::Debug for UnaryOpKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Minus => write!(f, "-"),
+            Self::Plus => write!(f, "+"),
+        }
+    }
+}
+
+pub struct UnaryOp {
+    pub operand: Box<SpannedValue<Expr>>,
+    pub kind: UnaryOpKind,
+}
+
+impl std::fmt::Debug for UnaryOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} {:?}", self.kind, self.operand)
+    }
+}
+
 pub enum Expr {
     DimensionalLiteral(SpannedValue<Literal>, Vec<SpannedValue<(Arc<str>, i16)>>),
     Literal(SpannedValue<Literal>),
@@ -204,6 +229,7 @@ pub enum Expr {
     Assign(SpannedValue<Variable>, Box<SpannedValue<Expr>>),
     BinOp(BinOp),
     Call(Call),
+    UnaryOp(UnaryOp),
 }
 
 impl std::fmt::Debug for Expr {
@@ -214,7 +240,8 @@ impl std::fmt::Debug for Expr {
             Self::Variable(arg0) => f.debug_tuple("&").field(&**arg0).finish(),
             Self::Assign(arg0, arg1) => write!(f, "{:?} = ({:?})", **arg0, ***arg1),
             Self::BinOp(arg0) => write!(f, "({:?})", arg0),
-            Self::Call(arg0) => write!(f, "{arg0:?}")
+            Self::Call(arg0) => write!(f, "{arg0:?}"),
+            Self::UnaryOp(arg0) => write!(f, "({arg0:?}"),
         }
     }
 }

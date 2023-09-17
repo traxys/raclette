@@ -1,5 +1,17 @@
 use crate::{
-	ast::{Token, Expr, Literal, Variable, BinOp, BinOpKind, InputStatement, Function, Call},
+	ast::{
+		Token,
+		Expr,
+		Literal,
+		Variable,
+		BinOp,
+		BinOpKind,
+		UnaryOp,
+		UnaryOpKind,
+		InputStatement,
+		Function,
+		Call
+	},
 	span::SpannedValue,
 };
 use std::sync::Arc;
@@ -89,8 +101,18 @@ ExprAdd: Expr = {
 };
 
 ExprMult: Expr = {
-	<lhs:SpnBox<ExprMult>> "/" <rhs:SpnBox<ExprLiteral>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Divide}),
-	<lhs:SpnBox<ExprMult>> "*" <rhs:SpnBox<ExprLiteral>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Times}),
+	<lhs:SpnBox<ExprMult>> "/" <rhs:SpnBox<ExprUnary>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Divide}),
+	<lhs:SpnBox<ExprMult>> "*" <rhs:SpnBox<ExprUnary>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Times}),
+	ExprUnary => <>,
+};
+
+UnaryKind: UnaryOpKind = {
+	"-" => UnaryOpKind::Minus,
+	"+" => UnaryOpKind::Plus,
+};
+
+ExprUnary: Expr = {
+	<kind:UnaryKind> <operand:SpnBox<ExprLiteral>> => Expr::UnaryOp(UnaryOp{<>}),
 	ExprLiteral => <>,
 };
 
