@@ -17,6 +17,7 @@ lalrpop-util = "0.20.0"
 logos = "0.13.0"
 miette = { version = "5.10.0", features = ["fancy"] }
 once_cell = "1.18.0"
+rug = "1.22.0"
 rustyline = "12.0.0"
 thiserror = "1.0.48"
 

@@ -1,8 +1,11 @@
-use crate::{span::{SpannedValue, SpanningExt}, runner::RunnerError};
+use crate::{
+    runner::RunnerError,
+    span::{SpannedValue, SpanningExt},
+};
 
 use super::{Unit, ValueMagnitude};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct NumericValue {
     pub magnitude: ValueMagnitude,
     pub unit: Unit,
@@ -72,10 +75,14 @@ impl std::ops::Shl for SpannedValue<NumericValue> {
             });
         }
 
+        let self_span = self.span();
+        let rhs_span = rhs.span();
+        let unit = self.unit;
+
         Ok(NumericValue {
-            magnitude: (self.magnitude.spanned(&self.span())
-                << rhs.magnitude.spanned(&rhs.span()))?,
-            unit: self.unit,
+            magnitude: (self.value.magnitude.spanned(&self_span)
+                << rhs.value.magnitude.spanned(&rhs_span))?,
+            unit,
         })
     }
 }
@@ -92,10 +99,14 @@ impl std::ops::Shr for SpannedValue<NumericValue> {
             });
         }
 
+        let self_span = self.span();
+        let rhs_span = rhs.span();
+        let unit = self.unit;
+
         Ok(NumericValue {
-            magnitude: (self.magnitude.spanned(&self.span())
-                >> rhs.magnitude.spanned(&rhs.span()))?,
-            unit: self.unit,
+            magnitude: (self.value.magnitude.spanned(&self_span)
+                >> rhs.value.magnitude.spanned(&rhs_span))?,
+            unit,
         })
     }
 }
@@ -120,9 +131,14 @@ impl std::ops::BitOr for SpannedValue<NumericValue> {
             });
         }
 
+        let self_span = self.span();
+        let rhs_span = rhs.span();
+        let unit = self.unit;
+
         Ok(NumericValue {
-            magnitude: (self.magnitude.spanned(&self.span()) | rhs.magnitude.spanned(&rhs.span()))?,
-            unit: self.unit,
+            magnitude: (self.value.magnitude.spanned(&self_span)
+                | rhs.value.magnitude.spanned(&rhs_span))?,
+            unit,
         })
     }
 }
@@ -147,9 +163,14 @@ impl std::ops::BitAnd for SpannedValue<NumericValue> {
             });
         }
 
+        let self_span = self.span();
+        let rhs_span = rhs.span();
+        let unit = self.unit;
+
         Ok(NumericValue {
-            magnitude: (self.magnitude.spanned(&self.span()) & rhs.magnitude.spanned(&rhs.span()))?,
-            unit: self.unit,
+            magnitude: (self.value.magnitude.spanned(&self_span)
+                & rhs.value.magnitude.spanned(&rhs_span))?,
+            unit,
         })
     }
 }
@@ -174,9 +195,14 @@ impl std::ops::BitXor for SpannedValue<NumericValue> {
             });
         }
 
+        let self_span = self.span();
+        let rhs_span = rhs.span();
+        let unit = self.unit;
+
         Ok(NumericValue {
-            magnitude: (self.magnitude.spanned(&self.span()) ^ rhs.magnitude.spanned(&rhs.span()))?,
-            unit: self.unit,
+            magnitude: (self.value.magnitude.spanned(&self_span)
+                ^ rhs.value.magnitude.spanned(&rhs_span))?,
+            unit,
         })
     }
 }

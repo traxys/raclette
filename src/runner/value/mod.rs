@@ -106,12 +106,14 @@ impl std::ops::Add for SpannedValue<Value> {
 
         match (self.value, rhs.value) {
             (Value::Numeric(a), Value::Numeric(b)) => {
+                let lhs_unit = a.unit.to_string();
+                let rhs_unit = a.unit.to_string();
                 Ok(Value::Numeric((a + b).map_err(|_| {
                     RunnerError::UnitMismatch {
                         lhs: (l_span.start..l_span.end).into(),
-                        lhs_unit: a.unit.to_string(),
+                        lhs_unit,
                         rhs: (r_span.start..r_span.end).into(),
-                        rhs_unit: b.unit.to_string(),
+                        rhs_unit,
                         src: self.source,
                     }
                 })?))
@@ -344,12 +346,14 @@ impl std::ops::Sub for SpannedValue<Value> {
 
         match (self.value, rhs.value) {
             (Value::Numeric(a), Value::Numeric(b)) => {
+                let lhs_unit = a.unit.to_string();
+                let rhs_unit = a.unit.to_string();
                 Ok(Value::Numeric((a - b).map_err(|_| {
                     RunnerError::UnitMismatch {
                         lhs: (l_span.start..l_span.end).into(),
-                        lhs_unit: a.unit.to_string(),
+                        lhs_unit,
                         rhs: (r_span.start..r_span.end).into(),
-                        rhs_unit: b.unit.to_string(),
+                        rhs_unit,
                         src: self.source,
                     }
                 })?))
@@ -378,15 +382,15 @@ impl std::ops::Sub for SpannedValue<Value> {
     }
 }
 
-impl TryFrom<SpannedValue<Value>> for i64 {
+impl TryFrom<SpannedValue<Value>> for rug::Integer {
     type Error = CastError;
 
     fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
-        match &*value {
+        match value.value {
             Value::Numeric(NumericValue {
                 magnitude: ValueMagnitude::Int(i),
                 ..
-            }) => Ok(*i),
+            }) => Ok(i),
             _ => Err(CastError::from_val(value, "int")),
         }
     }

@@ -62,11 +62,15 @@
           pkgs.glow
           hf-scripts
           rust
+          pkgs.m4
           (pkgs.python3.withPackages (ps: with ps; [toml pyyaml]))
         ];
         buildInputs = [];
       };
 
-      defaultPackage = naersk'.buildPackage {src = ./.;};
+      defaultPackage = naersk'.buildPackage {
+        src = ./.;
+        nativeBuildInputs = [pkgs.m4];
+      };
     });
 }

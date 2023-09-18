@@ -1,8 +1,15 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{
+        atomic::{AtomicU32, Ordering::Relaxed},
+        Arc,
+    },
+};
 
 use either::Either;
 use itertools::Itertools;
-use miette::{SourceSpan, Diagnostic, Context};
+use miette::{Context, Diagnostic, SourceSpan};
+use rug::float::Constant;
 
 use crate::{
     ast::{self, Variable},
@@ -15,7 +22,7 @@ use value::{
     TIME_UNIT,
 };
 
-use self::value::{Value, NumericValue};
+use self::value::{NumericValue, Value};
 
 mod commands;
 mod functions;
@@ -40,6 +47,7 @@ impl CastError {
                 Value::Numeric(n) => match n.magnitude {
                     ValueMagnitude::Int(_) => "int",
                     ValueMagnitude::Float(_) => "float",
+                    ValueMagnitude::Constant(_) => "float",
                 },
                 Value::Str(_) => "str",
                 Value::Atom(_) => "atom",
@@ -125,6 +133,8 @@ pub enum RunnerError {
         #[source_code]
         src: MaybeNamed,
     },
+    #[error("Could not cast value")]
+    Cast(#[from] CastError),
 }
 
 pub struct Runner {
@@ -135,6 +145,8 @@ pub struct Runner {
     round: Option<usize>,
 }
 
+pub static FLOAT_PRECISION: AtomicU32 = AtomicU32::new(53);
+
 impl Runner {
     pub fn new() -> Self {
         let mut values = HashMap::new();
@@ -142,7 +154,7 @@ impl Runner {
         values.insert(
             Variable(vec![Arc::from("pi")]),
             Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Float(std::f64::consts::PI),
+                magnitude: ValueMagnitude::Constant(Constant::Pi),
                 unit: Unit::dimensionless(),
             }),
         );
@@ -219,7 +231,7 @@ impl Runner {
                         .unwrap_or(&self.default_scale)
                         .steps();
 
-                    let mut magnitude = value.magnitude.as_float();
+                    let mut magnitude = value.magnitude.clone().into_float();
                     let mut render = scale_prefixes[0].render;
 
                     if magnitude >= scale_prefixes[0].order {
@@ -317,7 +329,11 @@ impl Runner {
                 let value: NumericValue = self.eval_literal(l).spanned(&l.span()).try_into()?;
                 let (multiplied, unit) = self.resolve_units(u)?;
                 Ok(NumericValue {
-                    magnitude: value.magnitude * ValueMagnitude::Float(multiplied),
+                    magnitude: value.magnitude
+                        * ValueMagnitude::Float(rug::Float::with_val(
+                            FLOAT_PRECISION.load(Relaxed),
+                            multiplied,
+                        )),
                     unit,
                 }
                 .into())
@@ -410,12 +426,12 @@ impl Runner {
 
     fn eval_literal(&mut self, lit: &ast::Literal) -> Value {
         match lit {
-            &ast::Literal::Number(v) => Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Int(v),
+            ast::Literal::Number(v) => Value::Numeric(NumericValue {
+                magnitude: ValueMagnitude::Int(v.clone()),
                 unit: Unit::dimensionless(),
             }),
-            &ast::Literal::Float(v) => Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Float(v),
+            ast::Literal::Float(v) => Value::Numeric(NumericValue {
+                magnitude: ValueMagnitude::Float(v.clone()),
                 unit: Unit::dimensionless(),
             }),
             ast::Literal::Atom(a) => Value::Atom(a.clone()),

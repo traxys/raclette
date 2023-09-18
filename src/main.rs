@@ -55,9 +55,17 @@ enum ParseError {
         #[label("end of file here")]
         location: SourceSpan,
     },
+    #[diagnostic(code(calc::parsing::out_of_range))]
+    #[error("Literal out of range\nExpected a value in {ty}")]
+    OutOfRange {
+        ty: &'static str,
+        num: rug::Integer,
+        #[label("this literal")]
+        location: SourceSpan,
+    },
 }
 
-type LalrpopParseError = lalrpop_util::ParseError<usize, ast::Token, ast::UnknownToken>;
+type LalrpopParseError = lalrpop_util::ParseError<usize, ast::Token, ast::UserParseError>;
 
 trait ParseDiagnosticExt<T> {
     fn into_parse_diagnostic(self) -> Result<T, ParseError>;
@@ -86,12 +94,17 @@ impl<T> ParseDiagnosticExt<T> for Result<T, LalrpopParseError> {
                     location: (start..end).into(),
                 })
             }
-            Err(LalrpopParseError::User {
-                error: ast::UnknownToken { token, span },
-            }) => Err(ParseError::Unknown {
-                token,
-                location: span.into(),
-            }),
+            Err(LalrpopParseError::User { error }) => match error {
+                ast::UserParseError::UnknownToken(u) => Err(ParseError::Unknown {
+                    token: u.token,
+                    location: u.span.into(),
+                }),
+                ast::UserParseError::OutOfRange { ty, num, span } => Err(ParseError::OutOfRange {
+                    ty,
+                    num,
+                    location: span.into(),
+                }),
+            },
             Err(LalrpopParseError::UnrecognizedEof { location, expected }) => {
                 Err(ParseError::Eof {
                     expected,

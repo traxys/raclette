@@ -10,17 +10,20 @@ use crate::{
 		UnaryOpKind,
 		InputStatement,
 		Function,
-		Call
+		Call,
+		UserParseError,
 	},
 	span::SpannedValue,
 };
 use std::sync::Arc;
 
+use lalrpop_util::ParseError;
+
 grammar(source: &crate::span::MaybeNamed);
 
 extern {
 	type Location = usize;
-	type Error = crate::ast::UnknownToken;
+	type Error = crate::ast::UserParseError;
 
 	enum Token {
 		"(" => Token::LParen,
@@ -44,8 +47,8 @@ extern {
 		":" => Token::Colon,
 		"_(" => Token::UnitParen,
 		"," => Token::Comma,
-		num => Token::Number(<i64>),
-		float => Token::Float(<f64>),
+		num => Token::Number(<rug::Integer>),
+		float => Token::Float(<rug::Float>),
 		ident => Token::Ident(<Arc<str>>),
 		unit => Token::Unit(<Arc<str>>),
 		binding => Token::Binding(<Arc<str>>),
@@ -140,18 +143,29 @@ ExprUnary: Expr = {
 	ExprLiteral => <>,
 };
 
+I16: i16 = <n:Spn<num>> =>? match n.to_i16() {
+	None => Err(ParseError::User {
+		error: UserParseError::OutOfRange {
+			ty: "i16",
+			num: n.value,
+			span: n.start..n.end,
+		}
+	}),
+	Some(n) => Ok(n),
+};
+
 Unit: (Arc<str>, i16) = {
 	unit => (<>, 1),
-	unit num => (<> as i16),
-	"(" <u:unit> "-" <e:num> ")"=> (u, (-e) as i16),
+	<u:unit> <n:I16> => (<>),
+	"(" <u:unit> "-" <e:I16> ")"=> (u, -e),
 };
 
 UnitId: (Arc<str>, i16) = {
 	ident => (<>, 1),
-	ident num => (<> as i16),
-	<u:ident> "-" <e:num> => (u, (-e) as i16),
+	ident I16 => (<>),
+	<u:ident> "-" <e:I16> => (u, (-e)),
 	"/" <ident> => (<>, -1),
-	"/" <u:ident> <e:num> => (u, (-e) as i16),
+	"/" <u:ident> <e:I16> => (u, (-e)),
 };
 
 ManyUnit: Vec<SpannedValue<(Arc<str>, i16)>> = {
