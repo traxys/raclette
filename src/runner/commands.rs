@@ -5,7 +5,7 @@ use once_cell::sync::Lazy;
 
 use crate::span::MaybeNamed;
 
-use super::{NumericValue, RunnerError, ScaleType, Value, ValueMagnitude, BYTE_UNIT};
+use super::{NumericValue, RunnerError, ScaleType, Value, ValueMagnitude, value::BYTE_UNIT};
 
 struct Round;
 impl ParamRunnerCommand for Round {
