@@ -161,6 +161,39 @@ impl std::ops::Shr for SpannedValue<ValueMagnitude> {
     }
 }
 
+impl std::ops::BitOr for SpannedValue<ValueMagnitude> {
+    type Output = Result<ValueMagnitude, RunnerError>;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        let lhs: u64 = self.try_into()?;
+        let rhs: u64 = rhs.try_into()?;
+
+        Ok(ValueMagnitude::Int((lhs | rhs) as i64))
+    }
+}
+
+impl std::ops::BitAnd for SpannedValue<ValueMagnitude> {
+    type Output = Result<ValueMagnitude, RunnerError>;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        let lhs: u64 = self.try_into()?;
+        let rhs: u64 = rhs.try_into()?;
+
+        Ok(ValueMagnitude::Int((lhs & rhs) as i64))
+    }
+}
+
+impl std::ops::BitXor for SpannedValue<ValueMagnitude> {
+    type Output = Result<ValueMagnitude, RunnerError>;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        let lhs: u64 = self.try_into()?;
+        let rhs: u64 = rhs.try_into()?;
+
+        Ok(ValueMagnitude::Int((lhs ^ rhs) as i64))
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Enum)]
 pub enum Dimension {
     // Expressed in Bytes
@@ -574,6 +607,87 @@ impl std::ops::Shr for SpannedValue<NumericValue> {
     }
 }
 
+impl std::ops::BitOr for SpannedValue<NumericValue> {
+    type Output = Result<NumericValue, RunnerError>;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        if !self.unit.is_dimensionless() {
+            return Err(RunnerError::InvalidType {
+                ty: "dimensioned numeric value",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            });
+        }
+
+        if !rhs.unit.is_dimensionless() {
+            return Err(RunnerError::InvalidType {
+                ty: "dimensioned numeric value",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            });
+        }
+
+        Ok(NumericValue {
+            magnitude: (self.magnitude.spanned(&self.span()) | rhs.magnitude.spanned(&rhs.span()))?,
+            unit: self.unit,
+        })
+    }
+}
+
+impl std::ops::BitAnd for SpannedValue<NumericValue> {
+    type Output = Result<NumericValue, RunnerError>;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        if !self.unit.is_dimensionless() {
+            return Err(RunnerError::InvalidType {
+                ty: "dimensioned numeric value",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            });
+        }
+
+        if !rhs.unit.is_dimensionless() {
+            return Err(RunnerError::InvalidType {
+                ty: "dimensioned numeric value",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            });
+        }
+
+        Ok(NumericValue {
+            magnitude: (self.magnitude.spanned(&self.span()) & rhs.magnitude.spanned(&rhs.span()))?,
+            unit: self.unit,
+        })
+    }
+}
+
+impl std::ops::BitXor for SpannedValue<NumericValue> {
+    type Output = Result<NumericValue, RunnerError>;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        if !self.unit.is_dimensionless() {
+            return Err(RunnerError::InvalidType {
+                ty: "dimensioned numeric value",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            });
+        }
+
+        if !rhs.unit.is_dimensionless() {
+            return Err(RunnerError::InvalidType {
+                ty: "dimensioned numeric value",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            });
+        }
+
+        Ok(NumericValue {
+            magnitude: (self.magnitude.spanned(&self.span()) ^ rhs.magnitude.spanned(&rhs.span()))?,
+            unit: self.unit,
+        })
+    }
+}
+
 #[derive(Debug)]
 pub enum Void {}
 
@@ -779,6 +893,111 @@ impl std::ops::Shr for SpannedValue<Value> {
         match (self.value, rhs.value) {
             (Value::Numeric(a), Value::Numeric(b)) => {
                 Ok(Value::Numeric((a.spanned(&l_span) >> b.spanned(&r_span))?))
+            }
+            (Value::Str(_), _) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+        }
+    }
+}
+
+impl std::ops::BitOr for SpannedValue<Value> {
+    type Output = Result<Value, RunnerError>;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        let l_span = self.span();
+        let r_span = rhs.span();
+
+        match (self.value, rhs.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => {
+                Ok(Value::Numeric((a.spanned(&l_span) | b.spanned(&r_span))?))
+            }
+            (Value::Str(_), _) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+        }
+    }
+}
+
+impl std::ops::BitAnd for SpannedValue<Value> {
+    type Output = Result<Value, RunnerError>;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        let l_span = self.span();
+        let r_span = rhs.span();
+
+        match (self.value, rhs.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => {
+                Ok(Value::Numeric((a.spanned(&l_span) & b.spanned(&r_span))?))
+            }
+            (Value::Str(_), _) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
+                ty: "str",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
+                ty: "atom",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+        }
+    }
+}
+
+impl std::ops::BitXor for SpannedValue<Value> {
+    type Output = Result<Value, RunnerError>;
+
+    fn bitxor(self, rhs: Self) -> Self::Output {
+        let l_span = self.span();
+        let r_span = rhs.span();
+
+        match (self.value, rhs.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => {
+                Ok(Value::Numeric((a.spanned(&l_span) ^ b.spanned(&r_span))?))
             }
             (Value::Str(_), _) => Err(RunnerError::InvalidType {
                 ty: "str",
@@ -1312,6 +1531,15 @@ impl Runner {
                 .wrap_err("could not shift operands"),
             ast::BinOpKind::RightShift => (lhs.spanned(&lhs_span) >> rhs.spanned(&rhs_span))
                 .wrap_err("could not shift operands"),
+            ast::BinOpKind::LogicalOr => {
+                (lhs.spanned(&lhs_span) | rhs.spanned(&rhs_span)).wrap_err("could not or operands")
+            }
+            ast::BinOpKind::LogicalAnd => {
+                (lhs.spanned(&lhs_span) & rhs.spanned(&rhs_span)).wrap_err("could not and operands")
+            }
+            ast::BinOpKind::LogicalXor => {
+                (lhs.spanned(&lhs_span) ^ rhs.spanned(&rhs_span)).wrap_err("could not xor operands")
+            }
         }
     }
 

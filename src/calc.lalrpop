@@ -26,6 +26,9 @@ extern {
 		"(" => Token::LParen,
 		")" => Token::RParen,
 		"|>" => Token::Redirect,
+		"|" => Token::LOr,
+		"&" => Token::LAnd,
+		"^" => Token::LXor,
 		"=" => Token::Equal,
 		"+" => Token::Plus,
 		"-" => Token::Minus,
@@ -91,6 +94,21 @@ pub Expr: Expr = {
 
 ExprPipe: Expr = {
 	<val:Spn<ExprPipe>> "|>" <fun:Spn<Function>> => Expr::Call(Call {fun, args: vec![val]}),
+	ExprLOr => <>,
+};
+
+ExprLOr: Expr = {
+	<lhs:SpnBox<ExprShift>> "|" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LogicalOr}),
+	ExprLXor => <>,
+};
+
+ExprLXor: Expr = {
+	<lhs:SpnBox<ExprShift>> "^" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LogicalXor}),
+	ExprLAnd => <>,
+};
+
+ExprLAnd: Expr = {
+	<lhs:SpnBox<ExprShift>> "&" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LogicalAnd}),
 	ExprShift => <>,
 };
 
