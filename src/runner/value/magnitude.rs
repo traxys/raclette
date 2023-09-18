@@ -45,6 +45,13 @@ impl ValueMagnitude {
             ValueMagnitude::Float(f) => f,
         }
     }
+
+    pub fn to_int(&self) -> i64 {
+        match *self {
+            ValueMagnitude::Float(f) => f as i64,
+            ValueMagnitude::Int(i) => i,
+        }
+    }
 }
 
 impl std::ops::Mul for ValueMagnitude {

@@ -5,7 +5,10 @@ use once_cell::sync::Lazy;
 
 use crate::{ast::Variable, span::SpannedValue};
 
-use super::{CastError, Value};
+use super::{
+    value::{NumericValue, Unit, ValueMagnitude},
+    CastError, Value,
+};
 
 type ValueResult = Result<Value, miette::Report>;
 
@@ -50,10 +53,34 @@ pub static FUNCTIONS: Lazy<HashMap<Variable, &'static (dyn ValueFn + Sync + Send
         let mut funcs: HashMap<_, &'static (dyn ValueFn + Sync + Send + 'static)> = HashMap::new();
 
         funcs.insert(vec!["to", "binary"].into(), &(to_binary as VFn1<i64>));
+        funcs.insert(vec!["to", "hex"].into(), &(to_hex as VFn1<i64>));
+        funcs.insert(
+            vec!["strip", "unit"].into(),
+            &(strip_unit as VFn1<NumericValue>),
+        );
+        funcs.insert(vec!["to", "int"].into(), &(to_int as VFn1<NumericValue>));
 
         funcs
     });
 
 fn to_binary(v: i64) -> ValueResult {
     Ok(Value::Str(format!("0b{v:b}")))
+}
+
+fn to_hex(v: i64) -> ValueResult {
+    Ok(Value::Str(format!("0x{v:x}")))
+}
+
+fn to_int(v: NumericValue) -> ValueResult {
+    Ok(Value::Numeric(NumericValue {
+        magnitude: ValueMagnitude::Int(v.magnitude.to_int()),
+        unit: v.unit,
+    }))
+}
+
+fn strip_unit(v: NumericValue) -> ValueResult {
+    Ok(Value::Numeric(NumericValue {
+        magnitude: v.magnitude,
+        unit: Unit::dimensionless(),
+    }))
 }
