@@ -7,6 +7,9 @@ use crate::{runner::FLOAT_PRECISION, span::SpannedValue};
 #[derive(Debug, derive_more::Display, Logos, Clone)]
 #[logos(skip r"[ \t\f]+")]
 pub enum Token {
+    #[token("as")]
+    #[display(fmt = "as")]
+    As,
     #[token("(")]
     #[display(fmt = "(")]
     LParen,
@@ -249,7 +252,7 @@ impl std::fmt::Debug for UnaryOp {
 }
 
 pub enum Expr {
-    DimensionalLiteral(SpannedValue<Literal>, Vec<SpannedValue<(Arc<str>, i16)>>),
+    Dimensioned(Box<SpannedValue<Expr>>, Vec<SpannedValue<(Arc<str>, i16)>>),
     Literal(SpannedValue<Literal>),
     Variable(SpannedValue<Variable>),
     Assign(SpannedValue<Variable>, Box<SpannedValue<Expr>>),
@@ -261,7 +264,7 @@ pub enum Expr {
 impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::DimensionalLiteral(l, d) => write!(f, "{:?}_{:?}", **l, d),
+            Self::Dimensioned(l, d) => write!(f, "{:?}_{:?}", **l, d),
             Self::Literal(arg0) => write!(f, "{:?}", **arg0),
             Self::Variable(arg0) => f.debug_tuple("&").field(&**arg0).finish(),
             Self::Assign(arg0, arg1) => write!(f, "{:?} = ({:?})", **arg0, ***arg1),
@@ -281,7 +284,7 @@ pub enum UserParseError {
         ty: &'static str,
         num: rug::Integer,
         span: Range<usize>,
-    }
+    },
 }
 
 #[derive(Debug, thiserror::Error)]

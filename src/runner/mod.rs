@@ -325,8 +325,15 @@ impl Runner {
     fn eval_expr(&mut self, expr: &ast::Expr) -> Result<Value, miette::Report> {
         match expr {
             ast::Expr::Literal(l) => Ok(self.eval_literal(l)),
-            ast::Expr::DimensionalLiteral(l, u) => {
-                let value: NumericValue = self.eval_literal(l).spanned(&l.span()).try_into()?;
+            ast::Expr::Dimensioned(l, u) => {
+                let value: NumericValue = self.eval_expr(l)?.spanned(&l.span()).try_into()?;
+                if !value.unit.is_dimensionless() {
+                    return Err(CastError::from_val(
+                        Value::Numeric(value).spanned(&l.span()),
+                        "dimensionless number",
+                    )
+                    .into());
+                }
                 let (multiplied, unit) = self.resolve_units(u)?;
                 Ok(NumericValue {
                     magnitude: value.magnitude

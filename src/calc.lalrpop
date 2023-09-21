@@ -47,6 +47,7 @@ extern {
 		":" => Token::Colon,
 		"_(" => Token::UnitParen,
 		"," => Token::Comma,
+		"as" => Token::As,
 		num => Token::Number(<rug::Integer>),
 		float => Token::Float(<rug::Float>),
 		ident => Token::Ident(<Arc<str>>),
@@ -81,6 +82,7 @@ pub InputStatement: SpannedValue<InputStatement> = Spn<InputStatementInner> => <
 InputStatementInner: InputStatement = {
 	"|>" <Function> => InputStatement::LastRedirect(<>),
 	Expr => InputStatement::Expr(<>),
+	<SpnBox<Expr>> "as" <ManyUnit> => InputStatement::Expr(Expr::Dimensioned(<>)),
 	"." <Spn<ident>> <CommandValue?> => InputStatement::Command(<>),
 };
 
@@ -177,9 +179,13 @@ Call: Call = {
 	<fun:Spn<Function>> "(" <args:Comma<Spn<Expr>>> ")" => Call { <> },
 };
 
-ExprLiteral: Expr = {
+LiteralExpr: Expr = {
 	Spn<Literal> => Expr::Literal(<>),
-	Spn<Literal> ManyUnit => Expr::DimensionalLiteral(<>),
+};
+
+ExprLiteral: Expr = {
+	LiteralExpr => <>,
+	"(" <SpnBox<Expr>> "as" <ManyUnit> ")" => Expr::Dimensioned(<>),
 	Spn<Variable> => Expr::Variable(<>),
 	Call => Expr::Call(<>),
 	"(" <Expr> ")" => <>,
