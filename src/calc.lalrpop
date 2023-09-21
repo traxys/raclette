@@ -185,6 +185,7 @@ LiteralExpr: Expr = {
 
 ExprLiteral: Expr = {
 	LiteralExpr => <>,
+	SpnBox<LiteralExpr> ManyUnit => Expr::Dimensioned(<>),
 	"(" <SpnBox<Expr>> "as" <ManyUnit> ")" => Expr::Dimensioned(<>),
 	Spn<Variable> => Expr::Variable(<>),
 	Call => Expr::Call(<>),
