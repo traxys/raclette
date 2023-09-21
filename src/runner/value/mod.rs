@@ -107,7 +107,7 @@ impl std::ops::Add for SpannedValue<Value> {
         match (self.value, rhs.value) {
             (Value::Numeric(a), Value::Numeric(b)) => {
                 let lhs_unit = a.unit.to_string();
-                let rhs_unit = a.unit.to_string();
+                let rhs_unit = b.unit.to_string();
                 Ok(Value::Numeric((a + b).map_err(|_| {
                     RunnerError::UnitMismatch {
                         lhs: (l_span.start..l_span.end).into(),
@@ -347,7 +347,7 @@ impl std::ops::Sub for SpannedValue<Value> {
         match (self.value, rhs.value) {
             (Value::Numeric(a), Value::Numeric(b)) => {
                 let lhs_unit = a.unit.to_string();
-                let rhs_unit = a.unit.to_string();
+                let rhs_unit = b.unit.to_string();
                 Ok(Value::Numeric((a - b).map_err(|_| {
                     RunnerError::UnitMismatch {
                         lhs: (l_span.start..l_span.end).into(),
