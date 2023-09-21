@@ -167,7 +167,7 @@ fn main() -> Result<()> {
                 };
                 match runner.eval_input_statement(parsed) {
                     Err(e) => {
-                        println!("Runtime error: {e:?}");
+                        println!("Runtime error:\n{e:?}");
                         continue;
                     }
                     Ok(Some(v)) => println!("{}", runner.display_value(&v)),
