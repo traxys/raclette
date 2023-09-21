@@ -382,6 +382,27 @@ impl std::ops::Sub for SpannedValue<Value> {
     }
 }
 
+impl TryFrom<SpannedValue<Value>> for u32 {
+    type Error = CastError;
+
+    fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
+        let spn = value.span();
+        let numeric: rug::Integer = value.try_into()?;
+
+        match numeric.to_u32() {
+            None => Err(CastError::from_val(
+                Value::Numeric(NumericValue {
+                    magnitude: ValueMagnitude::Int(numeric),
+                    unit: Unit::dimensionless(),
+                })
+                .spanned(&spn),
+                "u32",
+            )),
+            Some(v) => Ok(v),
+        }
+    }
+}
+
 impl TryFrom<SpannedValue<Value>> for rug::Integer {
     type Error = CastError;
 

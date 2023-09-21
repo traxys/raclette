@@ -2,6 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
 use once_cell::sync::Lazy;
+use rug::Complete;
 
 use crate::{ast::Variable, span::SpannedValue};
 
@@ -52,13 +53,17 @@ pub static FUNCTIONS: Lazy<HashMap<Variable, &'static (dyn ValueFn + Sync + Send
     Lazy::new(|| {
         let mut funcs: HashMap<_, &'static (dyn ValueFn + Sync + Send + 'static)> = HashMap::new();
 
-        funcs.insert(vec!["to", "binary"].into(), &(to_binary as VFn1<rug::Integer>));
+        funcs.insert(
+            vec!["to", "binary"].into(),
+            &(to_binary as VFn1<rug::Integer>),
+        );
         funcs.insert(vec!["to", "hex"].into(), &(to_hex as VFn1<rug::Integer>));
         funcs.insert(
             vec!["strip", "unit"].into(),
             &(strip_unit as VFn1<NumericValue>),
         );
         funcs.insert(vec!["to", "int"].into(), &(to_int as VFn1<NumericValue>));
+        funcs.insert(vec!["factorial"].into(), &(factorial as VFn1<u32>));
 
         funcs
     });
@@ -81,6 +86,13 @@ fn to_int(v: NumericValue) -> ValueResult {
 fn strip_unit(v: NumericValue) -> ValueResult {
     Ok(Value::Numeric(NumericValue {
         magnitude: v.magnitude,
+        unit: Unit::dimensionless(),
+    }))
+}
+
+fn factorial(v: u32) -> ValueResult {
+    Ok(Value::Numeric(NumericValue {
+        magnitude: ValueMagnitude::Int(rug::Integer::factorial(v).complete()),
         unit: Unit::dimensionless(),
     }))
 }
