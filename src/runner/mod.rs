@@ -134,6 +134,7 @@ pub enum RunnerError {
         src: MaybeNamed,
     },
     #[error("Could not cast value")]
+    #[diagnostic(transparent)]
     Cast(#[from] CastError),
 }
 
