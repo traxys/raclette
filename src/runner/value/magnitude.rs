@@ -1,6 +1,6 @@
 use std::sync::atomic::Ordering::Relaxed;
 
-use rug::{Float, Complete};
+use rug::{Complete, Float};
 
 use crate::{
     runner::{CastError, FLOAT_PRECISION},
@@ -50,10 +50,18 @@ impl ValueMagnitude {
     pub fn as_string(&self, rounding: Option<usize>) -> String {
         match self {
             ValueMagnitude::Int(n) => n.to_string(),
-            ValueMagnitude::Float(f) => match rounding {
-                None => f.to_string(),
-                Some(p) => format!("{f:.*}", p),
-            },
+            ValueMagnitude::Float(f) => {
+                let abs = f.clone().abs();
+                match rounding {
+                    Some(r)
+                        if abs >= 0.1f64.powi(r as i32) * 0.98
+                            && abs <= (10.0f64.powi(r as i32) + f64::EPSILON) * 1.01 =>
+                    {
+                        format!("{:.*}", r, f.to_f64())
+                    }
+                    r => f.to_string_radix(10, r),
+                }
+            }
             ValueMagnitude::Constant(c) => {
                 let f = Float::with_val(FLOAT_PRECISION.load(Relaxed), c);
                 match rounding {

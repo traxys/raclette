@@ -242,9 +242,11 @@ impl Runner {
                         render = ScaleRender::AsIs;
                     } else if abs_magnitude >= scale_prefixes[0].order {
                         magnitude /= scale_prefixes[0].order;
+                        abs_magnitude /= scale_prefixes[0].order;
                     } else if abs_magnitude < last_unit.order {
                         /* Smaller than the smallest unit */
                         magnitude /= last_unit.order;
+                        abs_magnitude /= last_unit.order;
                         render = last_unit.render;
                     } else {
                         for (&large, &small) in
@@ -266,9 +268,15 @@ impl Runner {
                         }
                         ScaleRender::AsIs => Either::Left(*u),
                     };
-                    let magnitude = match &self.round {
-                        None => magnitude.to_string(),
-                        Some(r) => format!("{magnitude:.*}", r),
+                    let magnitude = match self.round {
+                        Some(r)
+                            if abs_magnitude >= 0.1f64.powi(r as i32) * 0.98
+                                && abs_magnitude
+                                    <= (10.0f64.powi(r as i32) + f64::EPSILON) * 1.01 =>
+                        {
+                            format!("{:.*}", r, magnitude.to_f64())
+                        }
+                        r => magnitude.to_string_radix(10, r),
                     };
                     format!("{magnitude} {unit_part}")
                 }
