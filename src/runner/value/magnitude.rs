@@ -156,7 +156,7 @@ impl std::ops::Neg for ValueMagnitude {
     fn neg(self) -> Self::Output {
         match self {
             ValueMagnitude::Int(i) => ValueMagnitude::Int(-i),
-            ValueMagnitude::Float(f) => ValueMagnitude::Float(f),
+            ValueMagnitude::Float(f) => ValueMagnitude::Float(-f),
             ValueMagnitude::Constant(c) => {
                 ValueMagnitude::Float(-Float::with_val(FLOAT_PRECISION.load(Relaxed), c))
             }
