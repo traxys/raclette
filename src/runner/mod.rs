@@ -233,17 +233,25 @@ impl Runner {
                         .steps();
 
                     let mut magnitude = value.magnitude.clone().into_float();
+                    let mut abs_magnitude = magnitude.clone().abs();
                     let mut render = scale_prefixes[0].render;
 
-                    if magnitude >= scale_prefixes[0].order {
+                    let last_unit = scale_prefixes.iter().last().unwrap();
+
+                    if magnitude == 0 {
+                        render = ScaleRender::AsIs;
+                    } else if abs_magnitude >= scale_prefixes[0].order {
                         magnitude /= scale_prefixes[0].order;
-                    } else if magnitude < scale_prefixes.iter().last().unwrap().order {
-                        todo!()
+                    } else if abs_magnitude < last_unit.order {
+                        /* Smaller than the smallest unit */
+                        magnitude /= last_unit.order;
+                        render = last_unit.render;
                     } else {
                         for (&large, &small) in
                             scale_prefixes.iter().zip(scale_prefixes.iter().skip(1))
                         {
-                            if magnitude < large.order && magnitude >= small.order {
+                            if abs_magnitude < large.order && abs_magnitude >= small.order {
+                                abs_magnitude /= small.order;
                                 magnitude /= small.order;
                                 render = small.render;
                                 break;
