@@ -104,7 +104,7 @@ pub enum Token {
     )]
     #[display(fmt = "<number:{}>", _0)]
     Number(i64),
-    #[regex("[0-9]+([eE][-+]?[0-9]+)?", |s| s.slice().parse())]
+    #[regex("[0-9]+([eE][-+]?[0-9]+)?", |s| s.slice().parse(), priority = 1)]
     #[regex("\\.[0-9]+([eE][-+]?[0-9]+)?", |s| s.slice().parse())]
     #[regex("[0-9]+\\.[0-9]*([eE][-+]?[0-9]+)?", |s| s.slice().parse())]
     #[display(fmt = "<float:{}>", _0)]
