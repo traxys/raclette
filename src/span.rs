@@ -9,12 +9,12 @@ use miette::{NamedSource, SourceCode, SourceSpan};
 
 #[derive(Clone, Debug)]
 pub enum MaybeNamed {
-    Named(Arc<NamedSource>),
+    Named(Arc<NamedSource<String>>),
     Unamed(Arc<str>),
 }
 
-impl From<NamedSource> for MaybeNamed {
-    fn from(n: NamedSource) -> Self {
+impl From<NamedSource<String>> for MaybeNamed {
+    fn from(n: NamedSource<String>) -> Self {
         MaybeNamed::Named(Arc::new(n))
     }
 }
