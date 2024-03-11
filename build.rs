@@ -1,3 +1,5 @@
 fn main() {
-    lalrpop::process_root().unwrap();
+    lalrpop::Configuration::default()
+        .process_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/src"))
+        .unwrap();
 }
