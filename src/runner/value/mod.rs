@@ -10,8 +10,7 @@ use crate::span::{SpannedValue, SpanningExt};
 pub use magnitude::ValueMagnitude;
 pub use numeric::NumericValue;
 pub use unit::{
-    Dimension, ScaleRender, ScaleStep, ScaleType, Unit, BYTE_UNIT, KNOWN_UNITS, MASS_UNIT,
-    TIME_UNIT,
+    Dimension, ScaleRender, ScaleType, Unit, BYTE_UNIT, KNOWN_UNITS, MASS_UNIT, TIME_UNIT,
 };
 
 #[derive(Debug, Clone)]
