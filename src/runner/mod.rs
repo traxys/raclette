@@ -277,7 +277,7 @@ impl Runner {
     fn resolve_units(
         &self,
         units: &[SpannedValue<(Arc<str>, i16)>],
-    ) -> Result<(f64, Unit), RunnerError> {
+    ) -> Result<(ValueMagnitude, Unit), RunnerError> {
         let mut multiplier = 1.;
         let mut unit_acc = Unit::dimensionless();
 
@@ -326,7 +326,14 @@ impl Runner {
             }
         }
 
-        Ok((multiplier, unit_acc))
+        Ok((
+            if multiplier < 1. {
+                ValueMagnitude::Float(multiplier)
+            } else {
+                ValueMagnitude::Int(multiplier as i64)
+            },
+            unit_acc,
+        ))
     }
 
     fn eval_expr(&mut self, expr: &ast::Expr) -> Result<Value, miette::Report> {
@@ -343,7 +350,7 @@ impl Runner {
                 }
                 let (multiplied, unit) = self.resolve_units(u)?;
                 Ok(NumericValue {
-                    magnitude: value.magnitude * ValueMagnitude::Float(multiplied),
+                    magnitude: value.magnitude * multiplied,
                     unit,
                 }
                 .into())
