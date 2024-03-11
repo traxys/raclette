@@ -258,15 +258,15 @@ impl Runner {
                         }
                         ScaleRender::AsIs => Either::Left(*u),
                     };
-                    let magnitude = match self.round {
-                        Some(r)
-                            if abs_magnitude >= 0.1f64.powi(r as i32) * 0.98
-                                && abs_magnitude
-                                    <= (10.0f64.powi(r as i32) + f64::EPSILON) * 1.01 =>
-                        {
-                            format!("{:.*}", r, magnitude)
-                        }
-                        _ => magnitude.to_string(),
+
+                    let magnitude = match abs_magnitude == (abs_magnitude as i64) as f64 {
+                        true => (magnitude as i64).to_string(),
+                        false => match self.round {
+                            Some(r) if abs_magnitude >= 0.1f64.powi(r as i32) * 0.98 => {
+                                format!("{:.*}", r, magnitude)
+                            }
+                            _ => magnitude.to_string(),
+                        },
                     };
                     format!("{magnitude} {unit_part}")
                 }
