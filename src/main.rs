@@ -42,9 +42,10 @@ enum ParseError {
         location: SourceSpan,
     },
     #[diagnostic(code(calc::parsing::unknown_token))]
-    #[error("Unknown token: {token}")]
-    Unknown {
+    #[error("token error for {token}: {error}")]
+    TokenError {
         token: String,
+        error: ast::TokenError,
         #[label("this is not a valid token")]
         location: SourceSpan,
     },
@@ -59,7 +60,7 @@ enum ParseError {
     #[error("Literal out of range\nExpected a value in {ty}")]
     OutOfRange {
         ty: &'static str,
-        num: rug::Integer,
+        num: i64,
         #[label("this literal")]
         location: SourceSpan,
     },
@@ -95,8 +96,9 @@ impl<T> ParseDiagnosticExt<T> for Result<T, LalrpopParseError> {
                 })
             }
             Err(LalrpopParseError::User { error }) => match error {
-                ast::UserParseError::UnknownToken(u) => Err(ParseError::Unknown {
+                ast::UserParseError::TokenError(u) => Err(ParseError::TokenError {
                     token: u.token,
+                    error: u.error,
                     location: u.span.into(),
                 }),
                 ast::UserParseError::OutOfRange { ty, num, span } => Err(ParseError::OutOfRange {

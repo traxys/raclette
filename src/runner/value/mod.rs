@@ -387,10 +387,10 @@ impl TryFrom<SpannedValue<Value>> for u32 {
 
     fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
         let spn = value.span();
-        let numeric: rug::Integer = value.try_into()?;
+        let numeric: i64 = value.try_into()?;
 
-        match numeric.to_u32() {
-            None => Err(CastError::from_val(
+        match numeric.try_into() {
+            Err(_) => Err(CastError::from_val(
                 Value::Numeric(NumericValue {
                     magnitude: ValueMagnitude::Int(numeric),
                     unit: Unit::dimensionless(),
@@ -398,12 +398,12 @@ impl TryFrom<SpannedValue<Value>> for u32 {
                 .spanned(&spn),
                 "u32",
             )),
-            Some(v) => Ok(v),
+            Ok(v) => Ok(v),
         }
     }
 }
 
-impl TryFrom<SpannedValue<Value>> for rug::Integer {
+impl TryFrom<SpannedValue<Value>> for i64 {
     type Error = CastError;
 
     fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {

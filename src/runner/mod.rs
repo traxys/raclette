@@ -1,15 +1,8 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        atomic::{AtomicU32, Ordering::Relaxed},
-        Arc,
-    },
-};
+use std::{collections::HashMap, sync::Arc};
 
 use either::Either;
 use itertools::Itertools;
 use miette::{Context, Diagnostic, SourceSpan};
-use rug::float::Constant;
 
 use crate::{
     ast::{self, Variable},
@@ -47,7 +40,6 @@ impl CastError {
                 Value::Numeric(n) => match n.magnitude {
                     ValueMagnitude::Int(_) => "int",
                     ValueMagnitude::Float(_) => "float",
-                    ValueMagnitude::Constant(_) => "float",
                 },
                 Value::Str(_) => "str",
                 Value::Atom(_) => "atom",
@@ -146,8 +138,6 @@ pub struct Runner {
     round: Option<usize>,
 }
 
-pub static FLOAT_PRECISION: AtomicU32 = AtomicU32::new(53);
-
 impl Runner {
     pub fn new() -> Self {
         let mut values = HashMap::new();
@@ -155,7 +145,7 @@ impl Runner {
         values.insert(
             Variable(vec![Arc::from("pi")]),
             Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Constant(Constant::Pi),
+                magnitude: ValueMagnitude::Float(std::f64::consts::PI),
                 unit: Unit::dimensionless(),
             }),
         );
@@ -238,7 +228,7 @@ impl Runner {
 
                     let last_unit = scale_prefixes.iter().last().unwrap();
 
-                    if magnitude == 0 {
+                    if magnitude == 0. {
                         render = ScaleRender::AsIs;
                     } else if abs_magnitude >= scale_prefixes[0].order {
                         magnitude /= scale_prefixes[0].order;
@@ -274,9 +264,9 @@ impl Runner {
                                 && abs_magnitude
                                     <= (10.0f64.powi(r as i32) + f64::EPSILON) * 1.01 =>
                         {
-                            format!("{:.*}", r, magnitude.to_f64())
+                            format!("{:.*}", r, magnitude)
                         }
-                        r => magnitude.to_string_radix(10, r),
+                        _ => magnitude.to_string(),
                     };
                     format!("{magnitude} {unit_part}")
                 }
@@ -353,11 +343,7 @@ impl Runner {
                 }
                 let (multiplied, unit) = self.resolve_units(u)?;
                 Ok(NumericValue {
-                    magnitude: value.magnitude
-                        * ValueMagnitude::Float(rug::Float::with_val(
-                            FLOAT_PRECISION.load(Relaxed),
-                            multiplied,
-                        )),
+                    magnitude: value.magnitude * ValueMagnitude::Float(multiplied),
                     unit,
                 }
                 .into())

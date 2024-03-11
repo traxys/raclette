@@ -2,7 +2,6 @@ use std::{collections::HashMap, sync::Arc};
 
 use itertools::Itertools;
 use once_cell::sync::Lazy;
-use rug::Complete;
 
 use crate::{ast::Variable, span::SpannedValue};
 
@@ -53,11 +52,8 @@ pub static FUNCTIONS: Lazy<HashMap<Variable, &'static (dyn ValueFn + Sync + Send
     Lazy::new(|| {
         let mut funcs: HashMap<_, &'static (dyn ValueFn + Sync + Send + 'static)> = HashMap::new();
 
-        funcs.insert(
-            vec!["to", "binary"].into(),
-            &(to_binary as VFn1<rug::Integer>),
-        );
-        funcs.insert(vec!["to", "hex"].into(), &(to_hex as VFn1<rug::Integer>));
+        funcs.insert(vec!["to", "binary"].into(), &(to_binary as VFn1<i64>));
+        funcs.insert(vec!["to", "hex"].into(), &(to_hex as VFn1<i64>));
         funcs.insert(
             vec!["strip", "unit"].into(),
             &(strip_unit as VFn1<NumericValue>),
@@ -68,11 +64,11 @@ pub static FUNCTIONS: Lazy<HashMap<Variable, &'static (dyn ValueFn + Sync + Send
         funcs
     });
 
-fn to_binary(v: rug::Integer) -> ValueResult {
+fn to_binary(v: i64) -> ValueResult {
     Ok(Value::Str(format!("0b{v:b}")))
 }
 
-fn to_hex(v: rug::Integer) -> ValueResult {
+fn to_hex(v: i64) -> ValueResult {
     Ok(Value::Str(format!("0x{v:x}")))
 }
 
@@ -92,7 +88,11 @@ fn strip_unit(v: NumericValue) -> ValueResult {
 
 fn factorial(v: u32) -> ValueResult {
     Ok(Value::Numeric(NumericValue {
-        magnitude: ValueMagnitude::Int(rug::Integer::factorial(v).complete()),
+        magnitude: ValueMagnitude::Int(
+            (1..=(v as i64))
+                .try_fold(1, i64::checked_mul)
+                .ok_or_else(|| miette::miette!("Value overflow"))?,
+        ),
         unit: Unit::dimensionless(),
     }))
 }

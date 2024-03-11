@@ -48,8 +48,8 @@ extern {
 		"_(" => Token::UnitParen,
 		"," => Token::Comma,
 		"as" => Token::As,
-		num => Token::Number(<rug::Integer>),
-		float => Token::Float(<rug::Float>),
+		num => Token::Number(<i64>),
+		float => Token::Float(<f64>),
 		ident => Token::Ident(<Arc<str>>),
 		unit => Token::Unit(<Arc<str>>),
 		binding => Token::Binding(<Arc<str>>),
@@ -145,15 +145,15 @@ ExprUnary: Expr = {
 	ExprLiteral => <>,
 };
 
-I16: i16 = <n:Spn<num>> =>? match n.to_i16() {
-	None => Err(ParseError::User {
+I16: i16 = <n:Spn<num>> =>? match (*n).try_into() {
+	Err(_) => Err(ParseError::User {
 		error: UserParseError::OutOfRange {
 			ty: "i16",
 			num: n.value,
 			span: n.start..n.end,
 		}
 	}),
-	Some(n) => Ok(n),
+	Ok(n) => Ok(n),
 };
 
 Unit: (Arc<str>, i16) = {

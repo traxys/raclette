@@ -1,10 +1,26 @@
-use std::{ops::Range, sync::Arc};
+use std::{
+    num::{ParseFloatError, ParseIntError},
+    ops::Range,
+    sync::Arc,
+};
 
 use logos::Logos;
 
-use crate::{runner::FLOAT_PRECISION, span::SpannedValue};
+use crate::span::SpannedValue;
+
+#[derive(thiserror::Error, Debug, Clone, PartialEq, Eq, Default)]
+pub enum TokenError {
+    #[default]
+    #[error("Invalid token encountered")]
+    InvalidToken,
+    #[error("Integer could not be parsed")]
+    ParseInt(#[from] ParseIntError),
+    #[error("Float could not be parsed")]
+    ParseFloat(#[from] ParseFloatError),
+}
 
 #[derive(Debug, derive_more::Display, Logos, Clone)]
+#[logos(error = TokenError)]
 #[logos(skip r"[ \t\f]+")]
 pub enum Token {
     #[token("as")]
@@ -73,26 +89,26 @@ pub enum Token {
     #[token("_(")]
     #[display(fmt = "_(")]
     UnitParen,
-    #[regex("[0-9][0-9_]*", |lex| rug::Integer::from_str_radix(lex.slice(), 10).unwrap(), priority = 2)]
+    #[regex("[0-9][0-9_]*", |lex| i64::from_str_radix(lex.slice(), 10).map_err(TokenError::from), priority = 2)]
     #[regex("0?x[0-9a-fA-F][0-9a-fA-F_]*", |lex|
-        rug::Integer::from_str_radix(
+        i64::from_str_radix(
             lex.slice().trim_start_matches("0x").trim_start_matches('x'),
             16,
-        ).expect("regex should only match hexadecimal")
+        ).map_err(TokenError::from)
     )]
     #[regex("0?b[0-1][0-1_]*", |lex|
-        rug::Integer::from_str_radix(
+        i64::from_str_radix(
             lex.slice().trim_start_matches("0b").trim_start_matches('b'),
             2,
-        ).expect("regex should only match binary")
+        ).map_err(TokenError::from)
     )]
     #[display(fmt = "<number:{}>", _0)]
-    Number(rug::Integer),
-    #[regex("[0-9]+([eE][-+]?[0-9]+)?", parse_float)]
-    #[regex("\\.[0-9]+([eE][-+]?[0-9]+)?", parse_float)]
-    #[regex("[0-9]+\\.[0-9]*([eE][-+]?[0-9]+)?", parse_float)]
+    Number(i64),
+    #[regex("[0-9]+([eE][-+]?[0-9]+)?", |s| s.slice().parse())]
+    #[regex("\\.[0-9]+([eE][-+]?[0-9]+)?", |s| s.slice().parse())]
+    #[regex("[0-9]+\\.[0-9]*([eE][-+]?[0-9]+)?", |s| s.slice().parse())]
     #[display(fmt = "<float:{}>", _0)]
-    Float(rug::Float),
+    Float(f64),
     #[regex("[a-zA-Z][a-zA-Z0-9_]*", callback = |lex| Arc::from(lex.slice()))]
     #[display(fmt = "identifier({})", _0)]
     Ident(Arc<str>),
@@ -102,13 +118,6 @@ pub enum Token {
     #[regex("_[a-zA-Z]*", callback = |lex| Arc::from(&lex.slice()[1..]))]
     #[display(fmt = "unit({})", _0)]
     Unit(Arc<str>),
-}
-
-fn parse_float(s: &mut logos::Lexer<Token>) -> rug::Float {
-    rug::Float::with_val(
-        FLOAT_PRECISION.load(std::sync::atomic::Ordering::Relaxed),
-        rug::Float::parse(s.slice()).unwrap(),
-    )
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
@@ -125,8 +134,8 @@ impl std::fmt::Debug for Variable {
 }
 
 pub enum Literal {
-    Number(rug::Integer),
-    Float(rug::Float),
+    Number(i64),
+    Float(f64),
     Atom(Arc<str>),
 }
 
@@ -278,19 +287,21 @@ impl std::fmt::Debug for Expr {
 #[derive(thiserror::Error, Debug)]
 pub enum UserParseError {
     #[error("Token error: {0}")]
-    UnknownToken(#[from] UnknownToken),
+    TokenError(#[from] SpannedTokenError),
     #[error("Number '{num}' is out of range (expected '{ty}')")]
     OutOfRange {
         ty: &'static str,
-        num: rug::Integer,
+        num: i64,
         span: Range<usize>,
     },
 }
 
 #[derive(Debug, thiserror::Error)]
 #[error("unknown token: '{token}'")]
-pub struct UnknownToken {
+pub struct SpannedTokenError {
     pub token: String,
+    #[source]
+    pub error: TokenError,
     pub span: Range<usize>,
 }
 
@@ -300,8 +311,9 @@ pub fn lexer(input: &str) -> impl Iterator<Item = Spanned<Token, usize, UserPars
     Token::lexer(input)
         .spanned()
         .map(move |(token, span)| match token {
-            Err(_) => Err(UnknownToken {
+            Err(error) => Err(SpannedTokenError {
                 token: input[span.clone()].to_owned(),
+                error,
                 span,
             }
             .into()),

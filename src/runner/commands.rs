@@ -5,46 +5,7 @@ use once_cell::sync::Lazy;
 
 use crate::span::MaybeNamed;
 
-use super::{
-    value::BYTE_UNIT, NumericValue, RunnerError, ScaleType, Value, ValueMagnitude, FLOAT_PRECISION,
-};
-
-struct FloatPrecision;
-impl ParamRunnerCommand for FloatPrecision {
-    fn name(&self) -> &'static str {
-        "precision"
-    }
-
-    fn help(&self) -> &'static str {
-        "Precision of floats. Values: <number>, default: 64"
-    }
-
-    fn run(
-        &self,
-        state: &mut super::Runner,
-        value: Value,
-        location: SourceSpan,
-        src: MaybeNamed,
-    ) -> Result<(), RunnerError> {
-        match value {
-            Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Int(n),
-                unit,
-            }) if unit.is_dimensionless() && n.to_u32().is_some() => {
-                FLOAT_PRECISION.store(n.to_u32().unwrap(), std::sync::atomic::Ordering::Relaxed);
-            }
-            v => {
-                return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(&v),
-                    location,
-                    src,
-                })
-            }
-        };
-
-        Ok(())
-    }
-}
+use super::{value::BYTE_UNIT, NumericValue, RunnerError, ScaleType, Value, ValueMagnitude};
 
 struct Round;
 impl ParamRunnerCommand for Round {
@@ -68,8 +29,8 @@ impl ParamRunnerCommand for Round {
             Value::Numeric(NumericValue {
                 magnitude: ValueMagnitude::Int(n),
                 unit,
-            }) if unit.is_dimensionless() && n.to_usize().is_some() => {
-                state.round = Some(n.to_usize().unwrap())
+            }) if unit.is_dimensionless() && TryInto::<usize>::try_into(n).is_ok() => {
+                state.round = Some(n as usize)
             }
             v => {
                 return Err(RunnerError::InvalidCommandValue {
@@ -218,7 +179,6 @@ pub(super) static COMMANDS: Lazy<HashMap<&'static str, Box<dyn RunnerCommand + S
             Box::new(PR(DefaultScale)),
             Box::new(Help),
             Box::new(NP(Functions)),
-            Box::new(PR(FloatPrecision)),
         ];
         let mut commands = HashMap::new();
 
