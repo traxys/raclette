@@ -1,9 +1,52 @@
-use crate::{runner::CastError, span::SpannedValue};
+use crate::{
+    runner::{CastError, RunnerError},
+    span::SpannedValue,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub enum ValueMagnitude {
     Int(i64),
     Float(f64),
+}
+
+impl SpannedValue<ValueMagnitude> {
+    pub fn nan_guard(&self) -> Result<(), RunnerError> {
+        match self.value {
+            ValueMagnitude::Float(f) if f.is_nan() => Err(RunnerError::NaN {
+                location: (self.start..self.end).into(),
+                src: self.source.clone(),
+            }),
+            _ => Ok(()),
+        }
+    }
+
+    pub fn eq(self, other: Self) -> Result<bool, RunnerError> {
+        self.nan_guard()?;
+        other.nan_guard()?;
+
+        match (self.value, other.value) {
+            (ValueMagnitude::Int(l), ValueMagnitude::Int(r)) => Ok(l == r),
+            (ValueMagnitude::Float(l), ValueMagnitude::Float(r)) => Ok(l == r),
+            (ValueMagnitude::Int(l), ValueMagnitude::Float(r)) => Ok(l as f64 == r),
+            (ValueMagnitude::Float(l), ValueMagnitude::Int(r)) => Ok(l == r as f64),
+        }
+    }
+
+    pub fn cmp(self, other: Self) -> Result<std::cmp::Ordering, RunnerError> {
+        self.nan_guard()?;
+        other.nan_guard()?;
+
+        match (self.value, other.value) {
+            (ValueMagnitude::Int(l), ValueMagnitude::Int(r)) => Ok(l.cmp(&r)),
+            (ValueMagnitude::Float(l), ValueMagnitude::Float(r)) => Ok(l.partial_cmp(&r).unwrap()),
+            (ValueMagnitude::Int(l), ValueMagnitude::Float(r)) => {
+                Ok((l as f64).partial_cmp(&r).unwrap())
+            }
+            (ValueMagnitude::Float(l), ValueMagnitude::Int(r)) => {
+                Ok(l.partial_cmp(&(r as f64)).unwrap())
+            }
+        }
+    }
 }
 
 impl TryFrom<SpannedValue<ValueMagnitude>> for i64 {

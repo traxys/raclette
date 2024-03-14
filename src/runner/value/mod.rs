@@ -41,6 +41,44 @@ impl Value {
     }
 }
 
+impl SpannedValue<Value> {
+    pub fn eq(self, other: Self, ) -> Result<bool, RunnerError> {
+        let l_span = self.span();
+        let r_span = other.span();
+        match (self.value, other.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => a.spanned(&l_span).eq(b.spanned(&r_span)),
+            (Value::Str(a), Value::Str(b)) => Ok(a == b),
+            (Value::Atom(a), Value::Atom(b)) => Ok(a == b),
+            (Value::Bool(a), Value::Bool(b)) => Ok(a == b),
+            (l, r) => Err(RunnerError::IncompatibleTypes {
+                lhs_ty: l.ty(),
+                rhs_ty: r.ty(),
+                lhs: (self.start..self.end).into(),
+                rhs: (other.start..other.end).into(),
+                src: self.source,
+            }),
+        }
+    }
+
+    pub fn cmp(self, other: Self) -> Result<std::cmp::Ordering, RunnerError> {
+        let l_span = self.span();
+        let r_span = other.span();
+        match (self.value, other.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => a.spanned(&l_span).cmp(b.spanned(&r_span)),
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
+                location: (other.start..other.end).into(),
+                src: self.source,
+            }),
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+        }
+    }
+}
+
 impl From<NumericValue> for Value {
     fn from(value: NumericValue) -> Self {
         Self::Numeric(value)

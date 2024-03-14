@@ -50,6 +50,12 @@ extern {
 		"as" => Token::As,
 		"true" => Token::True,
 		"false" => Token::False,
+		"==" => Token::LogicalEquals,
+		"!=" => Token::Different,
+		">=" => Token::GreaterOrEqual,
+		"<=" => Token::LesserOrEqual,
+		">" => Token::Greater,
+		"<" => Token::Lesser,
 		num => Token::Number(<i64>),
 		float => Token::Float(<f64>),
 		ident => Token::Ident(<Arc<str>>),
@@ -101,6 +107,16 @@ pub Expr: Expr = {
 
 ExprPipe: Expr = {
 	<val:Spn<ExprPipe>> "|>" <fun:Spn<Function>> => Expr::Call(Call {fun, args: vec![val]}),
+	ExprCmp => <>,
+};
+
+ExprCmp: Expr = {
+	<lhs:SpnBox<ExprLOr>> ">" <rhs:SpnBox<ExprLOr>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Greater}),
+	<lhs:SpnBox<ExprLOr>> ">=" <rhs:SpnBox<ExprLOr>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::GreaterOrEqual}),
+	<lhs:SpnBox<ExprLOr>> "<" <rhs:SpnBox<ExprLOr>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Lesser}),
+	<lhs:SpnBox<ExprLOr>> "<=" <rhs:SpnBox<ExprLOr>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LesserOrEqual}),
+	<lhs:SpnBox<ExprLOr>> "==" <rhs:SpnBox<ExprLOr>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LogicalEquals}),
+	<lhs:SpnBox<ExprLOr>> "!=" <rhs:SpnBox<ExprLOr>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Different}),
 	ExprLOr => <>,
 };
 

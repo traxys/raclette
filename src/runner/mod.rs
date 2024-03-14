@@ -113,6 +113,13 @@ pub enum RunnerError {
         #[source_code]
         src: MaybeNamed,
     },
+    #[error("Operation on NaN")]
+    NaN {
+        #[label("This value is NaN")]
+        location: SourceSpan,
+        #[source_code]
+        src: MaybeNamed,
+    },
     #[error("Unit mismatches")]
     UnitMismatch {
         #[label("this value is of unit {lhs_unit}")]
@@ -121,6 +128,17 @@ pub enum RunnerError {
         #[label("this value is of unit {rhs_unit}")]
         rhs: SourceSpan,
         rhs_unit: String,
+        #[source_code]
+        src: MaybeNamed,
+    },
+    #[error("Type mismatch")]
+    IncompatibleTypes {
+        lhs_ty: &'static str,
+        #[label("this value is of type {lhs_ty}")]
+        lhs: SourceSpan,
+        rhs_ty: &'static str,
+        #[label("this value is of type {rhs_ty}")]
+        rhs: SourceSpan,
         #[source_code]
         src: MaybeNamed,
     },
@@ -438,6 +456,40 @@ impl Runner {
             ast::BinOpKind::LogicalXor => {
                 (lhs.spanned(&lhs_span) ^ rhs.spanned(&rhs_span)).wrap_err("could not xor operands")
             }
+            ast::BinOpKind::Greater => Ok(Value::Bool(
+                lhs.spanned(&lhs_span)
+                    .cmp(rhs.spanned(&rhs_span))
+                    .wrap_err("could not compare values")?
+                    .is_gt(),
+            )),
+            ast::BinOpKind::GreaterOrEqual => Ok(Value::Bool(
+                lhs.spanned(&lhs_span)
+                    .cmp(rhs.spanned(&rhs_span))
+                    .wrap_err("could not compare values")?
+                    .is_ge(),
+            )),
+            ast::BinOpKind::Lesser => Ok(Value::Bool(
+                lhs.spanned(&lhs_span)
+                    .cmp(rhs.spanned(&rhs_span))
+                    .wrap_err("could not compare values")?
+                    .is_lt(),
+            )),
+            ast::BinOpKind::LesserOrEqual => Ok(Value::Bool(
+                lhs.spanned(&lhs_span)
+                    .cmp(rhs.spanned(&rhs_span))
+                    .wrap_err("could not compare values")?
+                    .is_le(),
+            )),
+            ast::BinOpKind::LogicalEquals => Ok(Value::Bool(
+                lhs.spanned(&lhs_span)
+                    .eq(rhs.spanned(&rhs_span))
+                    .wrap_err("could not check equality")?,
+            )),
+            ast::BinOpKind::Different => Ok(Value::Bool(
+                !lhs.spanned(&lhs_span)
+                    .eq(rhs.spanned(&rhs_span))
+                    .wrap_err("could not check equality")?,
+            )),
         }
     }
 

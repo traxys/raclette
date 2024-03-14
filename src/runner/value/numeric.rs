@@ -11,6 +11,40 @@ pub struct NumericValue {
     pub unit: Unit,
 }
 
+impl SpannedValue<NumericValue> {
+    pub fn eq(self, other: Self) -> Result<bool, RunnerError> {
+        if self.unit != other.unit {
+            return Err(RunnerError::UnitMismatch {
+                lhs: (self.start..self.end).into(),
+                lhs_unit: self.unit.to_string(),
+                rhs: (other.start..other.end).into(),
+                rhs_unit: other.unit.to_string(),
+                src: self.source,
+            });
+        }
+
+        self.magnitude
+            .spanned(&self)
+            .eq(other.magnitude.spanned(&other))
+    }
+
+    pub fn cmp(self, other: Self) -> Result<std::cmp::Ordering, RunnerError> {
+        if self.unit != other.unit {
+            return Err(RunnerError::UnitMismatch {
+                lhs: (self.start..self.end).into(),
+                lhs_unit: self.unit.to_string(),
+                rhs: (other.start..other.end).into(),
+                rhs_unit: other.unit.to_string(),
+                src: self.source,
+            });
+        }
+
+        self.magnitude
+            .spanned(&self)
+            .cmp(other.magnitude.spanned(&other))
+    }
+}
+
 impl std::ops::Div for NumericValue {
     type Output = Self;
 

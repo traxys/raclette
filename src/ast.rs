@@ -89,6 +89,24 @@ pub enum Token {
     #[token("'(")]
     #[display(fmt = "'(")]
     UnitParen,
+    #[token("==")]
+    #[display(fmt = "==")]
+    LogicalEquals,
+    #[token("!=")]
+    #[display(fmt = "!=")]
+    Different,
+    #[token(">=")]
+    #[display(fmt = ">=")]
+    GreaterOrEqual,
+    #[token(">")]
+    #[display(fmt = ">")]
+    Greater,
+    #[token("<=")]
+    #[display(fmt = "<=")]
+    LesserOrEqual,
+    #[token("<")]
+    #[display(fmt = "<")]
+    Lesser,
     #[regex("[0-9][_0-9]*", |lex| i64::from_str_radix(&lex.slice().chars().filter(|&c| c != '_').collect::<String>(), 10).map_err(TokenError::from), priority = 2)]
     #[regex("0?x[0-9a-fA-F][0-9a-fA-F_]*", |lex|
         i64::from_str_radix(
@@ -165,6 +183,12 @@ pub enum BinOpKind {
     LogicalOr,
     LogicalAnd,
     LogicalXor,
+    Greater,
+    GreaterOrEqual,
+    Lesser,
+    LesserOrEqual,
+    LogicalEquals,
+    Different,
 }
 
 impl std::fmt::Debug for BinOpKind {
@@ -179,6 +203,12 @@ impl std::fmt::Debug for BinOpKind {
             Self::LogicalOr => write!(f, "|"),
             Self::LogicalAnd => write!(f, "&"),
             Self::LogicalXor => write!(f, "^"),
+            Self::Greater => write!(f, ">"),
+            Self::GreaterOrEqual => write!(f, ">="),
+            Self::Lesser => write!(f, "<"),
+            Self::LesserOrEqual => write!(f, "<="),
+            Self::LogicalEquals => write!(f, "=="),
+            Self::Different => write!(f, "!="),
         }
     }
 }
