@@ -89,16 +89,16 @@ pub enum Token {
     #[token("_(")]
     #[display(fmt = "_(")]
     UnitParen,
-    #[regex("[0-9][0-9_]*", |lex| i64::from_str_radix(lex.slice(), 10).map_err(TokenError::from), priority = 2)]
+    #[regex("[0-9]+(_+[0-9]+)*", |lex| i64::from_str_radix(&lex.slice().chars().filter(|&c| c != '_').collect::<String>(), 10).map_err(TokenError::from), priority = 2)]
     #[regex("0?x[0-9a-fA-F][0-9a-fA-F_]*", |lex|
         i64::from_str_radix(
-            lex.slice().trim_start_matches("0x").trim_start_matches('x'),
+            &lex.slice().trim_start_matches("0x").trim_start_matches('x').chars().filter(|&c| c != '_').collect::<String>(),
             16,
         ).map_err(TokenError::from)
     )]
     #[regex("0?b[0-1][0-1_]*", |lex|
         i64::from_str_radix(
-            lex.slice().trim_start_matches("0b").trim_start_matches('b'),
+            &lex.slice().trim_start_matches("0b").trim_start_matches('b').chars().filter(|&c| c != '_').collect::<String>(),
             2,
         ).map_err(TokenError::from)
     )]
