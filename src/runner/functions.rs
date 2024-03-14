@@ -61,6 +61,11 @@ pub static FUNCTIONS: Lazy<HashMap<Variable, &'static (dyn ValueFn + Sync + Send
         funcs.insert(vec!["to", "int"].into(), &(to_int as VFn1<NumericValue>));
         funcs.insert(vec!["factorial"].into(), &(factorial as VFn1<u32>));
 
+        funcs.insert(
+            vec!["to", "bin"].into(),
+            funcs[&vec!["to", "binary"].into()],
+        );
+
         funcs
     });
 
