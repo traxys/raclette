@@ -142,6 +142,22 @@ pub enum RunnerError {
         #[source_code]
         src: MaybeNamed,
     },
+    #[error("function called with an invalid number of arguments, provided {provided} arguments")]
+    FunctionArity {
+        provided: usize,
+        arity: usize,
+        #[label("function requires {arity} arguments")]
+        f: SourceSpan,
+        #[source_code]
+        src: MaybeNamed,
+    },
+    #[error("Value overflow")]
+    Overflow {
+        #[label("this operation overflowed an integer value")]
+        location: SourceSpan,
+        #[source_code]
+        src: MaybeNamed,
+    },
     #[error("Could not cast value")]
     #[diagnostic(transparent)]
     Cast(#[from] CastError),
@@ -402,7 +418,7 @@ impl Runner {
                     })
                     .collect::<Result<_, _>>()?;
                 let f = self.resolve_function(&c.fun)?;
-                f.invoke(args)
+                f.invoke(c.fun.span(), c.span(), args).map_err(Into::into)
             }
         }
     }
@@ -538,7 +554,7 @@ impl Runner {
                 None => Err(RunnerError::NoStoredValue)?,
                 Some(last) => {
                     let f = self.resolve_function(&func)?;
-                    f.invoke(vec![last.clone()])?
+                    f.invoke(func.span(), span.clone(), vec![last.clone()])?
                 }
             },
         };

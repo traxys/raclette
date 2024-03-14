@@ -88,7 +88,7 @@ Comma<T>: Vec<T> = {
 pub InputStatement: SpannedValue<InputStatement> = Spn<InputStatementInner> => <>;
 
 InputStatementInner: InputStatement = {
-	"|>" <Function> => InputStatement::LastRedirect(<>),
+	"|>" <Spn<Function>> => InputStatement::LastRedirect(<>),
 	Expr => InputStatement::Expr(<>),
 	<SpnBox<Expr>> "as" <ManyUnit> => InputStatement::Expr(Expr::Dimensioned(<>)),
 	"." <Spn<ident>> <CommandValue?> => InputStatement::Command(<>),
@@ -105,8 +105,10 @@ pub Expr: Expr = {
 	ExprPipe => <>,
 };
 
+Redirect: Call = <val:Spn<ExprPipe>> "|>" <fun:Spn<Function>> => Call {fun, args: vec![val]};
+
 ExprPipe: Expr = {
-	<val:Spn<ExprPipe>> "|>" <fun:Spn<Function>> => Expr::Call(Call {fun, args: vec![val]}),
+	Spn<Redirect> => Expr::Call(<>),
 	ExprCmp => <>,
 };
 
@@ -206,7 +208,7 @@ ExprLiteral: Expr = {
 	SpnBox<LiteralExpr> ManyUnit => Expr::Dimensioned(<>),
 	"(" <SpnBox<Expr>> "as" <ManyUnit> ")" => Expr::Dimensioned(<>),
 	Spn<Variable> => Expr::Variable(<>),
-	Call => Expr::Call(<>),
+	Spn<Call> => Expr::Call(<>),
 	"(" <Expr> ")" => <>,
 };
 

@@ -227,7 +227,7 @@ impl std::fmt::Debug for BinOp {
 
 pub enum InputStatement {
     Expr(Expr),
-    LastRedirect(Function),
+    LastRedirect(SpannedValue<Function>),
     Command(SpannedValue<Arc<str>>, Option<SpannedValue<Expr>>),
 }
 
@@ -302,7 +302,7 @@ pub enum Expr {
     Variable(SpannedValue<Variable>),
     Assign(SpannedValue<Variable>, Box<SpannedValue<Expr>>),
     BinOp(BinOp),
-    Call(Call),
+    Call(SpannedValue<Call>),
     UnaryOp(UnaryOp),
 }
 

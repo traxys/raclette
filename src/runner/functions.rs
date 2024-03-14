@@ -7,27 +7,42 @@ use crate::{ast::Variable, span::SpannedValue};
 
 use super::{
     value::{NumericValue, Unit, ValueMagnitude},
-    CastError, Value,
+    CastError, RunnerError, Value,
 };
 
-type ValueResult = Result<Value, miette::Report>;
+type ValueResult = Result<Value, RunnerError>;
 
 pub trait ValueFn {
-    fn invoke(&self, args: Vec<SpannedValue<Value>>) -> ValueResult {
+    fn invoke(
+        &self,
+        callee: SpannedValue<()>,
+        call_site: SpannedValue<()>,
+        args: Vec<SpannedValue<Value>>,
+    ) -> ValueResult {
         if self.arity() != args.len() {
-            miette::bail!("Function was not provided with the correct number of arguments\nExpected {} got {}", self.arity(), args.len())
+            return Err(RunnerError::FunctionArity {
+                provided: args.len(),
+                arity: self.arity(),
+                f: (callee.start..callee.end).into(),
+                src: callee.source,
+            });
         }
 
-        self.invoke_inner(args)
+        self.invoke_inner(call_site, args)
     }
 
     fn arity(&self) -> usize;
-    fn invoke_inner(&self, args: Vec<SpannedValue<Value>>) -> ValueResult;
+    fn invoke_inner(
+        &self,
+        call_site: SpannedValue<()>,
+        args: Vec<SpannedValue<Value>>,
+    ) -> ValueResult;
 }
 
 type VFn1<T> = fn(T) -> ValueResult;
+type SpnVFn1<T> = fn(SpannedValue<()>, T) -> ValueResult;
 
-impl<T> ValueFn for fn(T) -> ValueResult
+impl<T> ValueFn for VFn1<T>
 where
     T: TryFrom<SpannedValue<Value>, Error = CastError>,
 {
@@ -35,10 +50,29 @@ where
         1
     }
 
-    fn invoke_inner(&self, args: Vec<SpannedValue<Value>>) -> ValueResult {
+    fn invoke_inner(&self, _: SpannedValue<()>, args: Vec<SpannedValue<Value>>) -> ValueResult {
         let (arg,) = args.into_iter().collect_tuple().unwrap();
 
         (self)(arg.try_into()?)
+    }
+}
+
+impl<T> ValueFn for SpnVFn1<T>
+where
+    T: TryFrom<SpannedValue<Value>, Error = CastError>,
+{
+    fn arity(&self) -> usize {
+        1
+    }
+
+    fn invoke_inner(
+        &self,
+        call_site: SpannedValue<()>,
+        args: Vec<SpannedValue<Value>>,
+    ) -> ValueResult {
+        let (arg,) = args.into_iter().collect_tuple().unwrap();
+
+        (self)(call_site, arg.try_into()?)
     }
 }
 
@@ -59,7 +93,7 @@ pub static FUNCTIONS: Lazy<HashMap<Variable, &'static (dyn ValueFn + Sync + Send
             &(strip_unit as VFn1<NumericValue>),
         );
         funcs.insert(vec!["to", "int"].into(), &(to_int as VFn1<NumericValue>));
-        funcs.insert(vec!["factorial"].into(), &(factorial as VFn1<u32>));
+        funcs.insert(vec!["factorial"].into(), &(factorial as SpnVFn1<u32>));
 
         funcs.insert(
             vec!["to", "bin"].into(),
@@ -91,13 +125,14 @@ fn strip_unit(v: NumericValue) -> ValueResult {
     }))
 }
 
-fn factorial(v: u32) -> ValueResult {
+fn factorial(call_site: SpannedValue<()>, v: u32) -> ValueResult {
     Ok(Value::Numeric(NumericValue {
-        magnitude: ValueMagnitude::Int(
-            (1..=(v as i64))
-                .try_fold(1, i64::checked_mul)
-                .ok_or_else(|| miette::miette!("Value overflow"))?,
-        ),
+        magnitude: ValueMagnitude::Int((1..=(v as i64)).try_fold(1, i64::checked_mul).ok_or_else(
+            || RunnerError::Overflow {
+                location: (call_site.start..call_site.end).into(),
+                src: call_site.source,
+            },
+        )?),
         unit: Unit::dimensionless(),
     }))
 }
