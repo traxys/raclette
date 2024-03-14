@@ -45,7 +45,7 @@ extern {
 		"\\" => Token::Backslash,
 		"." => Token::Dot,
 		":" => Token::Colon,
-		"_(" => Token::UnitParen,
+		"'(" => Token::UnitParen,
 		"," => Token::Comma,
 		"as" => Token::As,
 		"true" => Token::True,
@@ -174,7 +174,7 @@ UnitId: (Arc<str>, i16) = {
 
 ManyUnit: Vec<SpannedValue<(Arc<str>, i16)>> = {
 	Spn<Unit>+ => <>,
-	"_(" <Spn<UnitId>+> ")" => <>,
+	"'(" <Spn<UnitId>+> ")" => <>,
 };
 
 Call: Call = {

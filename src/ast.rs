@@ -86,10 +86,10 @@ pub enum Token {
     #[token(",")]
     #[display(fmt = ",")]
     Comma,
-    #[token("_(")]
-    #[display(fmt = "_(")]
+    #[token("'(")]
+    #[display(fmt = "'(")]
     UnitParen,
-    #[regex("[0-9]+(_+[0-9]+)*", |lex| i64::from_str_radix(&lex.slice().chars().filter(|&c| c != '_').collect::<String>(), 10).map_err(TokenError::from), priority = 2)]
+    #[regex("[0-9][_0-9]*", |lex| i64::from_str_radix(&lex.slice().chars().filter(|&c| c != '_').collect::<String>(), 10).map_err(TokenError::from), priority = 2)]
     #[regex("0?x[0-9a-fA-F][0-9a-fA-F_]*", |lex|
         i64::from_str_radix(
             &lex.slice().trim_start_matches("0x").trim_start_matches('x').chars().filter(|&c| c != '_').collect::<String>(),
@@ -115,7 +115,7 @@ pub enum Token {
     #[regex("\\$[a-zA-Z][a-zA-Z0-9_]*", callback = |lex| Arc::from(&lex.slice()[1..]))]
     #[display(fmt = "identifier({})", _0)]
     Binding(Arc<str>),
-    #[regex("_[a-zA-Z]*", callback = |lex| Arc::from(&lex.slice()[1..]))]
+    #[regex("'[a-zA-Z]+", callback = |lex| Arc::from(&lex.slice()[1..]))]
     #[display(fmt = "unit({})", _0)]
     Unit(Arc<str>),
     #[token("true")]
