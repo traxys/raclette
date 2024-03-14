@@ -118,6 +118,10 @@ pub enum Token {
     #[regex("_[a-zA-Z]*", callback = |lex| Arc::from(&lex.slice()[1..]))]
     #[display(fmt = "unit({})", _0)]
     Unit(Arc<str>),
+    #[token("true")]
+    True,
+    #[token("false")]
+    False,
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
@@ -137,6 +141,7 @@ pub enum Literal {
     Number(i64),
     Float(f64),
     Atom(Arc<str>),
+    Bool(bool),
 }
 
 impl std::fmt::Debug for Literal {
@@ -145,6 +150,7 @@ impl std::fmt::Debug for Literal {
             Self::Number(arg0) => write!(f, "{}", arg0),
             Self::Float(arg0) => write!(f, "{}", arg0),
             Self::Atom(s) => write!(f, ":{}", s),
+            Self::Bool(b) => write!(f, "{b}"),
         }
     }
 }

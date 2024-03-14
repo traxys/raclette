@@ -48,6 +48,8 @@ extern {
 		"_(" => Token::UnitParen,
 		"," => Token::Comma,
 		"as" => Token::As,
+		"true" => Token::True,
+		"false" => Token::False,
 		num => Token::Number(<i64>),
 		float => Token::Float(<f64>),
 		ident => Token::Ident(<Arc<str>>),
@@ -195,5 +197,7 @@ ExprLiteral: Expr = {
 Literal: Literal = {
 	num => Literal::Number(<>),
 	float => Literal::Float(<>),
+	"true" => Literal::Bool(true),
+	"false" => Literal::Bool(false),
 	":" <ident> => Literal::Atom(<>),
 };

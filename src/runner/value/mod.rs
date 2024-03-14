@@ -17,6 +17,7 @@ pub use unit::{
 pub enum Value {
     Numeric(NumericValue),
     Str(String),
+    Bool(bool),
     Atom(Arc<str>),
 }
 
@@ -26,6 +27,16 @@ impl Value {
             Value::Numeric(n) => n.magnitude.is_zero(),
             Value::Str(_) => false,
             Value::Atom(_) => false,
+            Value::Bool(_) => false,
+        }
+    }
+
+    pub fn ty(&self) -> &'static str {
+        match self {
+            Value::Numeric(_) => "number",
+            Value::Str(_) => "str",
+            Value::Bool(_) => "bool",
+            Value::Atom(_) => "atom",
         }
     }
 }
@@ -42,25 +53,15 @@ impl std::ops::Div for SpannedValue<Value> {
     fn div(self, rhs: Self) -> Self::Output {
         match (self.value, rhs.value) {
             (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(a / b)),
-            (Value::Str(_), _) => Err(RunnerError::InvalidType {
-                ty: "str",
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
             }),
-            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
-                ty: "str",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
-            }),
-            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
-                ty: "atom",
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
-            }),
-            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
-                ty: "atom",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
             }),
         }
     }
@@ -72,25 +73,15 @@ impl std::ops::Mul for SpannedValue<Value> {
     fn mul(self, rhs: Self) -> Self::Output {
         match (self.value, rhs.value) {
             (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(a * b)),
-            (Value::Str(_), _) => Err(RunnerError::InvalidType {
-                ty: "str",
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
             }),
-            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
-                ty: "str",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
-            }),
-            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
-                ty: "atom",
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
-            }),
-            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
-                ty: "atom",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
             }),
         }
     }
@@ -117,25 +108,15 @@ impl std::ops::Add for SpannedValue<Value> {
                     }
                 })?))
             }
-            (Value::Str(_), _) => Err(RunnerError::InvalidType {
-                ty: "str",
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
             }),
-            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
-                ty: "str",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
-            }),
-            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
-                ty: "atom",
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
-            }),
-            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
-                ty: "atom",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
             }),
         }
     }
@@ -147,13 +128,8 @@ impl std::ops::Neg for SpannedValue<Value> {
     fn neg(self) -> Self::Output {
         match self.value {
             Value::Numeric(n) => Ok(Value::Numeric((-n).unwrap())),
-            Value::Str(_) => Err(RunnerError::InvalidType {
-                ty: "str",
-                location: (self.start..self.end).into(),
-                src: self.source,
-            }),
-            Value::Atom(_) => Err(RunnerError::InvalidType {
-                ty: "atom",
+            v => Err(RunnerError::InvalidType {
+                ty: v.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
             }),
@@ -172,25 +148,15 @@ impl std::ops::Shl for SpannedValue<Value> {
             (Value::Numeric(a), Value::Numeric(b)) => {
                 Ok(Value::Numeric((a.spanned(&l_span) << b.spanned(&r_span))?))
             }
-            (Value::Str(_), _) => Err(RunnerError::InvalidType {
-                ty: "str",
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
             }),
-            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
-                ty: "str",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
-            }),
-            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
-                ty: "atom",
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
-            }),
-            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
-                ty: "atom",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
             }),
         }
     }
@@ -207,25 +173,15 @@ impl std::ops::Shr for SpannedValue<Value> {
             (Value::Numeric(a), Value::Numeric(b)) => {
                 Ok(Value::Numeric((a.spanned(&l_span) >> b.spanned(&r_span))?))
             }
-            (Value::Str(_), _) => Err(RunnerError::InvalidType {
-                ty: "str",
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
             }),
-            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
-                ty: "str",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
-            }),
-            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
-                ty: "atom",
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
-            }),
-            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
-                ty: "atom",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
             }),
         }
     }
@@ -242,25 +198,15 @@ impl std::ops::BitOr for SpannedValue<Value> {
             (Value::Numeric(a), Value::Numeric(b)) => {
                 Ok(Value::Numeric((a.spanned(&l_span) | b.spanned(&r_span))?))
             }
-            (Value::Str(_), _) => Err(RunnerError::InvalidType {
-                ty: "str",
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
             }),
-            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
-                ty: "str",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
-            }),
-            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
-                ty: "atom",
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
-            }),
-            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
-                ty: "atom",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
             }),
         }
     }
@@ -277,25 +223,15 @@ impl std::ops::BitAnd for SpannedValue<Value> {
             (Value::Numeric(a), Value::Numeric(b)) => {
                 Ok(Value::Numeric((a.spanned(&l_span) & b.spanned(&r_span))?))
             }
-            (Value::Str(_), _) => Err(RunnerError::InvalidType {
-                ty: "str",
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
             }),
-            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
-                ty: "str",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
-            }),
-            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
-                ty: "atom",
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
-            }),
-            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
-                ty: "atom",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
             }),
         }
     }
@@ -312,25 +248,15 @@ impl std::ops::BitXor for SpannedValue<Value> {
             (Value::Numeric(a), Value::Numeric(b)) => {
                 Ok(Value::Numeric((a.spanned(&l_span) ^ b.spanned(&r_span))?))
             }
-            (Value::Str(_), _) => Err(RunnerError::InvalidType {
-                ty: "str",
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
             }),
-            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
-                ty: "str",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
-            }),
-            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
-                ty: "atom",
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
-            }),
-            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
-                ty: "atom",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
             }),
         }
     }
@@ -357,25 +283,15 @@ impl std::ops::Sub for SpannedValue<Value> {
                     }
                 })?))
             }
-            (Value::Str(_), _) => Err(RunnerError::InvalidType {
-                ty: "str",
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
             }),
-            (_, Value::Str(_)) => Err(RunnerError::InvalidType {
-                ty: "str",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
-            }),
-            (Value::Atom(_), _) => Err(RunnerError::InvalidType {
-                ty: "atom",
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
-            }),
-            (_, Value::Atom(_)) => Err(RunnerError::InvalidType {
-                ty: "atom",
-                location: (rhs.start..rhs.end).into(),
-                src: rhs.source,
             }),
         }
     }
@@ -431,6 +347,10 @@ impl TryFrom<SpannedValue<Value>> for NumericValue {
             } => Err(CastError::from_val(value, "numeric")),
             SpannedValue {
                 value: Value::Atom(_),
+                ..
+            } => Err(CastError::from_val(value, "numeric")),
+            SpannedValue {
+                value: Value::Bool(_),
                 ..
             } => Err(CastError::from_val(value, "numeric")),
         }

@@ -41,8 +41,7 @@ impl CastError {
                     ValueMagnitude::Int(_) => "int",
                     ValueMagnitude::Float(_) => "float",
                 },
-                Value::Str(_) => "str",
-                Value::Atom(_) => "atom",
+                v => v.ty(),
             },
             location: (val.start..val.end).into(),
             src: val.source,
@@ -169,6 +168,7 @@ impl Runner {
             Value::Numeric(n) => self.display_numeric_value(n),
             Value::Str(s) => s.clone(),
             Value::Atom(a) => format!(":{a}"),
+            Value::Bool(v) => v.to_string(),
         }
     }
 
@@ -452,6 +452,7 @@ impl Runner {
                 unit: Unit::dimensionless(),
             }),
             ast::Literal::Atom(a) => Value::Atom(a.clone()),
+            &ast::Literal::Bool(b) => Value::Bool(b),
         }
     }
 
