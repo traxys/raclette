@@ -506,6 +506,18 @@ impl Runner {
                     .eq(rhs.spanned(&rhs_span))
                     .wrap_err("could not check equality")?,
             )),
+            ast::BinOpKind::LogicalOr => {
+                let lhs = lhs.spanned(&lhs_span).try_into()?;
+                let rhs = rhs.spanned(&rhs_span).try_into()?;
+
+                Ok(Value::Bool(lhs || rhs))
+            }
+            ast::BinOpKind::LogicalAnd => {
+                let lhs = lhs.spanned(&lhs_span).try_into()?;
+                let rhs = rhs.spanned(&rhs_span).try_into()?;
+
+                Ok(Value::Bool(lhs && rhs))
+            }
         }
     }
 

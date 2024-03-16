@@ -42,7 +42,7 @@ impl Value {
 }
 
 impl SpannedValue<Value> {
-    pub fn eq(self, other: Self, ) -> Result<bool, RunnerError> {
+    pub fn eq(self, other: Self) -> Result<bool, RunnerError> {
         let l_span = self.span();
         let r_span = other.span();
         match (self.value, other.value) {
@@ -352,6 +352,17 @@ impl TryFrom<SpannedValue<Value>> for u32 {
                 "u32",
             )),
             Ok(v) => Ok(v),
+        }
+    }
+}
+
+impl TryFrom<SpannedValue<Value>> for bool {
+    type Error = CastError;
+
+    fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
+        match value.value {
+            Value::Bool(b) => Ok(b),
+            _ => Err(CastError::from_val(value, "bool")),
         }
     }
 }
