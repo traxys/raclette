@@ -29,9 +29,9 @@ extern {
 		"(" => Token::LParen,
 		")" => Token::RParen,
 		"|>" => Token::Redirect,
-		"|" => Token::LOr,
-		"&" => Token::LAnd,
-		"^" => Token::LXor,
+		"|" => Token::BOr,
+		"&" => Token::BAnd,
+		"^" => Token::BXor,
 		"=" => Token::Equal,
 		"+" => Token::Plus,
 		"-" => Token::Minus,
@@ -123,17 +123,17 @@ ExprCmp: Expr = {
 };
 
 ExprLOr: Expr = {
-	<lhs:SpnBox<ExprShift>> "|" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LogicalOr}),
+	<lhs:SpnBox<ExprShift>> "|" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::BinaryOr}),
 	ExprLXor => <>,
 };
 
 ExprLXor: Expr = {
-	<lhs:SpnBox<ExprShift>> "^" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LogicalXor}),
+	<lhs:SpnBox<ExprShift>> "^" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::BinaryXor}),
 	ExprLAnd => <>,
 };
 
 ExprLAnd: Expr = {
-	<lhs:SpnBox<ExprShift>> "&" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LogicalAnd}),
+	<lhs:SpnBox<ExprShift>> "&" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::BinaryAnd}),
 	ExprShift => <>,
 };
 

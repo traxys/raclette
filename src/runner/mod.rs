@@ -463,13 +463,13 @@ impl Runner {
                 .wrap_err("could not shift operands"),
             ast::BinOpKind::RightShift => (lhs.spanned(&lhs_span) >> rhs.spanned(&rhs_span))
                 .wrap_err("could not shift operands"),
-            ast::BinOpKind::LogicalOr => {
+            ast::BinOpKind::BinaryOr => {
                 (lhs.spanned(&lhs_span) | rhs.spanned(&rhs_span)).wrap_err("could not or operands")
             }
-            ast::BinOpKind::LogicalAnd => {
+            ast::BinOpKind::BinaryAnd => {
                 (lhs.spanned(&lhs_span) & rhs.spanned(&rhs_span)).wrap_err("could not and operands")
             }
-            ast::BinOpKind::LogicalXor => {
+            ast::BinOpKind::BinaryXor => {
                 (lhs.spanned(&lhs_span) ^ rhs.spanned(&rhs_span)).wrap_err("could not xor operands")
             }
             ast::BinOpKind::Greater => Ok(Value::Bool(

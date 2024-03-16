@@ -37,13 +37,13 @@ pub enum Token {
     Redirect,
     #[token("|")]
     #[display(fmt = "|")]
-    LOr,
+    BOr,
     #[token("&")]
     #[display(fmt = "&")]
-    LAnd,
+    BAnd,
     #[token("^")]
     #[display(fmt = "^")]
-    LXor,
+    BXor,
     #[token("=")]
     #[display(fmt = "=")]
     Equal,
@@ -180,9 +180,9 @@ pub enum BinOpKind {
     Diff,
     LeftShift,
     RightShift,
-    LogicalOr,
-    LogicalAnd,
-    LogicalXor,
+    BinaryOr,
+    BinaryAnd,
+    BinaryXor,
     Greater,
     GreaterOrEqual,
     Lesser,
@@ -200,9 +200,9 @@ impl std::fmt::Debug for BinOpKind {
             Self::Diff => write!(f, "-"),
             Self::LeftShift => write!(f, "<<"),
             Self::RightShift => write!(f, ">>"),
-            Self::LogicalOr => write!(f, "|"),
-            Self::LogicalAnd => write!(f, "&"),
-            Self::LogicalXor => write!(f, "^"),
+            Self::BinaryOr => write!(f, "|"),
+            Self::BinaryAnd => write!(f, "&"),
+            Self::BinaryXor => write!(f, "^"),
             Self::Greater => write!(f, ">"),
             Self::GreaterOrEqual => write!(f, ">="),
             Self::Lesser => write!(f, "<"),
