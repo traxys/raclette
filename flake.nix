@@ -80,9 +80,12 @@
           buildInputs = [ ];
         };
 
-        defaultPackage = naersk'.buildPackage {
-          src = ./.;
-          nativeBuildInputs = [ pkgs.m4 ];
+        packages = rec {
+          raclette = default;
+          default = naersk'.buildPackage {
+            src = ./.;
+            nativeBuildInputs = [ pkgs.m4 ];
+          };
         };
       }
     );
