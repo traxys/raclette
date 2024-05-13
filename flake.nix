@@ -47,33 +47,36 @@
             done
           '';
 
-          propagatedBuildInputs = [
-            pkgs.python3Packages.numpy
-            pkgs.python3Packages.matplotlib
-            pkgs.python3Packages.scipy
+          propagatedBuildInputs = with pkgs.python3Packages; [
+            numpy
+            matplotlib
+            scipy
           ];
         };
       in
       {
         devShell = pkgs.mkShell {
-          nativeBuildInputs = [
-            pkgs.bashInteractive
-            pkgs.cargo-fuzz
-            pkgs.cargo-flamegraph
-            pkgs.cargo-criterion
-            pkgs.cargo-tarpaulin
-            pkgs.hyperfine
-            pkgs.glow
-            hf-scripts
-            rust
-            pkgs.m4
-            (pkgs.python3.withPackages (
-              ps: with ps; [
-                toml
-                pyyaml
-              ]
-            ))
-          ];
+          nativeBuildInputs =
+            (with pkgs; [
+              bashInteractive
+              cargo-fuzz
+              cargo-flamegraph
+              cargo-criterion
+              cargo-tarpaulin
+              glow
+              m4
+            ])
+            ++ [
+              pkgs.hyperfine
+              hf-scripts
+              rust
+              (pkgs.python3.withPackages (
+                ps: with ps; [
+                  toml
+                  pyyaml
+                ]
+              ))
+            ];
           buildInputs = [ ];
         };
 
