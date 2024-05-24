@@ -250,6 +250,10 @@ static SHIFTED_METRIC_SCALE: &[ScaleStep] = &[
         order: 1. / 1000.,
     },
     ScaleStep {
+        render: ScaleRender::Prefix("c"),
+        order: 0.01 / 1000.,
+    },
+    ScaleStep {
         render: ScaleRender::Prefix("m"),
         order: 0.001 / 1000.,
     },
@@ -298,6 +302,10 @@ static METRIC_SCALE: &[ScaleStep] = &[
     ScaleStep {
         render: ScaleRender::AsIs,
         order: 1.,
+    },
+    ScaleStep {
+        render: ScaleRender::Prefix("c"),
+        order: 0.01,
     },
     ScaleStep {
         render: ScaleRender::Prefix("m"),
