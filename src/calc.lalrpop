@@ -58,7 +58,7 @@ extern {
 		"<=" => Token::LesserOrEqual,
 		">" => Token::Greater,
 		"<" => Token::Lesser,
-		num => Token::Number(<i64>),
+		num => Token::Number(<i128>),
 		float => Token::Float(<f64>),
 		ident => Token::Ident(<Arc<str>>),
 		unit => Token::Unit(<Arc<str>>),

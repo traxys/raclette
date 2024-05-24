@@ -60,7 +60,7 @@ enum ParseError {
     #[error("Literal out of range\nExpected a value in {ty}")]
     OutOfRange {
         ty: &'static str,
-        num: i64,
+        num: i128,
         #[label("this literal")]
         location: SourceSpan,
     },

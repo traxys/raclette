@@ -5,7 +5,7 @@ use crate::{
 
 #[derive(Debug, Clone, Copy)]
 pub enum ValueMagnitude {
-    Int(i64),
+    Int(i128),
     Float(f64),
 }
 
@@ -49,7 +49,7 @@ impl SpannedValue<ValueMagnitude> {
     }
 }
 
-impl TryFrom<SpannedValue<ValueMagnitude>> for i64 {
+impl TryFrom<SpannedValue<ValueMagnitude>> for i128 {
     type Error = CastError;
 
     fn try_from(value: SpannedValue<ValueMagnitude>) -> Result<Self, Self::Error> {
@@ -121,9 +121,9 @@ impl ValueMagnitude {
         }
     }
 
-    pub fn into_int(self) -> i64 {
+    pub fn into_int(self) -> i128 {
         match self {
-            ValueMagnitude::Float(f) => f as i64,
+            ValueMagnitude::Float(f) => f as i128,
             ValueMagnitude::Int(i) => i,
         }
     }
@@ -178,7 +178,7 @@ impl std::ops::Shl for SpannedValue<ValueMagnitude> {
     type Output = Result<ValueMagnitude, CastError>;
 
     fn shl(self, rhs: Self) -> Self::Output {
-        let lhs: i64 = self.try_into()?;
+        let lhs: i128 = self.try_into()?;
         let rhs: usize = rhs.try_into()?;
 
         Ok(ValueMagnitude::Int(lhs << rhs))
@@ -189,7 +189,7 @@ impl std::ops::Shr for SpannedValue<ValueMagnitude> {
     type Output = Result<ValueMagnitude, CastError>;
 
     fn shr(self, rhs: Self) -> Self::Output {
-        let lhs: i64 = self.try_into()?;
+        let lhs: i128 = self.try_into()?;
         let rhs: usize = rhs.try_into()?;
 
         Ok(ValueMagnitude::Int(lhs >> rhs))
@@ -200,8 +200,8 @@ impl std::ops::BitOr for SpannedValue<ValueMagnitude> {
     type Output = Result<ValueMagnitude, CastError>;
 
     fn bitor(self, rhs: Self) -> Self::Output {
-        let lhs: i64 = self.try_into()?;
-        let rhs: i64 = rhs.try_into()?;
+        let lhs: i128 = self.try_into()?;
+        let rhs: i128 = rhs.try_into()?;
 
         Ok(ValueMagnitude::Int(lhs | rhs))
     }
@@ -211,8 +211,8 @@ impl std::ops::BitAnd for SpannedValue<ValueMagnitude> {
     type Output = Result<ValueMagnitude, CastError>;
 
     fn bitand(self, rhs: Self) -> Self::Output {
-        let lhs: i64 = self.try_into()?;
-        let rhs: i64 = rhs.try_into()?;
+        let lhs: i128 = self.try_into()?;
+        let rhs: i128 = rhs.try_into()?;
 
         Ok(ValueMagnitude::Int(lhs & rhs))
     }
@@ -222,8 +222,8 @@ impl std::ops::BitXor for SpannedValue<ValueMagnitude> {
     type Output = Result<ValueMagnitude, CastError>;
 
     fn bitxor(self, rhs: Self) -> Self::Output {
-        let lhs: i64 = self.try_into()?;
-        let rhs: i64 = rhs.try_into()?;
+        let lhs: i128 = self.try_into()?;
+        let rhs: i128 = rhs.try_into()?;
 
         Ok(ValueMagnitude::Int(lhs ^ rhs))
     }

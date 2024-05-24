@@ -340,7 +340,7 @@ impl TryFrom<SpannedValue<Value>> for u32 {
 
     fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
         let spn = value.span();
-        let numeric: i64 = value.try_into()?;
+        let numeric: i128 = value.try_into()?;
 
         match numeric.try_into() {
             Err(_) => Err(CastError::from_val(
@@ -367,7 +367,7 @@ impl TryFrom<SpannedValue<Value>> for bool {
     }
 }
 
-impl TryFrom<SpannedValue<Value>> for i64 {
+impl TryFrom<SpannedValue<Value>> for i128 {
     type Error = CastError;
 
     fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {

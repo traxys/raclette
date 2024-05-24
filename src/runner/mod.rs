@@ -364,7 +364,7 @@ impl Runner {
             if multiplier < 1. {
                 ValueMagnitude::Float(multiplier)
             } else {
-                ValueMagnitude::Int(multiplier as i64)
+                ValueMagnitude::Int(multiplier as i128)
             },
             unit_acc,
         ))
