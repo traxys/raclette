@@ -442,6 +442,18 @@ impl Runner {
         match b.kind {
             ast::BinOpKind::Times => (lhs.spanned(&lhs_span) * rhs.spanned(&rhs_span))
                 .wrap_err("could not multiply operands"),
+            ast::BinOpKind::Modulo => {
+                if rhs.is_zero() {
+                    return Err(RunnerError::DivideByZero {
+                        location: (b.rhs.start..b.rhs.end).into(),
+                        src: b.rhs.source.clone(),
+                    }
+                    .into());
+                }
+
+                (lhs.spanned(&lhs_span) % rhs.spanned(&rhs_span))
+                    .wrap_err("could not take modulus of operands")
+            }
             ast::BinOpKind::Divide => {
                 if rhs.is_zero() {
                     return Err(RunnerError::DivideByZero {

@@ -145,6 +145,31 @@ impl std::ops::Shr for SpannedValue<NumericValue> {
     }
 }
 
+impl std::ops::Rem for SpannedValue<NumericValue> {
+    type Output = Result<NumericValue, RunnerError>;
+
+    fn rem(self, rhs: Self) -> Self::Output {
+        if !rhs.unit.is_dimensionless() {
+            return Err(RunnerError::InvalidType {
+                ty: "dimensioned numeric value",
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            });
+        }
+
+        let self_span = self.span();
+        let rhs_span = rhs.span();
+        let unit = self.unit;
+
+        Ok(NumericValue {
+            magnitude: (self.value.magnitude.spanned(&self_span)
+                % rhs.value.magnitude.spanned(&rhs_span))?,
+            unit,
+        })
+    }
+}
+
+
 impl std::ops::BitOr for SpannedValue<NumericValue> {
     type Output = Result<NumericValue, RunnerError>;
 

@@ -196,6 +196,17 @@ impl std::ops::Shr for SpannedValue<ValueMagnitude> {
     }
 }
 
+impl std::ops::Rem for SpannedValue<ValueMagnitude> {
+    type Output = Result<ValueMagnitude, CastError>;
+
+    fn rem(self, rhs: Self) -> Self::Output {
+        let lhs: i128 = self.try_into()?;
+        let rhs: i128 = rhs.try_into()?;
+
+        Ok(ValueMagnitude::Int(lhs % rhs))
+    }
+}
+
 impl std::ops::BitOr for SpannedValue<ValueMagnitude> {
     type Output = Result<ValueMagnitude, CastError>;
 

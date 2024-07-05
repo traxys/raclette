@@ -225,6 +225,31 @@ impl std::ops::Shr for SpannedValue<Value> {
     }
 }
 
+impl std::ops::Rem for SpannedValue<Value> {
+    type Output = Result<Value, RunnerError>;
+
+    fn rem(self, rhs: Self) -> Self::Output {
+        let l_span = self.span();
+        let r_span = rhs.span();
+
+        match (self.value, rhs.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => {
+                Ok(Value::Numeric((a.spanned(&l_span) % b.spanned(&r_span))?))
+            }
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
+                location: (self.start..self.end).into(),
+                src: self.source,
+            }),
+        }
+    }
+}
+
 impl std::ops::BitOr for SpannedValue<Value> {
     type Output = Result<Value, RunnerError>;
 

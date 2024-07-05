@@ -164,6 +164,7 @@ ExprAdd: Expr = {
 ExprMult: Expr = {
 	<lhs:SpnBox<ExprMult>> "/" <rhs:SpnBox<ExprUnary>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Divide}),
 	<lhs:SpnBox<ExprMult>> "*" <rhs:SpnBox<ExprUnary>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Times}),
+	<lhs:SpnBox<ExprMult>> "%" <rhs:SpnBox<ExprUnary>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Modulo}),
 	ExprUnary => <>,
 };
 
