@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use clap::Parser;
 use lalrpop_util::lalrpop_mod;
 use miette::{Context, Diagnostic, IntoDiagnostic, Result, SourceCode, SourceSpan};
@@ -7,8 +5,7 @@ use rustyline::{error::ReadlineError, history::FileHistory, Editor};
 
 #[derive(Parser, Debug)]
 struct Args {
-    #[clap(short, long)]
-    file: Option<PathBuf>,
+    expr: Option<String>,
 }
 
 lalrpop_mod!(
@@ -119,78 +116,91 @@ impl<T> ParseDiagnosticExt<T> for Result<T, LalrpopParseError> {
 }
 
 fn main() -> Result<()> {
-    let _args = Args::parse();
-
-    let data_dir = dirs_next::data_dir().map(|mut p| {
-        p.push("raclette");
-        p
-    });
-
-    if let Some(d) = &data_dir {
-        std::fs::create_dir_all(d)
-            .into_diagnostic()
-            .wrap_err("Could not create data directory")?;
-    };
+    let args = Args::parse();
 
     let parser = calc::InputStatementParser::new();
-    let mut rl = Editor::<(), FileHistory>::new().into_diagnostic()?;
-
-    let path = data_dir
-        .map(|mut p| {
-            p.push("history");
-            p
-        })
-        .unwrap_or_else(|| "raclette-history".into());
-
-    if let Err(e) = rl.load_history(&path) {
-        if path.exists() {
-            println!("Error loading history: {:?}", e)
-        }
-    };
-
     let mut runner = runner::Runner::new();
 
-    loop {
-        match rl.readline(">> ") {
-            Ok(line) => {
-                if let Err(e) = rl.add_history_entry(&line) {
-                    println!("History error: {e:?}");
-                };
+    match args.expr {
+        Some(expr) => {
+            let parsed = parser
+                .parse(&expr.as_str().into(), ast::lexer(&expr))
+                .into_report(expr.clone())?;
 
-                let parsed = match parser
-                    .parse(&line.as_str().into(), ast::lexer(&line))
-                    .into_report(line.clone())
-                {
-                    Ok(p) => p,
-                    Err(e) => {
-                        println!("Parsing error: {:?}", e);
-                        continue;
-                    }
-                };
-                match runner.eval_input_statement(parsed) {
-                    Err(e) => {
-                        println!("Runtime error:\n{e:?}");
-                        continue;
-                    }
-                    Ok(Some(v)) => println!("{}", runner.display_value(&v)),
-                    Ok(None) => (),
-                };
-            }
-            Err(ReadlineError::Interrupted) => {
-                println!("Interrupted");
-                continue;
-            }
-            Err(ReadlineError::Eof) => {
-                break;
-            }
-            Err(e) => {
-                println!("Error: {e}");
-                break;
+            if let Some(value) = runner.eval_input_statement(parsed)? {
+                println!("{}", runner.display_value(&value))
             }
         }
-    }
+        None => {
+            let data_dir = dirs_next::data_dir().map(|mut p| {
+                p.push("raclette");
+                p
+            });
 
-    rl.save_history(&path).into_diagnostic()?;
+            if let Some(d) = &data_dir {
+                std::fs::create_dir_all(d)
+                    .into_diagnostic()
+                    .wrap_err("Could not create data directory")?;
+            };
+
+            let path = data_dir
+                .map(|mut p| {
+                    p.push("history");
+                    p
+                })
+                .unwrap_or_else(|| "raclette-history".into());
+
+            let mut rl = Editor::<(), FileHistory>::new().into_diagnostic()?;
+
+            if let Err(e) = rl.load_history(&path) {
+                if path.exists() {
+                    println!("Error loading history: {:?}", e)
+                }
+            };
+
+            loop {
+                match rl.readline(">> ") {
+                    Ok(line) => {
+                        if let Err(e) = rl.add_history_entry(&line) {
+                            println!("History error: {e:?}");
+                        };
+
+                        let parsed = match parser
+                            .parse(&line.as_str().into(), ast::lexer(&line))
+                            .into_report(line.clone())
+                        {
+                            Ok(p) => p,
+                            Err(e) => {
+                                println!("Parsing error: {:?}", e);
+                                continue;
+                            }
+                        };
+                        match runner.eval_input_statement(parsed) {
+                            Err(e) => {
+                                println!("Runtime error:\n{e:?}");
+                                continue;
+                            }
+                            Ok(Some(v)) => println!("{}", runner.display_value(&v)),
+                            Ok(None) => (),
+                        };
+                    }
+                    Err(ReadlineError::Interrupted) => {
+                        println!("Interrupted");
+                        continue;
+                    }
+                    Err(ReadlineError::Eof) => {
+                        break;
+                    }
+                    Err(e) => {
+                        println!("Error: {e}");
+                        break;
+                    }
+                }
+            }
+
+            rl.save_history(&path).into_diagnostic()?;
+        }
+    }
 
     Ok(())
 }
