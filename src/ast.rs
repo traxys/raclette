@@ -93,6 +93,7 @@ pub enum Token {
     #[display(fmt = ",")]
     Comma,
     #[token("'(")]
+    #[token(",(")]
     #[display(fmt = "'(")]
     UnitParen,
     #[token("==")]
@@ -139,7 +140,7 @@ pub enum Token {
     #[regex("\\$[a-zA-Z][a-zA-Z0-9_]*", callback = |lex| Arc::from(&lex.slice()[1..]))]
     #[display(fmt = "identifier({})", _0)]
     Binding(Arc<str>),
-    #[regex("'[a-zA-Z]+", callback = |lex| Arc::from(&lex.slice()[1..]))]
+    #[regex("('|,)[a-zA-Z]+", callback = |lex| Arc::from(&lex.slice()[1..]))]
     #[display(fmt = "unit({})", _0)]
     Unit(Arc<str>),
     #[token("true")]
