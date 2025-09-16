@@ -2,10 +2,11 @@ use clap::Parser;
 use lalrpop_util::lalrpop_mod;
 use miette::{Context, Diagnostic, IntoDiagnostic, Result, SourceCode, SourceSpan};
 use rustyline::{error::ReadlineError, history::FileHistory, Editor};
+use itertools::Itertools;
 
 #[derive(Parser, Debug)]
 struct Args {
-    expr: Option<String>,
+    expr: Vec<String>,
 }
 
 lalrpop_mod!(
@@ -121,8 +122,9 @@ fn main() -> Result<()> {
     let parser = calc::InputStatementParser::new();
     let mut runner = runner::Runner::new();
 
-    match args.expr {
-        Some(expr) => {
+    match args.expr.is_empty() {
+        false => {
+            let expr = args.expr.iter().join(" ");
             let parsed = parser
                 .parse(&expr.as_str().into(), ast::lexer(&expr))
                 .into_report(expr.clone())?;
@@ -131,7 +133,7 @@ fn main() -> Result<()> {
                 println!("{}", runner.display_value(&value))
             }
         }
-        None => {
+        true => {
             let data_dir = dirs_next::data_dir().map(|mut p| {
                 p.push("raclette");
                 p
