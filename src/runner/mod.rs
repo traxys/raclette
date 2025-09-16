@@ -445,8 +445,10 @@ impl Runner {
                 Value::mul(b.span(), lhs.spanned(&lhs_span), rhs.spanned(&rhs_span))
                     .wrap_err("could not multiply operands")
             }
-            ast::BinOpKind::Modulo => (lhs.spanned(&lhs_span) % rhs.spanned(&rhs_span))
-                .wrap_err("could not take modulus of operands"),
+            ast::BinOpKind::Modulo => {
+                Value::rem(b.span(), lhs.spanned(&lhs_span), rhs.spanned(&rhs_span))
+                    .wrap_err("could not take modulus of operands")
+            }
             ast::BinOpKind::Divide => (lhs.spanned(&lhs_span) / rhs.spanned(&rhs_span))
                 .with_context(|| "could not divide operands"),
             ast::BinOpKind::Sum => {
