@@ -436,88 +436,58 @@ impl Runner {
     }
 
     fn eval_bin_op(&mut self, b: &SpannedValue<ast::BinOp>) -> Result<Value, miette::Report> {
-        let lhs_span = b.lhs.span();
-        let lhs = self.eval_expr(&b.lhs)?;
-        let rhs_span = b.rhs.span();
-        let rhs = self.eval_expr(&b.rhs)?;
+        let lhs = self.eval_expr(&b.lhs)?.spanned(&b.lhs.span());
+        let rhs = self.eval_expr(&b.rhs)?.spanned(&b.rhs.span());
         match b.kind {
             ast::BinOpKind::Times => {
-                Value::mul(b.span(), lhs.spanned(&lhs_span), rhs.spanned(&rhs_span))
-                    .wrap_err("could not multiply operands")
+                Value::mul(b.span(), lhs, rhs).wrap_err("could not multiply operands")
             }
             ast::BinOpKind::Modulo => {
-                Value::rem(b.span(), lhs.spanned(&lhs_span), rhs.spanned(&rhs_span))
-                    .wrap_err("could not take modulus of operands")
+                Value::rem(b.span(), lhs, rhs).wrap_err("could not take modulus of operands")
             }
-            ast::BinOpKind::Divide => (lhs.spanned(&lhs_span) / rhs.spanned(&rhs_span))
-                .with_context(|| "could not divide operands"),
-            ast::BinOpKind::Sum => {
-                (lhs.spanned(&lhs_span) + rhs.spanned(&rhs_span)).wrap_err("could not add operands")
-            }
-            ast::BinOpKind::Diff => (lhs.spanned(&lhs_span) - rhs.spanned(&rhs_span))
-                .wrap_err("could not substract operands"),
-            ast::BinOpKind::LeftShift => (lhs.spanned(&lhs_span) << rhs.spanned(&rhs_span))
-                .wrap_err("could not shift operands"),
-            ast::BinOpKind::RightShift => (lhs.spanned(&lhs_span) >> rhs.spanned(&rhs_span))
-                .wrap_err("could not shift operands"),
-            ast::BinOpKind::BinaryOr => {
-                (lhs.spanned(&lhs_span) | rhs.spanned(&rhs_span)).wrap_err("could not or operands")
-            }
-            ast::BinOpKind::BinaryAnd => {
-                (lhs.spanned(&lhs_span) & rhs.spanned(&rhs_span)).wrap_err("could not and operands")
-            }
-            ast::BinOpKind::BinaryXor => {
-                (lhs.spanned(&lhs_span) ^ rhs.spanned(&rhs_span)).wrap_err("could not xor operands")
-            }
+            ast::BinOpKind::Divide => (lhs / rhs).with_context(|| "could not divide operands"),
+            ast::BinOpKind::Sum => (lhs + rhs).wrap_err("could not add operands"),
+            ast::BinOpKind::Diff => (lhs - rhs).wrap_err("could not substract operands"),
+            ast::BinOpKind::LeftShift => (lhs << rhs).wrap_err("could not shift operands"),
+            ast::BinOpKind::RightShift => (lhs >> rhs).wrap_err("could not shift operands"),
+            ast::BinOpKind::BinaryOr => (lhs | rhs).wrap_err("could not or operands"),
+            ast::BinOpKind::BinaryAnd => (lhs | rhs).wrap_err("could not and operands"),
+            ast::BinOpKind::BinaryXor => (lhs ^ rhs).wrap_err("could not xor operands"),
             ast::BinOpKind::Greater => Ok(Value::Bool(
-                lhs.spanned(&lhs_span)
-                    .cmp(rhs.spanned(&rhs_span))
-                    .wrap_err("could not compare values")?
-                    .is_gt(),
+                lhs.cmp(rhs).wrap_err("could not compare values")?.is_gt(),
             )),
             ast::BinOpKind::GreaterOrEqual => Ok(Value::Bool(
-                lhs.spanned(&lhs_span)
-                    .cmp(rhs.spanned(&rhs_span))
-                    .wrap_err("could not compare values")?
-                    .is_ge(),
+                lhs.cmp(rhs).wrap_err("could not compare values")?.is_ge(),
             )),
             ast::BinOpKind::Lesser => Ok(Value::Bool(
-                lhs.spanned(&lhs_span)
-                    .cmp(rhs.spanned(&rhs_span))
-                    .wrap_err("could not compare values")?
-                    .is_lt(),
+                lhs.cmp(rhs).wrap_err("could not compare values")?.is_lt(),
             )),
             ast::BinOpKind::LesserOrEqual => Ok(Value::Bool(
-                lhs.spanned(&lhs_span)
-                    .cmp(rhs.spanned(&rhs_span))
-                    .wrap_err("could not compare values")?
-                    .is_le(),
+                lhs.cmp(rhs).wrap_err("could not compare values")?.is_le(),
             )),
             ast::BinOpKind::LogicalEquals => Ok(Value::Bool(
-                lhs.spanned(&lhs_span)
-                    .eq(rhs.spanned(&rhs_span))
-                    .wrap_err("could not check equality")?,
+                lhs.eq(rhs).wrap_err("could not check equality")?,
             )),
             ast::BinOpKind::Different => Ok(Value::Bool(
-                !lhs.spanned(&lhs_span)
-                    .eq(rhs.spanned(&rhs_span))
-                    .wrap_err("could not check equality")?,
+                !lhs.eq(rhs).wrap_err("could not check equality")?,
             )),
             ast::BinOpKind::LogicalOr => {
-                let lhs = lhs.spanned(&lhs_span).try_into()?;
-                let rhs = rhs.spanned(&rhs_span).try_into()?;
+                let lhs = lhs.try_into()?;
+                let rhs = rhs.try_into()?;
 
                 Ok(Value::Bool(lhs || rhs))
             }
             ast::BinOpKind::LogicalAnd => {
-                let lhs = lhs.spanned(&lhs_span).try_into()?;
-                let rhs = rhs.spanned(&rhs_span).try_into()?;
+                let lhs = lhs.try_into()?;
+                let rhs = rhs.try_into()?;
 
                 Ok(Value::Bool(lhs && rhs))
             }
             ast::BinOpKind::Power => {
-                let lhs_val: NumericValue = lhs.spanned(&lhs_span).try_into()?;
-                let rhs_val: NumericValue = rhs.spanned(&rhs_span).try_into()?;
+                let lhs_span = rhs.span();
+                let rhs_span = rhs.span();
+                let lhs_val: NumericValue = lhs.try_into()?;
+                let rhs_val: NumericValue = rhs.try_into()?;
 
                 if !rhs_val.unit.is_dimensionless() {
                     Err(RunnerError::InvalidType {
