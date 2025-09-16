@@ -131,16 +131,16 @@ impl ValueMagnitude {
 
 macro_rules! impl_op {
     ($op:ident, $fn:ident, $symb:tt) => {
-        impl std::ops::$op for ValueMagnitude {
-            type Output = Self;
+        impl std::ops::$op for SpannedValue<ValueMagnitude> {
+            type Output = Result<ValueMagnitude, RunnerError>;
 
             fn $fn(self, rhs: Self) -> Self::Output {
-                match (self, rhs) {
+                Ok(match (self.value, rhs.value) {
                     (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => ValueMagnitude::Int(a $symb b),
                     (ValueMagnitude::Int(a), ValueMagnitude::Float(b)) => ValueMagnitude::Float(a as f64 $symb b),
                     (ValueMagnitude::Float(a), ValueMagnitude::Int(b)) => ValueMagnitude::Float(a $symb b as f64),
                     (ValueMagnitude::Float(a), ValueMagnitude::Float(b)) => ValueMagnitude::Float(a $symb b),
-                }
+                })
             }
         }
     };
@@ -150,27 +150,27 @@ impl_op!(Mul, mul, *);
 impl_op!(Add, add, +);
 impl_op!(Sub, sub, -);
 
-impl std::ops::Div for ValueMagnitude {
-    type Output = Self;
+impl std::ops::Div for SpannedValue<ValueMagnitude> {
+    type Output = Result<ValueMagnitude, RunnerError>;
 
     fn div(self, rhs: Self) -> Self::Output {
-        match (self, rhs) {
+        Ok(match (self.value, rhs.value) {
             (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) if (a % b) == 0 => {
                 ValueMagnitude::Int(a / b)
             }
             (lhs, rhs) => ValueMagnitude::Float(lhs.into_float() / rhs.into_float()),
-        }
+        })
     }
 }
 
-impl std::ops::Neg for ValueMagnitude {
-    type Output = Self;
+impl std::ops::Neg for SpannedValue<ValueMagnitude> {
+    type Output = Result<ValueMagnitude, RunnerError>;
 
     fn neg(self) -> Self::Output {
-        match self {
+        Ok(match self.value {
             ValueMagnitude::Int(i) => ValueMagnitude::Int(-i),
             ValueMagnitude::Float(f) => ValueMagnitude::Float(-f),
-        }
+        })
     }
 }
 

@@ -384,7 +384,8 @@ impl Runner {
                 }
                 let (multiplied, unit) = self.resolve_units(u)?;
                 Ok(NumericValue {
-                    magnitude: value.magnitude * multiplied,
+                    magnitude: (value.magnitude.spanned(&l.span()) * multiplied.spanned(&l.span()))
+                        .expect("Value should only go towards zero"),
                     unit,
                 }
                 .into())
@@ -442,30 +443,10 @@ impl Runner {
         match b.kind {
             ast::BinOpKind::Times => (lhs.spanned(&lhs_span) * rhs.spanned(&rhs_span))
                 .wrap_err("could not multiply operands"),
-            ast::BinOpKind::Modulo => {
-                if rhs.is_zero() {
-                    return Err(RunnerError::DivideByZero {
-                        location: (b.rhs.start..b.rhs.end).into(),
-                        src: b.rhs.source.clone(),
-                    }
-                    .into());
-                }
-
-                (lhs.spanned(&lhs_span) % rhs.spanned(&rhs_span))
-                    .wrap_err("could not take modulus of operands")
-            }
-            ast::BinOpKind::Divide => {
-                if rhs.is_zero() {
-                    return Err(RunnerError::DivideByZero {
-                        location: (b.rhs.start..b.rhs.end).into(),
-                        src: b.rhs.source.clone(),
-                    }
-                    .into());
-                }
-
-                (lhs.spanned(&lhs_span) / rhs.spanned(&rhs_span))
-                    .with_context(|| "could not divide operands")
-            }
+            ast::BinOpKind::Modulo => (lhs.spanned(&lhs_span) % rhs.spanned(&rhs_span))
+                .wrap_err("could not take modulus of operands"),
+            ast::BinOpKind::Divide => (lhs.spanned(&lhs_span) / rhs.spanned(&rhs_span))
+                .with_context(|| "could not divide operands"),
             ast::BinOpKind::Sum => {
                 (lhs.spanned(&lhs_span) + rhs.spanned(&rhs_span)).wrap_err("could not add operands")
             }

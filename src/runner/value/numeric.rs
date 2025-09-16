@@ -45,54 +45,66 @@ impl SpannedValue<NumericValue> {
     }
 }
 
-impl std::ops::Div for NumericValue {
-    type Output = Self;
+impl std::ops::Div for SpannedValue<NumericValue> {
+    type Output = Result<NumericValue, RunnerError>;
 
     fn div(self, rhs: Self) -> Self::Output {
-        NumericValue {
-            magnitude: self.magnitude / rhs.magnitude,
+        Ok(NumericValue {
+            magnitude: (self.magnitude.spanned(&self) / rhs.magnitude.spanned(&rhs))?,
             unit: self.unit / rhs.unit,
-        }
-    }
-}
-
-impl std::ops::Mul for NumericValue {
-    type Output = Self;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        NumericValue {
-            magnitude: self.magnitude * rhs.magnitude,
-            unit: self.unit * rhs.unit,
-        }
-    }
-}
-
-impl std::ops::Add for NumericValue {
-    type Output = Result<Self, ()>;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        if self.unit != rhs.unit {
-            return Err(());
-        }
-
-        Ok(Self {
-            magnitude: self.magnitude + rhs.magnitude,
-            unit: self.unit,
         })
     }
 }
 
-impl std::ops::Sub for NumericValue {
-    type Output = Result<Self, ()>;
+impl std::ops::Mul for SpannedValue<NumericValue> {
+    type Output = Result<NumericValue, RunnerError>;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        Ok(NumericValue {
+            magnitude: (self.magnitude.spanned(&self) * rhs.magnitude.spanned(&rhs))?,
+            unit: self.value.unit * rhs.value.unit,
+        })
+    }
+}
+
+impl std::ops::Add for SpannedValue<NumericValue> {
+    type Output = Result<NumericValue, RunnerError>;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        if self.unit != rhs.unit {
+            return Err(RunnerError::UnitMismatch {
+                lhs: (self.start..self.end).into(),
+                lhs_unit: self.unit.to_string(),
+                rhs: (rhs.start..rhs.end).into(),
+                rhs_unit: rhs.unit.to_string(),
+                src: self.source,
+            });
+        }
+
+        Ok(NumericValue {
+            magnitude: (self.value.magnitude.spanned(&self) + rhs.value.magnitude.spanned(&rhs))?,
+            unit: self.value.unit,
+        })
+    }
+}
+
+impl std::ops::Sub for SpannedValue<NumericValue> {
+    type Output = Result<NumericValue, RunnerError>;
 
     fn sub(self, rhs: Self) -> Self::Output {
         if self.unit != rhs.unit {
-            return Err(());
+            return Err(RunnerError::UnitMismatch {
+                lhs: (self.start..self.end).into(),
+                lhs_unit: self.unit.to_string(),
+                rhs: (rhs.start..rhs.end).into(),
+                rhs_unit: rhs.unit.to_string(),
+                src: self.source,
+            });
         }
 
-        Ok(Self {
-            magnitude: self.magnitude - rhs.magnitude,
-            unit: self.unit,
+        Ok(NumericValue {
+            magnitude: (self.value.magnitude.spanned(&self) - rhs.value.magnitude.spanned(&rhs))?,
+            unit: self.value.unit,
         })
     }
 }
@@ -168,7 +180,6 @@ impl std::ops::Rem for SpannedValue<NumericValue> {
         })
     }
 }
-
 
 impl std::ops::BitOr for SpannedValue<NumericValue> {
     type Output = Result<NumericValue, RunnerError>;
@@ -266,16 +277,13 @@ impl std::ops::BitXor for SpannedValue<NumericValue> {
     }
 }
 
-#[derive(Debug)]
-pub enum Void {}
-
-impl std::ops::Neg for NumericValue {
-    type Output = Result<Self, Void>;
+impl std::ops::Neg for SpannedValue<NumericValue> {
+    type Output = Result<NumericValue, RunnerError>;
 
     fn neg(self) -> Self::Output {
-        Ok(Self {
-            magnitude: -self.magnitude,
-            unit: self.unit,
+        Ok(NumericValue {
+            magnitude: (-self.value.magnitude.spanned(&self))?,
+            unit: self.value.unit,
         })
     }
 }

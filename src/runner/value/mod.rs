@@ -89,8 +89,13 @@ impl std::ops::Div for SpannedValue<Value> {
     type Output = Result<Value, RunnerError>;
 
     fn div(self, rhs: Self) -> Self::Output {
+        let lhs_span = self.span();
+        let rhs_span = rhs.span();
+
         match (self.value, rhs.value) {
-            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(a / b)),
+            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(
+                (a.spanned(&lhs_span) / b.spanned(&rhs_span))?,
+            )),
             (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
                 ty: r.ty(),
                 location: (self.start..self.end).into(),
@@ -109,8 +114,13 @@ impl std::ops::Mul for SpannedValue<Value> {
     type Output = Result<Value, RunnerError>;
 
     fn mul(self, rhs: Self) -> Self::Output {
+        let lhs_span = self.span();
+        let rhs_span = rhs.span();
+
         match (self.value, rhs.value) {
-            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(a * b)),
+            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(
+                (a.spanned(&lhs_span) * b.spanned(&rhs_span))?,
+            )),
             (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
                 ty: r.ty(),
                 location: (self.start..self.end).into(),
@@ -129,23 +139,13 @@ impl std::ops::Add for SpannedValue<Value> {
     type Output = Result<Value, RunnerError>;
 
     fn add(self, rhs: Self) -> Self::Output {
-        let l_span = self.span();
-        let r_span = rhs.span();
+        let lhs_span = self.span();
+        let rhs_span = rhs.span();
 
         match (self.value, rhs.value) {
-            (Value::Numeric(a), Value::Numeric(b)) => {
-                let lhs_unit = a.unit.to_string();
-                let rhs_unit = b.unit.to_string();
-                Ok(Value::Numeric((a + b).map_err(|_| {
-                    RunnerError::UnitMismatch {
-                        lhs: (l_span.start..l_span.end).into(),
-                        lhs_unit,
-                        rhs: (r_span.start..r_span.end).into(),
-                        rhs_unit,
-                        src: self.source,
-                    }
-                })?))
-            }
+            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(
+                (a.spanned(&lhs_span) + b.spanned(&rhs_span))?,
+            )),
             (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
                 ty: r.ty(),
                 location: (self.start..self.end).into(),
@@ -164,8 +164,9 @@ impl std::ops::Neg for SpannedValue<Value> {
     type Output = Result<Value, RunnerError>;
 
     fn neg(self) -> Self::Output {
+        let span = self.span();
         match self.value {
-            Value::Numeric(n) => Ok(Value::Numeric((-n).unwrap())),
+            Value::Numeric(n) => Ok(Value::Numeric((-n.spanned(&span))?)),
             v => Err(RunnerError::InvalidType {
                 ty: v.ty(),
                 location: (self.start..self.end).into(),
@@ -329,23 +330,13 @@ impl std::ops::Sub for SpannedValue<Value> {
     type Output = Result<Value, RunnerError>;
 
     fn sub(self, rhs: Self) -> Self::Output {
-        let l_span = self.span();
-        let r_span = rhs.span();
+        let lhs_span = self.span();
+        let rhs_span = rhs.span();
 
         match (self.value, rhs.value) {
-            (Value::Numeric(a), Value::Numeric(b)) => {
-                let lhs_unit = a.unit.to_string();
-                let rhs_unit = b.unit.to_string();
-                Ok(Value::Numeric((a - b).map_err(|_| {
-                    RunnerError::UnitMismatch {
-                        lhs: (l_span.start..l_span.end).into(),
-                        lhs_unit,
-                        rhs: (r_span.start..r_span.end).into(),
-                        rhs_unit,
-                        src: self.source,
-                    }
-                })?))
-            }
+            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(
+                (a.spanned(&lhs_span) - b.spanned(&rhs_span))?,
+            )),
             (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
                 ty: r.ty(),
                 location: (self.start..self.end).into(),
