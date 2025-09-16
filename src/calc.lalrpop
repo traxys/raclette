@@ -114,62 +114,92 @@ ExprPipe: Expr = {
 	ExprBoolOr => <>,
 };
 
+OpBoolOr: BinOp = <lhs:SpnBox<ExprBoolOr>> "||" <rhs:SpnBox<ExprBoolAnd>> => BinOp{<>, kind: BinOpKind::LogicalOr};
+
+BinOp<T>: Expr = Spn<T> => Expr::BinOp(<>);
+
 ExprBoolOr: Expr = {
-	<lhs:SpnBox<ExprBoolOr>> "||" <rhs:SpnBox<ExprBoolAnd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LogicalOr}),
+	BinOp<OpBoolOr> => <>,
 	ExprBoolAnd => <>,
 };
 
+OpBoolAnd: BinOp = <lhs:SpnBox<ExprBoolAnd>> "&&" <rhs:SpnBox<ExprCmp>> => BinOp{<>, kind: BinOpKind::LogicalAnd};
+
 ExprBoolAnd: Expr = {
-	<lhs:SpnBox<ExprBoolAnd>> "&&" <rhs:SpnBox<ExprCmp>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LogicalAnd}),
+	BinOp<OpBoolAnd> => <>,
 	ExprCmp => <>,
 };
 
+OpCmp: BinOp = {
+	<lhs:SpnBox<ExprLOr>> ">" <rhs:SpnBox<ExprLOr>> => BinOp{<>, kind: BinOpKind::Greater},
+	<lhs:SpnBox<ExprLOr>> ">=" <rhs:SpnBox<ExprLOr>> => BinOp{<>, kind: BinOpKind::GreaterOrEqual},
+	<lhs:SpnBox<ExprLOr>> "<" <rhs:SpnBox<ExprLOr>> => BinOp{<>, kind: BinOpKind::Lesser},
+	<lhs:SpnBox<ExprLOr>> "<=" <rhs:SpnBox<ExprLOr>> => BinOp{<>, kind: BinOpKind::LesserOrEqual},
+	<lhs:SpnBox<ExprLOr>> "==" <rhs:SpnBox<ExprLOr>> => BinOp{<>, kind: BinOpKind::LogicalEquals},
+	<lhs:SpnBox<ExprLOr>> "!=" <rhs:SpnBox<ExprLOr>> => BinOp{<>, kind: BinOpKind::Different},
+};
+
 ExprCmp: Expr = {
-	<lhs:SpnBox<ExprLOr>> ">" <rhs:SpnBox<ExprLOr>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Greater}),
-	<lhs:SpnBox<ExprLOr>> ">=" <rhs:SpnBox<ExprLOr>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::GreaterOrEqual}),
-	<lhs:SpnBox<ExprLOr>> "<" <rhs:SpnBox<ExprLOr>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Lesser}),
-	<lhs:SpnBox<ExprLOr>> "<=" <rhs:SpnBox<ExprLOr>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LesserOrEqual}),
-	<lhs:SpnBox<ExprLOr>> "==" <rhs:SpnBox<ExprLOr>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LogicalEquals}),
-	<lhs:SpnBox<ExprLOr>> "!=" <rhs:SpnBox<ExprLOr>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Different}),
+	BinOp<OpCmp> => <>,
 	ExprLOr => <>,
 };
 
+OpLOr: BinOp = <lhs:SpnBox<ExprShift>> "|" <rhs:SpnBox<ExprAdd>> => BinOp{<>, kind: BinOpKind::BinaryOr};
+
 ExprLOr: Expr = {
-	<lhs:SpnBox<ExprShift>> "|" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::BinaryOr}),
+	BinOp<OpLOr> => <>,
 	ExprLXor => <>,
 };
 
+OpLXor: BinOp = <lhs:SpnBox<ExprShift>> "^" <rhs:SpnBox<ExprAdd>> => BinOp{<>, kind: BinOpKind::BinaryXor};
+
 ExprLXor: Expr = {
-	<lhs:SpnBox<ExprShift>> "^" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::BinaryXor}),
+	BinOp<OpLXor> => <>,
 	ExprLAnd => <>,
 };
 
+OpLAnd: BinOp = <lhs:SpnBox<ExprShift>> "&" <rhs:SpnBox<ExprAdd>> => BinOp{<>, kind: BinOpKind::BinaryAnd};
+
 ExprLAnd: Expr = {
-	<lhs:SpnBox<ExprShift>> "&" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::BinaryAnd}),
+	BinOp<OpLAnd> => <>,
 	ExprShift => <>,
 };
 
+OpShift: BinOp = {
+	<lhs:SpnBox<ExprShift>> "<<" <rhs:SpnBox<ExprAdd>> => BinOp{<>, kind: BinOpKind::LeftShift},
+	<lhs:SpnBox<ExprShift>> ">>" <rhs:SpnBox<ExprAdd>> => BinOp{<>, kind: BinOpKind::RightShift},
+};
+
 ExprShift: Expr = {
-	<lhs:SpnBox<ExprShift>> "<<" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::LeftShift}),
-	<lhs:SpnBox<ExprShift>> ">>" <rhs:SpnBox<ExprAdd>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::RightShift}),
+	BinOp<OpShift> => <>,
 	ExprAdd => <>,
 };
 
+OpAdd: BinOp = {
+	<lhs:SpnBox<ExprAdd>> "+" <rhs:SpnBox<ExprMult>> => BinOp{<>, kind: BinOpKind::Sum},
+	<lhs:SpnBox<ExprAdd>> "-" <rhs:SpnBox<ExprMult>> => BinOp{<>, kind: BinOpKind::Diff},
+};
+
 ExprAdd: Expr = {
-	<lhs:SpnBox<ExprAdd>> "+" <rhs:SpnBox<ExprMult>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Sum}),
-	<lhs:SpnBox<ExprAdd>> "-" <rhs:SpnBox<ExprMult>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Diff}),
+	BinOp<OpAdd> => <>,
 	ExprMult => <>,
 };
 
+OpMult: BinOp = {
+	<lhs:SpnBox<ExprMult>> "/" <rhs:SpnBox<ExprExpo>> => BinOp{<>, kind: BinOpKind::Divide},
+	<lhs:SpnBox<ExprMult>> "*" <rhs:SpnBox<ExprExpo>> => BinOp{<>, kind: BinOpKind::Times},
+	<lhs:SpnBox<ExprMult>> "%" <rhs:SpnBox<ExprExpo>> => BinOp{<>, kind: BinOpKind::Modulo},
+};
+
 ExprMult: Expr = {
-	<lhs:SpnBox<ExprMult>> "/" <rhs:SpnBox<ExprExpo>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Divide}),
-	<lhs:SpnBox<ExprMult>> "*" <rhs:SpnBox<ExprExpo>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Times}),
-	<lhs:SpnBox<ExprMult>> "%" <rhs:SpnBox<ExprExpo>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Modulo}),
+	BinOp<OpMult> => <>,
 	ExprExpo => <>,
 };
 
+OpExpo: BinOp = <lhs:SpnBox<ExprExpo>> "**" <rhs:SpnBox<ExprUnary>> => BinOp{<>, kind: BinOpKind::Power};
+
 ExprExpo: Expr = {
-	<lhs:SpnBox<ExprExpo>> "**" <rhs:SpnBox<ExprUnary>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Power}),
+	BinOp<OpExpo> => <>,
 	ExprUnary => <>,
 };
 

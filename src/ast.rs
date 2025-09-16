@@ -316,7 +316,7 @@ pub enum Expr {
     Literal(SpannedValue<Literal>),
     Variable(SpannedValue<Variable>),
     Assign(SpannedValue<Variable>, Box<SpannedValue<Expr>>),
-    BinOp(BinOp),
+    BinOp(SpannedValue<BinOp>),
     Call(SpannedValue<Call>),
     UnaryOp(UnaryOp),
 }

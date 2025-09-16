@@ -435,7 +435,7 @@ impl Runner {
         }
     }
 
-    fn eval_bin_op(&mut self, b: &ast::BinOp) -> Result<Value, miette::Report> {
+    fn eval_bin_op(&mut self, b: &SpannedValue<ast::BinOp>) -> Result<Value, miette::Report> {
         let lhs_span = b.lhs.span();
         let lhs = self.eval_expr(&b.lhs)?;
         let rhs_span = b.rhs.span();
