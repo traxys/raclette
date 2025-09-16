@@ -310,7 +310,7 @@ impl std::fmt::Debug for UnaryOp {
 }
 
 pub enum Expr {
-    Dimensioned(Box<SpannedValue<Expr>>, Vec<SpannedValue<(Arc<str>, i16)>>),
+    Dimensioned(Box<SpannedValue<Expr>>, Vec<SpannedValue<(Arc<str>, i64)>>),
     Literal(SpannedValue<Literal>),
     Variable(SpannedValue<Variable>),
     Assign(SpannedValue<Variable>, Box<SpannedValue<Expr>>),

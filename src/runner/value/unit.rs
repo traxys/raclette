@@ -30,7 +30,7 @@ impl Display for Dimension {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Unit {
-    pub dimensions: EnumMap<Dimension, i16>,
+    pub dimensions: EnumMap<Dimension, i64>,
 }
 
 impl Unit {
@@ -42,6 +42,15 @@ impl Unit {
 
     pub fn is_dimensionless(&self) -> bool {
         self.dimensions.values().all(|&v| v == 0)
+    }
+
+    pub fn pow(mut self, exponent: u32) -> Self {
+        for (_, dim) in self.dimensions.iter_mut() {
+            *dim *= exponent as i64;
+        }
+
+        self
+
     }
 }
 

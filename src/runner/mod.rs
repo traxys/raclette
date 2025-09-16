@@ -310,7 +310,7 @@ impl Runner {
 
     fn resolve_units(
         &self,
-        units: &[SpannedValue<(Arc<str>, i16)>],
+        units: &[SpannedValue<(Arc<str>, i64)>],
     ) -> Result<(ValueMagnitude, Unit), RunnerError> {
         let mut multiplier = 1.;
         let mut unit_acc = Unit::dimensionless();

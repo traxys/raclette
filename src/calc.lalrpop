@@ -178,10 +178,10 @@ ExprUnary: Expr = {
 	ExprLiteral => <>,
 };
 
-I16: i16 = <n:Spn<num>> =>? match (*n).try_into() {
+I64: i64 = <n:Spn<num>> =>? match (*n).try_into() {
 	Err(_) => Err(ParseError::User {
 		error: UserParseError::OutOfRange {
-			ty: "i16",
+			ty: "i64",
 			num: n.value,
 			span: n.start..n.end,
 		}
@@ -189,21 +189,21 @@ I16: i16 = <n:Spn<num>> =>? match (*n).try_into() {
 	Ok(n) => Ok(n),
 };
 
-Unit: (Arc<str>, i16) = {
+Unit: (Arc<str>, i64) = {
 	unit => (<>, 1),
-	<u:unit> <n:I16> => (<>),
-	"(" <u:unit> "-" <e:I16> ")"=> (u, -e),
+	<u:unit> <n:I64> => (<>),
+	"(" <u:unit> "-" <e:I64> ")"=> (u, -e),
 };
 
-UnitId: (Arc<str>, i16) = {
+UnitId: (Arc<str>, i64) = {
 	ident => (<>, 1),
-	ident I16 => (<>),
-	<u:ident> "-" <e:I16> => (u, (-e)),
+	ident I64 => (<>),
+	<u:ident> "-" <e:I64> => (u, (-e)),
 	"/" <ident> => (<>, -1),
-	"/" <u:ident> <e:I16> => (u, (-e)),
+	"/" <u:ident> <e:I64> => (u, (-e)),
 };
 
-ManyUnit: Vec<SpannedValue<(Arc<str>, i16)>> = {
+ManyUnit: Vec<SpannedValue<(Arc<str>, i64)>> = {
 	Spn<Unit>+ => <>,
 	"'(" <Spn<UnitId>+> ")" => <>,
 };
