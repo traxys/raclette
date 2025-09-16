@@ -5,7 +5,7 @@ mod unit;
 use std::sync::Arc;
 
 use super::{CastError, RunnerError};
-use crate::span::{SpannedValue, SpanningExt};
+use crate::span::{Span, SpannedValue, SpanningExt};
 
 pub use magnitude::ValueMagnitude;
 pub use numeric::NumericValue;
@@ -37,6 +37,31 @@ impl Value {
             Value::Str(_) => "str",
             Value::Bool(_) => "bool",
             Value::Atom(_) => "atom",
+        }
+    }
+
+    pub fn mul(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<Self, RunnerError> {
+        let lhs_span = lhs.span();
+        let rhs_span = rhs.span();
+
+        match (lhs.value, rhs.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(
+                (a.spanned(&lhs_span) * b.spanned(&rhs_span))?,
+            )),
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
+                location: (lhs.start..lhs.end).into(),
+                src: lhs.source,
+            }),
         }
     }
 }
@@ -95,31 +120,6 @@ impl std::ops::Div for SpannedValue<Value> {
         match (self.value, rhs.value) {
             (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(
                 (a.spanned(&lhs_span) / b.spanned(&rhs_span))?,
-            )),
-            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
-                ty: r.ty(),
-                location: (self.start..self.end).into(),
-                src: self.source,
-            }),
-            (l, _) => Err(RunnerError::InvalidType {
-                ty: l.ty(),
-                location: (self.start..self.end).into(),
-                src: self.source,
-            }),
-        }
-    }
-}
-
-impl std::ops::Mul for SpannedValue<Value> {
-    type Output = Result<Value, RunnerError>;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        let lhs_span = self.span();
-        let rhs_span = rhs.span();
-
-        match (self.value, rhs.value) {
-            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(
-                (a.spanned(&lhs_span) * b.spanned(&rhs_span))?,
             )),
             (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
                 ty: r.ty(),

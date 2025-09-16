@@ -441,8 +441,10 @@ impl Runner {
         let rhs_span = b.rhs.span();
         let rhs = self.eval_expr(&b.rhs)?;
         match b.kind {
-            ast::BinOpKind::Times => (lhs.spanned(&lhs_span) * rhs.spanned(&rhs_span))
-                .wrap_err("could not multiply operands"),
+            ast::BinOpKind::Times => {
+                Value::mul(b.span(), lhs.spanned(&lhs_span), rhs.spanned(&rhs_span))
+                    .wrap_err("could not multiply operands")
+            }
             ast::BinOpKind::Modulo => (lhs.spanned(&lhs_span) % rhs.spanned(&rhs_span))
                 .wrap_err("could not take modulus of operands"),
             ast::BinOpKind::Divide => (lhs.spanned(&lhs_span) / rhs.spanned(&rhs_span))
