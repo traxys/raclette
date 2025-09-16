@@ -114,7 +114,7 @@ pub enum Token {
     #[token("<")]
     #[display("<")]
     Lesser,
-    #[regex("[0-9][_0-9]*", |lex| i128::from_str_radix(&lex.slice().chars().filter(|&c| c != '_').collect::<String>(), 10).map_err(TokenError::from), priority = 2)]
+    #[regex("[0-9][_0-9]*", |lex| lex.slice().chars().filter(|&c| c != '_').collect::<String>().parse::<i128>().map_err(TokenError::from), priority = 2)]
     #[regex("0?x[0-9a-fA-F][0-9a-fA-F_]*", |lex|
         i128::from_str_radix(
             &lex.slice().trim_start_matches("0x").trim_start_matches('x').chars().filter(|&c| c != '_').collect::<String>(),
