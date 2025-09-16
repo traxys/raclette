@@ -1,8 +1,8 @@
 use clap::Parser;
+use itertools::Itertools;
 use lalrpop_util::lalrpop_mod;
 use miette::{Context, Diagnostic, IntoDiagnostic, Result, SourceCode, SourceSpan};
 use rustyline::{error::ReadlineError, history::FileHistory, Editor};
-use itertools::Itertools;
 
 #[derive(Parser, Debug)]
 struct Args {

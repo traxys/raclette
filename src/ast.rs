@@ -199,6 +199,7 @@ pub enum BinOpKind {
     LesserOrEqual,
     LogicalEquals,
     Different,
+    Power,
 }
 
 impl std::fmt::Debug for BinOpKind {
@@ -222,6 +223,7 @@ impl std::fmt::Debug for BinOpKind {
             Self::Different => write!(f, "!="),
             Self::LogicalOr => write!(f, "||"),
             Self::LogicalAnd => write!(f, "&&"),
+            Self::Power => write!(f, "**"),
         }
     }
 }

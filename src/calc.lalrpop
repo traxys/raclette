@@ -162,9 +162,14 @@ ExprAdd: Expr = {
 };
 
 ExprMult: Expr = {
-	<lhs:SpnBox<ExprMult>> "/" <rhs:SpnBox<ExprUnary>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Divide}),
-	<lhs:SpnBox<ExprMult>> "*" <rhs:SpnBox<ExprUnary>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Times}),
-	<lhs:SpnBox<ExprMult>> "%" <rhs:SpnBox<ExprUnary>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Modulo}),
+	<lhs:SpnBox<ExprMult>> "/" <rhs:SpnBox<ExprExpo>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Divide}),
+	<lhs:SpnBox<ExprMult>> "*" <rhs:SpnBox<ExprExpo>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Times}),
+	<lhs:SpnBox<ExprMult>> "%" <rhs:SpnBox<ExprExpo>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Modulo}),
+	ExprExpo => <>,
+};
+
+ExprExpo: Expr = {
+	<lhs:SpnBox<ExprExpo>> "**" <rhs:SpnBox<ExprUnary>> => Expr::BinOp(BinOp{<>, kind: BinOpKind::Power}),
 	ExprUnary => <>,
 };
 
