@@ -24,95 +24,95 @@ pub enum TokenError {
 #[logos(skip r"[ \t\f]+")]
 pub enum Token {
     #[token("as")]
-    #[display(fmt = "as")]
+    #[display("as")]
     As,
     #[token("(")]
-    #[display(fmt = "(")]
+    #[display("(")]
     LParen,
     #[token(")")]
-    #[display(fmt = ")")]
+    #[display(")")]
     RParen,
     #[token("|>")]
-    #[display(fmt = "|>")]
+    #[display("|>")]
     Redirect,
     #[token("||")]
-    #[display(fmt = "||")]
+    #[display("||")]
     LOr,
     #[token("&&")]
-    #[display(fmt = "&&")]
+    #[display("&&")]
     LAnd,
     #[token("|")]
-    #[display(fmt = "|")]
+    #[display("|")]
     BOr,
     #[token("&")]
-    #[display(fmt = "&")]
+    #[display("&")]
     BAnd,
     #[token("^")]
-    #[display(fmt = "^")]
+    #[display("^")]
     BXor,
     #[token("=")]
-    #[display(fmt = "=")]
+    #[display("=")]
     Equal,
     #[token("+")]
-    #[display(fmt = "+")]
+    #[display("+")]
     Plus,
     #[token("-")]
-    #[display(fmt = "-")]
+    #[display("-")]
     Minus,
     #[token("*")]
-    #[display(fmt = "*")]
+    #[display("*")]
     Times,
     #[token("**")]
-    #[display(fmt = "**")]
+    #[display("**")]
     Power,
     #[token("/")]
-    #[display(fmt = "/")]
+    #[display("/")]
     Divide,
     #[token("//")]
-    #[display(fmt = "//")]
+    #[display("//")]
     IntDivide,
     #[token(">>")]
-    #[display(fmt = ">>")]
+    #[display(">>")]
     RShift,
     #[token("<<")]
-    #[display(fmt = "<<")]
+    #[display("<<")]
     LShift,
     #[token("%")]
-    #[display(fmt = "%")]
+    #[display("%")]
     Percent,
     #[token("\\")]
-    #[display(fmt = "\\")]
+    #[display("\\")]
     Backslash,
     #[token(".")]
-    #[display(fmt = ".")]
+    #[display(".")]
     Dot,
     #[token(":")]
-    #[display(fmt = ":")]
+    #[display(":")]
     Colon,
     #[token(",")]
-    #[display(fmt = ",")]
+    #[display(",")]
     Comma,
     #[token("'(")]
     #[token(",(")]
-    #[display(fmt = "'(")]
+    #[display("'(")]
     UnitParen,
     #[token("==")]
-    #[display(fmt = "==")]
+    #[display("==")]
     LogicalEquals,
     #[token("!=")]
-    #[display(fmt = "!=")]
+    #[display("!=")]
     Different,
     #[token(">=")]
-    #[display(fmt = ">=")]
+    #[display(">=")]
     GreaterOrEqual,
     #[token(">")]
-    #[display(fmt = ">")]
+    #[display(">")]
     Greater,
     #[token("<=")]
-    #[display(fmt = "<=")]
+    #[display("<=")]
     LesserOrEqual,
     #[token("<")]
-    #[display(fmt = "<")]
+    #[display("<")]
     Lesser,
     #[regex("[0-9][_0-9]*", |lex| i128::from_str_radix(&lex.slice().chars().filter(|&c| c != '_').collect::<String>(), 10).map_err(TokenError::from), priority = 2)]
     #[regex("0?x[0-9a-fA-F][0-9a-fA-F_]*", |lex|
@@ -127,21 +127,21 @@ pub enum Token {
             2,
         ).map_err(TokenError::from)
     )]
-    #[display(fmt = "<number:{}>", _0)]
+    #[display("<number:{}>", _0)]
     Number(i128),
     #[regex("[0-9]+([eE][-+]?[0-9]+)?", |s| s.slice().parse(), priority = 1)]
     #[regex("\\.[0-9]+([eE][-+]?[0-9]+)?", |s| s.slice().parse())]
     #[regex("[0-9]+\\.[0-9]*([eE][-+]?[0-9]+)?", |s| s.slice().parse())]
-    #[display(fmt = "<float:{}>", _0)]
+    #[display("<float:{}>", _0)]
     Float(f64),
     #[regex("[a-zA-Z][a-zA-Z0-9_]*", callback = |lex| Arc::from(lex.slice()))]
-    #[display(fmt = "identifier({})", _0)]
+    #[display("identifier({})", _0)]
     Ident(Arc<str>),
     #[regex("\\$[a-zA-Z][a-zA-Z0-9_]*", callback = |lex| Arc::from(&lex.slice()[1..]))]
-    #[display(fmt = "identifier({})", _0)]
+    #[display("identifier({})", _0)]
     Binding(Arc<str>),
     #[regex("('|,)[a-zA-Z]+", callback = |lex| Arc::from(&lex.slice()[1..]))]
-    #[display(fmt = "unit({})", _0)]
+    #[display("unit({})", _0)]
     Unit(Arc<str>),
     #[token("true")]
     True,
