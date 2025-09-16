@@ -86,7 +86,7 @@ impl ValueMagnitude {
         match self {
             ValueMagnitude::Int(n) => n.to_string(),
             ValueMagnitude::Float(f) => {
-                let abs = f.clone().abs();
+                let abs = f.abs();
                 match rounding {
                     Some(r)
                         if abs >= 0.1f64.powi(r as i32) * 0.98
@@ -108,9 +108,9 @@ impl ValueMagnitude {
     }
 
     pub fn is_zero(&self) -> bool {
-        match self {
-            &ValueMagnitude::Int(i) => i == 0,
-            &ValueMagnitude::Float(f) => f == 0.,
+        match *self {
+            ValueMagnitude::Int(i) => i == 0,
+            ValueMagnitude::Float(f) => f == 0.,
         }
     }
 

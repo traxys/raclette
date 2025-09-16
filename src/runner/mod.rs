@@ -256,8 +256,8 @@ impl Runner {
                         .unwrap_or(&self.default_scale)
                         .steps();
 
-                    let mut magnitude = value.magnitude.clone().into_float();
-                    let mut abs_magnitude = magnitude.clone().abs();
+                    let mut magnitude = value.magnitude.into_float();
+                    let mut abs_magnitude = magnitude.abs();
                     let mut render = scale_prefixes[0].render;
 
                     let last_unit = scale_prefixes.iter().last().unwrap();
@@ -548,12 +548,12 @@ impl Runner {
 
     fn eval_literal(&mut self, lit: &ast::Literal) -> Value {
         match lit {
-            ast::Literal::Number(v) => Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Int(v.clone()),
+            &ast::Literal::Number(v) => Value::Numeric(NumericValue {
+                magnitude: ValueMagnitude::Int(v),
                 unit: Unit::dimensionless(),
             }),
-            ast::Literal::Float(v) => Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Float(v.clone()),
+            &ast::Literal::Float(v) => Value::Numeric(NumericValue {
+                magnitude: ValueMagnitude::Float(v),
                 unit: Unit::dimensionless(),
             }),
             ast::Literal::Atom(a) => Value::Atom(a.clone()),
