@@ -130,25 +130,34 @@ impl ValueMagnitude {
 }
 
 macro_rules! impl_op {
-    ($op:ident, $fn:ident, $symb:tt) => {
+    ($op:ident, $fn:ident, $forward:ident) => {
         impl std::ops::$op for SpannedValue<ValueMagnitude> {
             type Output = Result<ValueMagnitude, RunnerError>;
 
             fn $fn(self, rhs: Self) -> Self::Output {
                 Ok(match (self.value, rhs.value) {
-                    (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => ValueMagnitude::Int(a $symb b),
-                    (ValueMagnitude::Int(a), ValueMagnitude::Float(b)) => ValueMagnitude::Float(a as f64 $symb b),
-                    (ValueMagnitude::Float(a), ValueMagnitude::Int(b)) => ValueMagnitude::Float(a $symb b as f64),
-                    (ValueMagnitude::Float(a), ValueMagnitude::Float(b)) => ValueMagnitude::Float(a $symb b),
+                    (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => a
+                        .$forward(b)
+                        .map(ValueMagnitude::Int)
+                        .unwrap_or_else(|| ValueMagnitude::Float((a as f64).$fn(b as f64))),
+                    (ValueMagnitude::Int(a), ValueMagnitude::Float(b)) => {
+                        ValueMagnitude::Float((a as f64).$fn(b))
+                    }
+                    (ValueMagnitude::Float(a), ValueMagnitude::Int(b)) => {
+                        ValueMagnitude::Float(a.$fn(b as f64))
+                    }
+                    (ValueMagnitude::Float(a), ValueMagnitude::Float(b)) => {
+                        ValueMagnitude::Float(a.$fn(b))
+                    }
                 })
             }
         }
     };
 }
 
-impl_op!(Mul, mul, *);
-impl_op!(Add, add, +);
-impl_op!(Sub, sub, -);
+impl_op!(Mul, mul, checked_mul);
+impl_op!(Add, add, checked_add);
+impl_op!(Sub, sub, checked_sub);
 
 impl std::ops::Div for SpannedValue<ValueMagnitude> {
     type Output = Result<ValueMagnitude, RunnerError>;
