@@ -508,38 +508,7 @@ impl Runner {
                 Ok(Value::Bool(lhs && rhs))
             }
             ast::BinOpKind::Power => {
-                let lhs_span = rhs.span();
-                let rhs_span = rhs.span();
-                let lhs_val: NumericValue = lhs.try_into()?;
-                let rhs_val: NumericValue = rhs.try_into()?;
-
-                if !rhs_val.unit.is_dimensionless() {
-                    Err(RunnerError::InvalidType {
-                        ty: "dimensioned numeric value",
-                        location: (rhs_span.start..rhs_span.end).into(),
-                        src: rhs_span.source.clone(),
-                    })?;
-                }
-
-                let value: i128 = lhs_val.magnitude.spanned(&lhs_span).try_into()?;
-                let exponent: i128 = rhs_val.magnitude.spanned(&rhs_span).try_into()?;
-
-                if exponent < 0 {
-                    Err(RunnerError::InvalidType {
-                        ty: "positive value",
-                        location: (rhs_span.start..rhs_span.end).into(),
-                        src: rhs_span.source,
-                    })?;
-                }
-
-                if exponent > u32::MAX as i128 {
-                    panic!("Attempted to exponentiate with overflow");
-                }
-
-                Ok(Value::Numeric(NumericValue {
-                    magnitude: ValueMagnitude::Int(value.pow(exponent as u32)),
-                    unit: lhs_val.unit.pow(exponent as u32),
-                }))
+                Value::pow(b.span(), lhs, rhs).wrap_err("could not exponentiate operands")
             }
         }
     }
