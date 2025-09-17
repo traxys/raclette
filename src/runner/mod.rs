@@ -445,7 +445,9 @@ impl Runner {
             ast::BinOpKind::Modulo => {
                 Value::rem(b.span(), lhs, rhs).wrap_err("could not take modulus of operands")
             }
-            ast::BinOpKind::Divide => (lhs / rhs).with_context(|| "could not divide operands"),
+            ast::BinOpKind::Divide => {
+                Value::div(b.span(), lhs, rhs).with_context(|| "could not divide operands")
+            }
             ast::BinOpKind::Sum => (lhs + rhs).wrap_err("could not add operands"),
             ast::BinOpKind::Diff => (lhs - rhs).wrap_err("could not substract operands"),
             ast::BinOpKind::LeftShift => (lhs << rhs).wrap_err("could not shift operands"),
