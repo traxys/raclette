@@ -164,6 +164,31 @@ impl Value {
             }),
         }
     }
+
+    pub fn shl(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<Self, RunnerError> {
+        let l_span = lhs.span();
+        let r_span = rhs.span();
+
+        match (lhs.value, rhs.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => {
+                Ok(Value::Numeric((a.spanned(&l_span) << b.spanned(&r_span))?))
+            }
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
+                location: (lhs.start..lhs.end).into(),
+                src: lhs.source,
+            }),
+        }
+    }
 }
 
 impl SpannedValue<Value> {
@@ -219,31 +244,6 @@ impl std::ops::Neg for SpannedValue<Value> {
             Value::Numeric(n) => Ok(Value::Numeric((-n.spanned(&span))?)),
             v => Err(RunnerError::InvalidType {
                 ty: v.ty(),
-                location: (self.start..self.end).into(),
-                src: self.source,
-            }),
-        }
-    }
-}
-
-impl std::ops::Shl for SpannedValue<Value> {
-    type Output = Result<Value, RunnerError>;
-
-    fn shl(self, rhs: Self) -> Self::Output {
-        let l_span = self.span();
-        let r_span = rhs.span();
-
-        match (self.value, rhs.value) {
-            (Value::Numeric(a), Value::Numeric(b)) => {
-                Ok(Value::Numeric((a.spanned(&l_span) << b.spanned(&r_span))?))
-            }
-            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
-                ty: r.ty(),
-                location: (self.start..self.end).into(),
-                src: self.source,
-            }),
-            (l, _) => Err(RunnerError::InvalidType {
-                ty: l.ty(),
                 location: (self.start..self.end).into(),
                 src: self.source,
             }),
