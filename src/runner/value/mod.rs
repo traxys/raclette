@@ -289,6 +289,29 @@ impl Value {
             }),
         }
     }
+
+    pub fn cmp(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<std::cmp::Ordering, RunnerError> {
+        let l_span = lhs.span();
+        let r_span = rhs.span();
+
+        match (lhs.value, rhs.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => a.spanned(&l_span).cmp(b.spanned(&r_span)),
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
+                location: (rhs.start..rhs.end).into(),
+                src: rhs.source,
+            }),
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
+                location: (lhs.start..lhs.end).into(),
+                src: lhs.source,
+            }),
+        }
+    }
 }
 
 impl SpannedValue<Value> {
@@ -305,24 +328,6 @@ impl SpannedValue<Value> {
                 rhs_ty: r.ty(),
                 lhs: (self.start..self.end).into(),
                 rhs: (other.start..other.end).into(),
-                src: self.source,
-            }),
-        }
-    }
-
-    pub fn cmp(self, other: Self) -> Result<std::cmp::Ordering, RunnerError> {
-        let l_span = self.span();
-        let r_span = other.span();
-        match (self.value, other.value) {
-            (Value::Numeric(a), Value::Numeric(b)) => a.spanned(&l_span).cmp(b.spanned(&r_span)),
-            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
-                ty: r.ty(),
-                location: (other.start..other.end).into(),
-                src: self.source,
-            }),
-            (l, _) => Err(RunnerError::InvalidType {
-                ty: l.ty(),
-                location: (self.start..self.end).into(),
                 src: self.source,
             }),
         }

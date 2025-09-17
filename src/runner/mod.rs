@@ -470,16 +470,24 @@ impl Runner {
                 Value::bit_xor(b.span(), lhs, rhs).wrap_err("could not xor operands")
             }
             ast::BinOpKind::Greater => Ok(Value::Bool(
-                lhs.cmp(rhs).wrap_err("could not compare values")?.is_gt(),
+                Value::cmp(b.span(), lhs, rhs)
+                    .wrap_err("could not compare values")?
+                    .is_gt(),
             )),
             ast::BinOpKind::GreaterOrEqual => Ok(Value::Bool(
-                lhs.cmp(rhs).wrap_err("could not compare values")?.is_ge(),
+                Value::cmp(b.span(), lhs, rhs)
+                    .wrap_err("could not compare values")?
+                    .is_ge(),
             )),
             ast::BinOpKind::Lesser => Ok(Value::Bool(
-                lhs.cmp(rhs).wrap_err("could not compare values")?.is_lt(),
+                Value::cmp(b.span(), lhs, rhs)
+                    .wrap_err("could not compare values")?
+                    .is_lt(),
             )),
             ast::BinOpKind::LesserOrEqual => Ok(Value::Bool(
-                lhs.cmp(rhs).wrap_err("could not compare values")?.is_le(),
+                Value::cmp(b.span(), lhs, rhs)
+                    .wrap_err("could not compare values")?
+                    .is_le(),
             )),
             ast::BinOpKind::LogicalEquals => Ok(Value::Bool(
                 lhs.eq(rhs).wrap_err("could not check equality")?,
