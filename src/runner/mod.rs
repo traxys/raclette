@@ -466,7 +466,9 @@ impl Runner {
             ast::BinOpKind::BinaryAnd => {
                 Value::bit_and(b.span(), lhs, rhs).wrap_err("could not and operands")
             }
-            ast::BinOpKind::BinaryXor => (lhs ^ rhs).wrap_err("could not xor operands"),
+            ast::BinOpKind::BinaryXor => {
+                Value::bit_xor(b.span(), lhs, rhs).wrap_err("could not xor operands")
+            }
             ast::BinOpKind::Greater => Ok(Value::Bool(
                 lhs.cmp(rhs).wrap_err("could not compare values")?.is_gt(),
             )),
