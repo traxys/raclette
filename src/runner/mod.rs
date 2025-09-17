@@ -451,7 +451,9 @@ impl Runner {
             ast::BinOpKind::Sum => {
                 Value::add(b.span(), lhs, rhs).wrap_err("could not add operands")
             }
-            ast::BinOpKind::Diff => (lhs - rhs).wrap_err("could not substract operands"),
+            ast::BinOpKind::Diff => {
+                Value::sub(b.span(), lhs, rhs).wrap_err("could not substract operands")
+            }
             ast::BinOpKind::LeftShift => (lhs << rhs).wrap_err("could not shift operands"),
             ast::BinOpKind::RightShift => (lhs >> rhs).wrap_err("could not shift operands"),
             ast::BinOpKind::BinaryOr => (lhs | rhs).wrap_err("could not or operands"),
