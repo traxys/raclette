@@ -551,7 +551,7 @@ impl Runner {
             ast::InputStatement::Command(name, val) => {
                 let v = val.as_ref().map(|e| self.eval_expr(e)).transpose()?;
                 self.handle_command(name, v)?;
-                return Ok(self.last.clone().map(|v| v.value));
+                return Ok(None);
             }
             ast::InputStatement::Expr(e) => self.eval_expr(&e)?,
             ast::InputStatement::LastRedirect(func) => match &self.last {
