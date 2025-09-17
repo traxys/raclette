@@ -490,10 +490,10 @@ impl Runner {
                     .is_le(),
             )),
             ast::BinOpKind::LogicalEquals => Ok(Value::Bool(
-                lhs.eq(rhs).wrap_err("could not check equality")?,
+                Value::eq(b.span(), lhs, rhs).wrap_err("could not check equality")?,
             )),
             ast::BinOpKind::Different => Ok(Value::Bool(
-                !lhs.eq(rhs).wrap_err("could not check equality")?,
+                !Value::eq(b.span(), lhs, rhs).wrap_err("could not check equality")?,
             )),
             ast::BinOpKind::LogicalOr => {
                 let lhs = lhs.try_into()?;

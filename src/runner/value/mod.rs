@@ -312,13 +312,16 @@ impl Value {
             }),
         }
     }
-}
 
-impl SpannedValue<Value> {
-    pub fn eq(self, other: Self) -> Result<bool, RunnerError> {
-        let l_span = self.span();
-        let r_span = other.span();
-        match (self.value, other.value) {
+    pub fn eq(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<bool, RunnerError> {
+        let l_span = lhs.span();
+        let r_span = rhs.span();
+
+        match (lhs.value, rhs.value) {
             (Value::Numeric(a), Value::Numeric(b)) => a.spanned(&l_span).eq(b.spanned(&r_span)),
             (Value::Str(a), Value::Str(b)) => Ok(a == b),
             (Value::Atom(a), Value::Atom(b)) => Ok(a == b),
@@ -326,9 +329,9 @@ impl SpannedValue<Value> {
             (l, r) => Err(RunnerError::IncompatibleTypes {
                 lhs_ty: l.ty(),
                 rhs_ty: r.ty(),
-                lhs: (self.start..self.end).into(),
-                rhs: (other.start..other.end).into(),
-                src: self.source,
+                lhs: (lhs.start..lhs.end).into(),
+                rhs: (rhs.start..rhs.end).into(),
+                src: lhs.source,
             }),
         }
     }
