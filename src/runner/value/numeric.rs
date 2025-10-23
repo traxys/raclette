@@ -1,6 +1,6 @@
 use crate::{
     runner::RunnerError,
-    span::{SpannedValue, SpanningExt},
+    span::{Span, SpannedValue, SpanningExt},
 };
 
 use super::{Unit, ValueMagnitude};
@@ -45,6 +45,19 @@ impl SpannedValue<NumericValue> {
     }
 }
 
+impl NumericValue {
+    pub fn mul(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<NumericValue, RunnerError> {
+        Ok(NumericValue {
+            magnitude: (lhs.magnitude.spanned(&lhs) * rhs.magnitude.spanned(&rhs))?,
+            unit: lhs.value.unit * rhs.value.unit,
+        })
+    }
+}
+
 impl std::ops::Div for SpannedValue<NumericValue> {
     type Output = Result<NumericValue, RunnerError>;
 
@@ -52,17 +65,6 @@ impl std::ops::Div for SpannedValue<NumericValue> {
         Ok(NumericValue {
             magnitude: (self.magnitude.spanned(&self) / rhs.magnitude.spanned(&rhs))?,
             unit: self.unit / rhs.unit,
-        })
-    }
-}
-
-impl std::ops::Mul for SpannedValue<NumericValue> {
-    type Output = Result<NumericValue, RunnerError>;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        Ok(NumericValue {
-            magnitude: (self.magnitude.spanned(&self) * rhs.magnitude.spanned(&rhs))?,
-            unit: self.value.unit * rhs.value.unit,
         })
     }
 }
