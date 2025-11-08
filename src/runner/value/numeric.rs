@@ -277,15 +277,11 @@ impl NumericValue {
             unit,
         })
     }
-}
 
-impl std::ops::Neg for SpannedValue<NumericValue> {
-    type Output = Result<NumericValue, RunnerError>;
-
-    fn neg(self) -> Self::Output {
+    pub fn neg(_span: Span, val: SpannedValue<Self>) -> Result<Self, RunnerError> {
         Ok(NumericValue {
-            magnitude: (-self.value.magnitude.spanned(&self))?,
-            unit: self.value.unit,
+            magnitude: (-val.value.magnitude.spanned(&val))?,
+            unit: val.value.unit,
         })
     }
 }

@@ -310,10 +310,13 @@ impl Value {
         }
     }
 
-    pub fn neg(_span: Span, val: SpannedValue<Self>) -> Result<Self, RunnerError> {
-        let span = val.span();
+    pub fn neg(span: Span, val: SpannedValue<Self>) -> Result<Self, RunnerError> {
+        let val_span = val.span();
         match val.value {
-            Value::Numeric(n) => Ok(Value::Numeric((-n.spanned(&span))?)),
+            Value::Numeric(n) => Ok(Value::Numeric(NumericValue::neg(
+                span,
+                n.spanned(&val_span),
+            )?)),
             v => Err(RunnerError::InvalidType {
                 ty: v.ty(),
                 location: (val.start..val.end).into(),
