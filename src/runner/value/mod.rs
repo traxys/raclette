@@ -201,7 +201,7 @@ impl Value {
     }
 
     pub fn shr(
-        _span: Span,
+        span: Span,
         lhs: SpannedValue<Self>,
         rhs: SpannedValue<Self>,
     ) -> Result<Self, RunnerError> {
@@ -209,9 +209,11 @@ impl Value {
         let r_span = rhs.span();
 
         match (lhs.value, rhs.value) {
-            (Value::Numeric(a), Value::Numeric(b)) => {
-                Ok(Value::Numeric((a.spanned(&l_span) >> b.spanned(&r_span))?))
-            }
+            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(NumericValue::shr(
+                span,
+                a.spanned(&l_span),
+                b.spanned(&r_span),
+            )?)),
             (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
                 ty: r.ty(),
                 location: (rhs.start..rhs.end).into(),
