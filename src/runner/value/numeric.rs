@@ -245,17 +245,17 @@ impl NumericValue {
             unit,
         })
     }
-}
 
-impl std::ops::BitXor for SpannedValue<NumericValue> {
-    type Output = Result<NumericValue, RunnerError>;
-
-    fn bitxor(self, rhs: Self) -> Self::Output {
-        if !self.unit.is_dimensionless() {
+    pub fn bit_xor(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<NumericValue, RunnerError> {
+        if !lhs.unit.is_dimensionless() {
             return Err(RunnerError::InvalidType {
                 ty: "dimensioned numeric value",
-                location: (self.start..self.end).into(),
-                src: self.source,
+                location: (lhs.start..lhs.end).into(),
+                src: lhs.source,
             });
         }
 
@@ -267,12 +267,12 @@ impl std::ops::BitXor for SpannedValue<NumericValue> {
             });
         }
 
-        let self_span = self.span();
+        let lhs_span = lhs.span();
         let rhs_span = rhs.span();
-        let unit = self.unit;
+        let unit = lhs.unit;
 
         Ok(NumericValue {
-            magnitude: (self.value.magnitude.spanned(&self_span)
+            magnitude: (lhs.value.magnitude.spanned(&lhs_span)
                 ^ rhs.value.magnitude.spanned(&rhs_span))?,
             unit,
         })
