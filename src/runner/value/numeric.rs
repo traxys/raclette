@@ -199,7 +199,7 @@ impl NumericValue {
     }
 
     pub fn bit_and(
-        _span: Span,
+        span: Span,
         lhs: SpannedValue<Self>,
         rhs: SpannedValue<Self>,
     ) -> Result<NumericValue, RunnerError> {
@@ -219,14 +219,9 @@ impl NumericValue {
             });
         }
 
-        let lhs_span = lhs.span();
-        let rhs_span = rhs.span();
-        let unit = lhs.unit;
-
         Ok(NumericValue {
-            magnitude: (lhs.value.magnitude.spanned(&lhs_span)
-                & rhs.value.magnitude.spanned(&rhs_span))?,
-            unit,
+            magnitude: ValueMagnitude::bit_and(span, lhs.magnitude(), rhs.magnitude())?,
+            unit: lhs.unit,
         })
     }
 
