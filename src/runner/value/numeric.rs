@@ -157,12 +157,12 @@ impl NumericValue {
             unit,
         })
     }
-}
 
-impl std::ops::Rem for SpannedValue<NumericValue> {
-    type Output = Result<NumericValue, RunnerError>;
-
-    fn rem(self, rhs: Self) -> Self::Output {
+    pub fn rem(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<NumericValue, RunnerError> {
         if !rhs.unit.is_dimensionless() {
             return Err(RunnerError::InvalidType {
                 ty: "dimensioned numeric value",
@@ -171,12 +171,12 @@ impl std::ops::Rem for SpannedValue<NumericValue> {
             });
         }
 
-        let self_span = self.span();
+        let lhs_span = lhs.span();
         let rhs_span = rhs.span();
-        let unit = self.unit;
+        let unit = lhs.unit;
 
         Ok(NumericValue {
-            magnitude: (self.value.magnitude.spanned(&self_span)
+            magnitude: (lhs.value.magnitude.spanned(&lhs_span)
                 % rhs.value.magnitude.spanned(&rhs_span))?,
             unit,
         })
