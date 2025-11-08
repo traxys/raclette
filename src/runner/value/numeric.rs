@@ -88,25 +88,25 @@ impl NumericValue {
             unit: lhs.value.unit,
         })
     }
-}
 
-impl std::ops::Sub for SpannedValue<NumericValue> {
-    type Output = Result<NumericValue, RunnerError>;
-
-    fn sub(self, rhs: Self) -> Self::Output {
-        if self.unit != rhs.unit {
+    pub fn sub(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<NumericValue, RunnerError> {
+        if lhs.unit != rhs.unit {
             return Err(RunnerError::UnitMismatch {
-                lhs: (self.start..self.end).into(),
-                lhs_unit: self.unit.to_string(),
+                lhs: (lhs.start..lhs.end).into(),
+                lhs_unit: lhs.unit.to_string(),
                 rhs: (rhs.start..rhs.end).into(),
                 rhs_unit: rhs.unit.to_string(),
-                src: self.source,
+                src: lhs.source,
             });
         }
 
         Ok(NumericValue {
-            magnitude: (self.value.magnitude.spanned(&self) - rhs.value.magnitude.spanned(&rhs))?,
-            unit: self.value.unit,
+            magnitude: (lhs.value.magnitude.spanned(&lhs) - rhs.value.magnitude.spanned(&rhs))?,
+            unit: lhs.value.unit,
         })
     }
 }
