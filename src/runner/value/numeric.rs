@@ -291,7 +291,7 @@ impl NumericValue {
         rhs: SpannedValue<Self>,
     ) -> Result<NumericValue, RunnerError> {
         let lhs_span = lhs.span();
-        let rhs_span = lhs.span();
+        let rhs_span = rhs.span();
 
         if !rhs.unit.is_dimensionless() {
             Err(RunnerError::InvalidType {
