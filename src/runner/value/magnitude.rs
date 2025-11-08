@@ -165,6 +165,19 @@ impl ValueMagnitude {
             )),
         }
     }
+
+    pub fn div(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<Self, RunnerError> {
+        Ok(match (lhs.value, rhs.value) {
+            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) if (a % b) == 0 => {
+                ValueMagnitude::Int(a / b)
+            }
+            (lhs, rhs) => ValueMagnitude::Float(lhs.into_float() / rhs.into_float()),
+        })
+    }
 }
 
 macro_rules! impl_op {
@@ -196,19 +209,6 @@ macro_rules! impl_op {
 impl_op!(Mul, mul, checked_mul);
 impl_op!(Add, add, checked_add);
 impl_op!(Sub, sub, checked_sub);
-
-impl std::ops::Div for SpannedValue<ValueMagnitude> {
-    type Output = Result<ValueMagnitude, RunnerError>;
-
-    fn div(self, rhs: Self) -> Self::Output {
-        Ok(match (self.value, rhs.value) {
-            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) if (a % b) == 0 => {
-                ValueMagnitude::Int(a / b)
-            }
-            (lhs, rhs) => ValueMagnitude::Float(lhs.into_float() / rhs.into_float()),
-        })
-    }
-}
 
 impl std::ops::Neg for SpannedValue<ValueMagnitude> {
     type Output = Result<ValueMagnitude, RunnerError>;

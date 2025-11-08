@@ -43,6 +43,10 @@ impl SpannedValue<NumericValue> {
             .spanned(&self)
             .cmp(other.magnitude.spanned(&other))
     }
+
+    pub fn magnitude(&self) -> SpannedValue<ValueMagnitude> {
+        self.magnitude.spanned(self)
+    }
 }
 
 impl NumericValue {
@@ -58,12 +62,12 @@ impl NumericValue {
     }
 
     pub fn div(
-        _span: Span,
+        span: Span,
         lhs: SpannedValue<Self>,
         rhs: SpannedValue<Self>,
     ) -> Result<NumericValue, RunnerError> {
         Ok(NumericValue {
-            magnitude: (lhs.magnitude.spanned(&lhs) / rhs.magnitude.spanned(&rhs))?,
+            magnitude: ValueMagnitude::div(span, lhs.magnitude(), rhs.magnitude())?,
             unit: lhs.unit / rhs.unit,
         })
     }
