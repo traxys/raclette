@@ -2,7 +2,11 @@
   description = "A basic flake with a shell";
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
   inputs.flake-utils.url = "github:numtide/flake-utils";
-  inputs.rust-overlay.url = "github:oxalica/rust-overlay";
+  inputs.fenix = {
+    url = "github:nix-community/fenix";
+    inputs.nixpkgs.follows = "nixpkgs";
+    inputs.rust-analyzer-src.follows = "";
+  };
   inputs.naersk.url = "github:nix-community/naersk";
   inputs.hyperfine = {
     url = "github:sharkdp/hyperfine";
@@ -14,19 +18,15 @@
       self,
       nixpkgs,
       flake-utils,
-      rust-overlay,
+      fenix,
       naersk,
       hyperfine,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
       let
-        pkgs = import nixpkgs {
-          inherit system;
-
-          overlays = [ (import rust-overlay) ];
-        };
-        rust = pkgs.rust-bin.stable.latest.default;
+        pkgs = nixpkgs.legacyPackages.${system};
+        rust = fenix.packages.${system}.stable.defaultToolchain;
 
         naersk' = pkgs.callPackage naersk {
           cargo = rust;
