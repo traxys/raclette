@@ -304,21 +304,27 @@ impl NumericValue {
         let value: i128 = lhs.value.magnitude.spanned(&lhs_span).try_into()?;
         let exponent: i128 = rhs.value.magnitude.spanned(&rhs_span).try_into()?;
 
-        if exponent < 0 {
-            Err(RunnerError::InvalidType {
-                ty: "positive value",
-                location: (rhs_span.start..rhs_span.end).into(),
-                src: rhs_span.source,
-            })?;
-        }
-
-        if exponent > u32::MAX as i128 {
+        if exponent.unsigned_abs() > u32::MAX as u128 {
             panic!("Attempted to exponentiate with overflow");
         }
 
-        Ok(NumericValue {
-            magnitude: ValueMagnitude::Int(value.pow(exponent as u32)),
-            unit: lhs.value.unit.pow(exponent as u32),
+        let neg = exponent < 0;
+        let exponent = exponent.unsigned_abs() as u32;
+
+        let exp_unit = lhs.value.unit.pow(exponent);
+
+        Ok(if neg {
+            NumericValue {
+                magnitude: ValueMagnitude::Float(1. / (value as f64).powf(exponent as f64)),
+                unit: Unit {
+                    dimensions: exp_unit.dimensions.map(|_, x| -x),
+                },
+            }
+        } else {
+            NumericValue {
+                magnitude: ValueMagnitude::Int(value.pow(exponent)),
+                unit: exp_unit,
+            }
         })
     }
 }
