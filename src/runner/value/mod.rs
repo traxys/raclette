@@ -93,7 +93,7 @@ impl Value {
     }
 
     pub fn div(
-        _span: Span,
+        span: Span,
         lhs: SpannedValue<Self>,
         rhs: SpannedValue<Self>,
     ) -> Result<Self, RunnerError> {
@@ -101,9 +101,11 @@ impl Value {
         let rhs_span = rhs.span();
 
         match (lhs.value, rhs.value) {
-            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(
-                (a.spanned(&lhs_span) / b.spanned(&rhs_span))?,
-            )),
+            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(NumericValue::div(
+                span,
+                a.spanned(&lhs_span),
+                b.spanned(&rhs_span),
+            )?)),
             (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
                 ty: r.ty(),
                 location: (rhs.start..rhs.end).into(),

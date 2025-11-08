@@ -56,15 +56,15 @@ impl NumericValue {
             unit: lhs.value.unit * rhs.value.unit,
         })
     }
-}
 
-impl std::ops::Div for SpannedValue<NumericValue> {
-    type Output = Result<NumericValue, RunnerError>;
-
-    fn div(self, rhs: Self) -> Self::Output {
+    pub fn div(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<NumericValue, RunnerError> {
         Ok(NumericValue {
-            magnitude: (self.magnitude.spanned(&self) / rhs.magnitude.spanned(&rhs))?,
-            unit: self.unit / rhs.unit,
+            magnitude: (lhs.magnitude.spanned(&lhs) / rhs.magnitude.spanned(&rhs))?,
+            unit: lhs.unit / rhs.unit,
         })
     }
 }
