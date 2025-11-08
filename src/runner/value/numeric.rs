@@ -284,4 +284,41 @@ impl NumericValue {
             unit: val.value.unit,
         })
     }
+
+    pub fn pow(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<NumericValue, RunnerError> {
+        let lhs_span = lhs.span();
+        let rhs_span = lhs.span();
+
+        if !rhs.unit.is_dimensionless() {
+            Err(RunnerError::InvalidType {
+                ty: "dimensioned numeric value",
+                location: (rhs_span.start..rhs_span.end).into(),
+                src: rhs_span.source.clone(),
+            })?;
+        }
+
+        let value: i128 = lhs.value.magnitude.spanned(&lhs_span).try_into()?;
+        let exponent: i128 = rhs.value.magnitude.spanned(&rhs_span).try_into()?;
+
+        if exponent < 0 {
+            Err(RunnerError::InvalidType {
+                ty: "positive value",
+                location: (rhs_span.start..rhs_span.end).into(),
+                src: rhs_span.source,
+            })?;
+        }
+
+        if exponent > u32::MAX as i128 {
+            panic!("Attempted to exponentiate with overflow");
+        }
+
+        Ok(NumericValue {
+            magnitude: ValueMagnitude::Int(value.pow(exponent as u32)),
+            unit: lhs.value.unit.pow(exponent as u32),
+        })
+    }
 }

@@ -372,42 +372,28 @@ impl Value {
     }
 
     pub fn pow(
-        _span: Span,
+        span: Span,
         lhs: SpannedValue<Self>,
         rhs: SpannedValue<Self>,
     ) -> Result<Self, RunnerError> {
         let lhs_span = lhs.span();
         let rhs_span = rhs.span();
-        let lhs_val: NumericValue = lhs.try_into()?;
-        let rhs_val: NumericValue = rhs.try_into()?;
 
-        if !rhs_val.unit.is_dimensionless() {
-            Err(RunnerError::InvalidType {
-                ty: "dimensioned numeric value",
-                location: (rhs_span.start..rhs_span.end).into(),
-                src: rhs_span.source.clone(),
-            })?;
-        }
-
-        let value: i128 = lhs_val.magnitude.spanned(&lhs_span).try_into()?;
-        let exponent: i128 = rhs_val.magnitude.spanned(&rhs_span).try_into()?;
-
-        if exponent < 0 {
-            Err(RunnerError::InvalidType {
-                ty: "positive value",
+        match (lhs.value, rhs.value) {
+            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(
+                NumericValue::pow(span, a.spanned(&lhs_span), b.spanned(&rhs_span))?,
+            )),
+            (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
+                ty: r.ty(),
                 location: (rhs_span.start..rhs_span.end).into(),
                 src: rhs_span.source,
-            })?;
+            }),
+            (l, _) => Err(RunnerError::InvalidType {
+                ty: l.ty(),
+                location: (lhs_span.start..lhs_span.end).into(),
+                src: lhs_span.source,
+            }),
         }
-
-        if exponent > u32::MAX as i128 {
-            panic!("Attempted to exponentiate with overflow");
-        }
-
-        Ok(Value::Numeric(NumericValue {
-            magnitude: ValueMagnitude::Int(value.pow(exponent as u32)),
-            unit: lhs_val.unit.pow(exponent as u32),
-        }))
     }
 }
 
