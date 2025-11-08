@@ -286,7 +286,7 @@ impl NumericValue {
     }
 
     pub fn pow(
-        _span: Span,
+        span: Span,
         lhs: SpannedValue<Self>,
         rhs: SpannedValue<Self>,
     ) -> Result<NumericValue, RunnerError> {
@@ -308,22 +308,20 @@ impl NumericValue {
             panic!("Attempted to exponentiate with overflow");
         }
 
+        let unit = lhs.value.unit.pow(span, exponent as i64)?;
+
         let neg = exponent < 0;
         let exponent = exponent.unsigned_abs() as u32;
-
-        let exp_unit = lhs.value.unit.pow(exponent);
 
         Ok(if neg {
             NumericValue {
                 magnitude: ValueMagnitude::Float(1. / (value as f64).powf(exponent as f64)),
-                unit: Unit {
-                    dimensions: exp_unit.dimensions.map(|_, x| -x),
-                },
+                unit,
             }
         } else {
             NumericValue {
                 magnitude: ValueMagnitude::Int(value.pow(exponent)),
-                unit: exp_unit,
+                unit,
             }
         })
     }

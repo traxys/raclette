@@ -5,6 +5,8 @@ use enum_map::{Enum, EnumMap};
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 
+use crate::{runner::RunnerError, span::Span};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Enum)]
 pub enum Dimension {
     // Expressed in Bytes
@@ -44,13 +46,20 @@ impl Unit {
         self.dimensions.values().all(|&v| v == 0)
     }
 
-    pub fn pow(mut self, exponent: u32) -> Self {
+    pub fn pow(mut self, op_span: Span, exponent: i64) -> Result<Self, RunnerError> {
         for (_, dim) in self.dimensions.iter_mut() {
-            *dim *= exponent as i64;
+            match dim.checked_mul(exponent) {
+                Some(val) => *dim = val,
+                None => {
+                    return Err(RunnerError::UnitOverflow {
+                        location: (op_span.start..op_span.end).into(),
+                        src: op_span.source,
+                    })
+                }
+            };
         }
 
-        self
-
+        Ok(self)
     }
 }
 

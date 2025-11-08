@@ -158,6 +158,13 @@ pub enum RunnerError {
         #[source_code]
         src: MaybeNamed,
     },
+    #[error("Unit overflow")]
+    UnitOverflow {
+        #[label("this operation overflowed the units")]
+        location: SourceSpan,
+        #[source_code]
+        src: MaybeNamed,
+    },
     #[error("Could not cast value")]
     #[diagnostic(transparent)]
     Cast(#[from] CastError),
