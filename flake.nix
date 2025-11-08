@@ -7,7 +7,7 @@
     inputs.nixpkgs.follows = "nixpkgs";
     inputs.rust-analyzer-src.follows = "";
   };
-  inputs.naersk.url = "github:nix-community/naersk";
+  inputs.crane.url = "github:ipetkov/crane";
   inputs.hyperfine = {
     url = "github:sharkdp/hyperfine";
     flake = false;
@@ -19,7 +19,7 @@
       nixpkgs,
       flake-utils,
       fenix,
-      naersk,
+      crane,
       hyperfine,
     }:
     flake-utils.lib.eachDefaultSystem (
@@ -28,10 +28,7 @@
         pkgs = nixpkgs.legacyPackages.${system};
         rust = fenix.packages.${system}.stable.defaultToolchain;
 
-        naersk' = pkgs.callPackage naersk {
-          cargo = rust;
-          rustc = rust;
-        };
+        craneLib = (crane.mkLib pkgs).overrideToolchain rust;
 
         hf-scripts = pkgs.stdenv.mkDerivation {
           pname = "hyperfine-scripts";
@@ -82,7 +79,7 @@
 
         packages = rec {
           raclette = default;
-          default = naersk'.buildPackage {
+          default = craneLib.buildPackage {
             src = ./.;
             nativeBuildInputs = [ pkgs.m4 ];
           };
