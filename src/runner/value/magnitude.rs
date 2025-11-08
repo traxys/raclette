@@ -218,6 +218,17 @@ impl ValueMagnitude {
 
         Ok(ValueMagnitude::Int(lhs % rhs))
     }
+
+    pub fn bit_or(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<Self, RunnerError> {
+        let lhs: i128 = lhs.try_into()?;
+        let rhs: i128 = rhs.try_into()?;
+
+        Ok(ValueMagnitude::Int(lhs | rhs))
+    }
 }
 
 macro_rules! impl_op {
@@ -249,17 +260,6 @@ macro_rules! impl_op {
 impl_op!(Mul, mul, checked_mul);
 impl_op!(Add, add, checked_add);
 impl_op!(Sub, sub, checked_sub);
-
-impl std::ops::BitOr for SpannedValue<ValueMagnitude> {
-    type Output = Result<ValueMagnitude, CastError>;
-
-    fn bitor(self, rhs: Self) -> Self::Output {
-        let lhs: i128 = self.try_into()?;
-        let rhs: i128 = rhs.try_into()?;
-
-        Ok(ValueMagnitude::Int(lhs | rhs))
-    }
-}
 
 impl std::ops::BitAnd for SpannedValue<ValueMagnitude> {
     type Output = Result<ValueMagnitude, CastError>;
