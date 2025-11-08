@@ -282,9 +282,9 @@ impl NumericValue {
         })
     }
 
-    pub fn neg(_span: Span, val: SpannedValue<Self>) -> Result<Self, RunnerError> {
+    pub fn neg(span: Span, val: SpannedValue<Self>) -> Result<Self, RunnerError> {
         Ok(NumericValue {
-            magnitude: (-val.value.magnitude.spanned(&val))?,
+            magnitude: ValueMagnitude::neg(span, val.magnitude())?,
             unit: val.value.unit,
         })
     }

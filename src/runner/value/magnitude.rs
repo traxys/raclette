@@ -178,6 +178,13 @@ impl ValueMagnitude {
             (lhs, rhs) => ValueMagnitude::Float(lhs.into_float() / rhs.into_float()),
         })
     }
+
+    pub fn neg(_span: Span, val: SpannedValue<Self>) -> Result<Self, RunnerError> {
+        Ok(match val.value {
+            ValueMagnitude::Int(i) => ValueMagnitude::Int(-i),
+            ValueMagnitude::Float(f) => ValueMagnitude::Float(-f),
+        })
+    }
 }
 
 macro_rules! impl_op {
@@ -209,17 +216,6 @@ macro_rules! impl_op {
 impl_op!(Mul, mul, checked_mul);
 impl_op!(Add, add, checked_add);
 impl_op!(Sub, sub, checked_sub);
-
-impl std::ops::Neg for SpannedValue<ValueMagnitude> {
-    type Output = Result<ValueMagnitude, RunnerError>;
-
-    fn neg(self) -> Self::Output {
-        Ok(match self.value {
-            ValueMagnitude::Int(i) => ValueMagnitude::Int(-i),
-            ValueMagnitude::Float(f) => ValueMagnitude::Float(-f),
-        })
-    }
-}
 
 impl std::ops::Shl for SpannedValue<ValueMagnitude> {
     type Output = Result<ValueMagnitude, CastError>;
