@@ -290,7 +290,6 @@ impl NumericValue {
         lhs: SpannedValue<Self>,
         rhs: SpannedValue<Self>,
     ) -> Result<NumericValue, RunnerError> {
-        let lhs_span = lhs.span();
         let rhs_span = rhs.span();
 
         if !rhs.unit.is_dimensionless() {
@@ -301,28 +300,27 @@ impl NumericValue {
             })?;
         }
 
-        let value: i128 = lhs.value.magnitude.spanned(&lhs_span).try_into()?;
-        let exponent: i128 = rhs.value.magnitude.spanned(&rhs_span).try_into()?;
-
-        if exponent.unsigned_abs() > u32::MAX as u128 {
-            panic!("Attempted to exponentiate with overflow");
-        }
-
-        let unit = lhs.value.unit.pow(span, exponent as i64)?;
-
-        let neg = exponent < 0;
-        let exponent = exponent.unsigned_abs() as u32;
-
-        Ok(if neg {
-            NumericValue {
-                magnitude: ValueMagnitude::Float(1. / (value as f64).powf(exponent as f64)),
-                unit,
-            }
+        if lhs.unit.is_dimensionless() {
+            Ok(NumericValue {
+                magnitude: lhs.magnitude.pow(span, rhs.magnitude)?,
+                unit: Unit::dimensionless(),
+            })
         } else {
-            NumericValue {
-                magnitude: ValueMagnitude::Int(value.pow(exponent)),
-                unit,
+            let exponent: i128 = rhs.value.magnitude.spanned(&rhs_span).try_into()?;
+
+            if exponent.unsigned_abs() > i64::MAX as u128 {
+                return Err(RunnerError::UnitOverflow {
+                    location: (span.start..span.end).into(),
+                    src: span.source,
+                });
             }
-        })
+
+            let unit = lhs.value.unit.pow(span.clone(), exponent as i64)?;
+
+            Ok(NumericValue {
+                magnitude: lhs.magnitude.pow(span, rhs.magnitude)?,
+                unit,
+            })
+        }
     }
 }

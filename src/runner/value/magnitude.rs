@@ -1,12 +1,29 @@
 use crate::{
     runner::{CastError, RunnerError},
-    span::SpannedValue,
+    span::{Span, SpannedValue},
 };
 
 #[derive(Debug, Clone, Copy)]
 pub enum ValueMagnitude {
     Int(i128),
     Float(f64),
+}
+
+trait FloatGuard: Sized {
+    fn guard_infinity(self, op_span: Span) -> Result<Self, RunnerError>;
+}
+
+impl FloatGuard for f64 {
+    fn guard_infinity(self, op_span: Span) -> Result<Self, RunnerError> {
+        if self.is_infinite() {
+            Err(RunnerError::Overflow {
+                location: (op_span.start..op_span.end).into(),
+                src: op_span.source,
+            })
+        } else {
+            Ok(self)
+        }
+    }
 }
 
 impl SpannedValue<ValueMagnitude> {
@@ -125,6 +142,27 @@ impl ValueMagnitude {
         match self {
             ValueMagnitude::Float(f) => f as i128,
             ValueMagnitude::Int(i) => i,
+        }
+    }
+
+    pub fn pow(self, op_span: Span, exponent: Self) -> Result<ValueMagnitude, RunnerError> {
+        match (self, exponent) {
+            (ValueMagnitude::Int(b), ValueMagnitude::Int(e)) if e >= 0 && e <= u32::MAX as i128 => {
+                Ok(b.checked_pow(e as u32)
+                    .map(ValueMagnitude::Int)
+                    .map(Ok)
+                    .unwrap_or_else(|| {
+                        (b as f64)
+                            .powf(e as f64)
+                            .guard_infinity(op_span)
+                            .map(ValueMagnitude::Float)
+                    })?)
+            }
+            (b, e) => Ok(ValueMagnitude::Float(
+                b.into_float()
+                    .powf(e.into_float())
+                    .guard_infinity(op_span)?,
+            )),
         }
     }
 }
