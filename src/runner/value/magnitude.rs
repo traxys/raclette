@@ -196,6 +196,17 @@ impl ValueMagnitude {
 
         Ok(ValueMagnitude::Int(lhs << rhs))
     }
+
+    pub fn shr(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<Self, RunnerError> {
+        let lhs: i128 = lhs.try_into()?;
+        let rhs: usize = rhs.try_into()?;
+
+        Ok(ValueMagnitude::Int(lhs >> rhs))
+    }
 }
 
 macro_rules! impl_op {
@@ -227,17 +238,6 @@ macro_rules! impl_op {
 impl_op!(Mul, mul, checked_mul);
 impl_op!(Add, add, checked_add);
 impl_op!(Sub, sub, checked_sub);
-
-impl std::ops::Shr for SpannedValue<ValueMagnitude> {
-    type Output = Result<ValueMagnitude, CastError>;
-
-    fn shr(self, rhs: Self) -> Self::Output {
-        let lhs: i128 = self.try_into()?;
-        let rhs: usize = rhs.try_into()?;
-
-        Ok(ValueMagnitude::Int(lhs >> rhs))
-    }
-}
 
 impl std::ops::Rem for SpannedValue<ValueMagnitude> {
     type Output = Result<ValueMagnitude, CastError>;
