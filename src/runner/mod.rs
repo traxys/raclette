@@ -424,13 +424,12 @@ impl Runner {
         }
     }
 
-    fn eval_unary_op(&mut self, u: &ast::UnaryOp) -> Result<Value, miette::Report> {
+    fn eval_unary_op(&mut self, u: &SpannedValue<ast::UnaryOp>) -> Result<Value, miette::Report> {
         let value_span = u.operand.span();
         let value = self.eval_expr(&u.operand)?;
         match u.kind {
-            ast::UnaryOpKind::Minus => {
-                (-value.spanned(&value_span)).wrap_err("could not negate operand")
-            }
+            ast::UnaryOpKind::Minus => Value::neg(u.span(), value.spanned(&value_span))
+                .wrap_err("could not negate operand"),
             ast::UnaryOpKind::Plus => Ok(value),
         }
     }

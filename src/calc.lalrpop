@@ -208,8 +208,12 @@ UnaryKind: UnaryOpKind = {
 	"+" => UnaryOpKind::Plus,
 };
 
+UnaryOp<T>: Expr = Spn<T> => Expr::UnaryOp(<>);
+
+OpNeg: UnaryOp = <kind:UnaryKind> <operand:SpnBox<ExprLiteral>> => UnaryOp{<>};
+
 ExprUnary: Expr = {
-	<kind:UnaryKind> <operand:SpnBox<ExprLiteral>> => Expr::UnaryOp(UnaryOp{<>}),
+	UnaryOp<OpNeg> => <>,
 	ExprLiteral => <>,
 };
 

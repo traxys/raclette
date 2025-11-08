@@ -310,6 +310,18 @@ impl Value {
         }
     }
 
+    pub fn neg(_span: Span, val: SpannedValue<Self>) -> Result<Self, RunnerError> {
+        let span = val.span();
+        match val.value {
+            Value::Numeric(n) => Ok(Value::Numeric((-n.spanned(&span))?)),
+            v => Err(RunnerError::InvalidType {
+                ty: v.ty(),
+                location: (val.start..val.end).into(),
+                src: val.source,
+            }),
+        }
+    }
+
     pub fn cmp(
         _span: Span,
         lhs: SpannedValue<Self>,
@@ -399,22 +411,6 @@ impl Value {
 impl From<NumericValue> for Value {
     fn from(value: NumericValue) -> Self {
         Self::Numeric(value)
-    }
-}
-
-impl std::ops::Neg for SpannedValue<Value> {
-    type Output = Result<Value, RunnerError>;
-
-    fn neg(self) -> Self::Output {
-        let span = self.span();
-        match self.value {
-            Value::Numeric(n) => Ok(Value::Numeric((-n.spanned(&span))?)),
-            v => Err(RunnerError::InvalidType {
-                ty: v.ty(),
-                location: (self.start..self.end).into(),
-                src: self.source,
-            }),
-        }
     }
 }
 

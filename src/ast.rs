@@ -318,7 +318,7 @@ pub enum Expr {
     Assign(SpannedValue<Variable>, Box<SpannedValue<Expr>>),
     BinOp(SpannedValue<BinOp>),
     Call(SpannedValue<Call>),
-    UnaryOp(UnaryOp),
+    UnaryOp(SpannedValue<UnaryOp>),
 }
 
 impl std::fmt::Debug for Expr {
