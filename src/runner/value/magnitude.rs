@@ -265,6 +265,20 @@ impl ValueMagnitude {
             (a, b) => Ok(ValueMagnitude::Float(a.into_float() * b.into_float())),
         }
     }
+
+    pub fn add(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<Self, RunnerError> {
+        match (lhs.value, rhs.value) {
+            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => Ok(a
+                .checked_add(b)
+                .map(ValueMagnitude::Int)
+                .unwrap_or_else(|| ValueMagnitude::Float((a as f64) + (b as f64)))),
+            (a, b) => Ok(ValueMagnitude::Float(a.into_float() + b.into_float())),
+        }
+    }
 }
 
 macro_rules! impl_op {
@@ -293,5 +307,4 @@ macro_rules! impl_op {
     };
 }
 
-impl_op!(Add, add, checked_add);
 impl_op!(Sub, sub, checked_sub);

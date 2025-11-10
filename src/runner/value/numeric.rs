@@ -73,7 +73,7 @@ impl NumericValue {
     }
 
     pub fn add(
-        _span: Span,
+        span: Span,
         lhs: SpannedValue<Self>,
         rhs: SpannedValue<Self>,
     ) -> Result<NumericValue, RunnerError> {
@@ -88,7 +88,7 @@ impl NumericValue {
         }
 
         Ok(NumericValue {
-            magnitude: (lhs.value.magnitude.spanned(&lhs) + rhs.value.magnitude.spanned(&rhs))?,
+            magnitude: ValueMagnitude::add(span, lhs.magnitude(), rhs.magnitude())?,
             unit: lhs.value.unit,
         })
     }
