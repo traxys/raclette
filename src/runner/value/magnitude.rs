@@ -279,32 +279,18 @@ impl ValueMagnitude {
             (a, b) => Ok(ValueMagnitude::Float(a.into_float() + b.into_float())),
         }
     }
-}
 
-macro_rules! impl_op {
-    ($op:ident, $fn:ident, $forward:ident) => {
-        impl std::ops::$op for SpannedValue<ValueMagnitude> {
-            type Output = Result<ValueMagnitude, RunnerError>;
-
-            fn $fn(self, rhs: Self) -> Self::Output {
-                Ok(match (self.value, rhs.value) {
-                    (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => a
-                        .$forward(b)
-                        .map(ValueMagnitude::Int)
-                        .unwrap_or_else(|| ValueMagnitude::Float((a as f64).$fn(b as f64))),
-                    (ValueMagnitude::Int(a), ValueMagnitude::Float(b)) => {
-                        ValueMagnitude::Float((a as f64).$fn(b))
-                    }
-                    (ValueMagnitude::Float(a), ValueMagnitude::Int(b)) => {
-                        ValueMagnitude::Float(a.$fn(b as f64))
-                    }
-                    (ValueMagnitude::Float(a), ValueMagnitude::Float(b)) => {
-                        ValueMagnitude::Float(a.$fn(b))
-                    }
-                })
-            }
+    pub fn sub(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<Self, RunnerError> {
+        match (lhs.value, rhs.value) {
+            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => Ok(a
+                .checked_sub(b)
+                .map(ValueMagnitude::Int)
+                .unwrap_or_else(|| ValueMagnitude::Float((a as f64) - (b as f64)))),
+            (a, b) => Ok(ValueMagnitude::Float(a.into_float() - b.into_float())),
         }
-    };
+    }
 }
-
-impl_op!(Sub, sub, checked_sub);
