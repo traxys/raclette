@@ -380,19 +380,22 @@ impl Runner {
     fn eval_expr(&mut self, expr: &ast::Expr) -> Result<Value, miette::Report> {
         match expr {
             ast::Expr::Literal(l) => Ok(self.eval_literal(l)),
-            ast::Expr::Dimensioned(l, u) => {
-                let value: NumericValue = self.eval_expr(l)?.spanned(&l.span()).try_into()?;
+            ast::Expr::Dimensioned(d) => {
+                let value: NumericValue = self
+                    .eval_expr(&*d.expr)?
+                    .spanned(&d.expr.span())
+                    .try_into()?;
                 if !value.unit.is_dimensionless() {
                     return Err(CastError::from_val(
-                        Value::Numeric(value).spanned(&l.span()),
+                        Value::Numeric(value).spanned(&d.expr.span()),
                         "dimensionless number",
                     )
                     .into());
                 }
-                let (multiplied, unit) = self.resolve_units(u)?;
+                let (multiplied, unit) = self.resolve_units(&d.unit)?;
                 Ok(NumericValue {
-                    magnitude: (value.magnitude.spanned(&l.span()) * multiplied.spanned(&l.span()))
-                        .expect("Value should only go towards zero"),
+                    magnitude: (value.magnitude.spanned(&d.expr.span())
+                        * multiplied.spanned(&d.span()))?,
                     unit,
                 }
                 .into())

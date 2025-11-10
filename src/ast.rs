@@ -311,8 +311,19 @@ impl std::fmt::Debug for UnaryOp {
     }
 }
 
+pub struct DimensionedExpr {
+    pub expr: SpannedValue<Expr>,
+    pub unit: Vec<SpannedValue<(Arc<str>, i64)>>,
+}
+
+impl std::fmt::Debug for DimensionedExpr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}_{:?}", *self.expr, self.unit)
+    }
+}
+
 pub enum Expr {
-    Dimensioned(Box<SpannedValue<Expr>>, Vec<SpannedValue<(Arc<str>, i64)>>),
+    Dimensioned(Box<SpannedValue<DimensionedExpr>>),
     Literal(SpannedValue<Literal>),
     Variable(SpannedValue<Variable>),
     Assign(SpannedValue<Variable>, Box<SpannedValue<Expr>>),
@@ -324,7 +335,7 @@ pub enum Expr {
 impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Dimensioned(l, d) => write!(f, "{:?}_{:?}", **l, d),
+            Self::Dimensioned(d) => d.fmt(f),
             Self::Literal(arg0) => write!(f, "{:?}", **arg0),
             Self::Variable(arg0) => f.debug_tuple("&").field(&**arg0).finish(),
             Self::Assign(arg0, arg1) => write!(f, "{:?} = ({:?})", **arg0, ***arg1),

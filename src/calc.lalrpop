@@ -12,6 +12,7 @@ use crate::{
 		Function,
 		Call,
 		UserParseError,
+		DimensionedExpr,
 	},
 	span::SpannedValue,
 };
@@ -89,10 +90,12 @@ Comma<T>: Vec<T> = {
 
 pub InputStatement: SpannedValue<InputStatement> = Spn<InputStatementInner> => <>;
 
+DimensionedCast: DimensionedExpr = <expr:Spn<Expr>> "as" <unit:ManyUnit> => DimensionedExpr {<>};
+
 InputStatementInner: InputStatement = {
 	"|>" <Spn<Function>> => InputStatement::LastRedirect(<>),
 	Expr => InputStatement::Expr(<>),
-	<SpnBox<Expr>> "as" <ManyUnit> => InputStatement::Expr(Expr::Dimensioned(<>)),
+	SpnBox<DimensionedCast> => InputStatement::Expr(Expr::Dimensioned(<>)),
 	"." <Spn<ident>> <CommandValue?> => InputStatement::Command(<>),
 };
 
@@ -255,11 +258,15 @@ LiteralExpr: Expr = {
 	Spn<Literal> => Expr::Literal(<>),
 };
 
+DimensionedExpr: DimensionedExpr = {
+	<expr:Spn<LiteralExpr>> <unit:ManyUnit> => DimensionedExpr {<>},
+	"(" <DimensionedCast> ")" => <>,
+};
+
 ExprLiteral: Expr = {
 	LiteralExpr => <>,
-	SpnBox<LiteralExpr> ManyUnit => Expr::Dimensioned(<>),
-	"(" <SpnBox<Expr>> "as" <ManyUnit> ")" => Expr::Dimensioned(<>),
 	Spn<Variable> => Expr::Variable(<>),
+	SpnBox<DimensionedExpr> => Expr::Dimensioned(<>),
 	Spn<Call> => Expr::Call(<>),
 	"(" <Expr> ")" => <>,
 };
