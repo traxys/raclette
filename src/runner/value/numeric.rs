@@ -51,12 +51,12 @@ impl SpannedValue<NumericValue> {
 
 impl NumericValue {
     pub fn mul(
-        _span: Span,
+        span: Span,
         lhs: SpannedValue<Self>,
         rhs: SpannedValue<Self>,
     ) -> Result<NumericValue, RunnerError> {
         Ok(NumericValue {
-            magnitude: (lhs.magnitude.spanned(&lhs) * rhs.magnitude.spanned(&rhs))?,
+            magnitude: ValueMagnitude::mul(span, lhs.magnitude(), rhs.magnitude())?,
             unit: lhs.value.unit * rhs.value.unit,
         })
     }

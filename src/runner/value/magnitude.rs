@@ -251,6 +251,20 @@ impl ValueMagnitude {
 
         Ok(ValueMagnitude::Int(lhs ^ rhs))
     }
+
+    pub fn mul(
+        _span: Span,
+        lhs: SpannedValue<Self>,
+        rhs: SpannedValue<Self>,
+    ) -> Result<Self, RunnerError> {
+        match (lhs.value, rhs.value) {
+            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => Ok(a
+                .checked_mul(b)
+                .map(ValueMagnitude::Int)
+                .unwrap_or_else(|| ValueMagnitude::Float((a as f64) * (b as f64)))),
+            (a, b) => Ok(ValueMagnitude::Float(a.into_float() * b.into_float())),
+        }
+    }
 }
 
 macro_rules! impl_op {
@@ -279,6 +293,5 @@ macro_rules! impl_op {
     };
 }
 
-impl_op!(Mul, mul, checked_mul);
 impl_op!(Add, add, checked_add);
 impl_op!(Sub, sub, checked_sub);

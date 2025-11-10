@@ -394,8 +394,11 @@ impl Runner {
                 }
                 let (multiplied, unit) = self.resolve_units(&d.unit)?;
                 Ok(NumericValue {
-                    magnitude: (value.magnitude.spanned(&d.expr.span())
-                        * multiplied.spanned(&d.span()))?,
+                    magnitude: ValueMagnitude::mul(
+                        d.span(),
+                        value.magnitude.spanned(&d.expr.span()),
+                        multiplied.spanned(&d.span()),
+                    )?,
                     unit,
                 }
                 .into())
