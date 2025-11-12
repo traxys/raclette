@@ -228,7 +228,7 @@ impl ValueMagnitude {
         rhs: SpannedValue<Self>,
     ) -> Result<Self, RunnerError> {
         Ok(match (lhs.value, rhs.value) {
-            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) if (a % b) == 0 => {
+            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) if b != 0 && (a % b) == 0 => {
                 ValueMagnitude::Int(a / b)
             }
             (lhs, rhs) => {
