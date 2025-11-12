@@ -3,65 +3,119 @@ use crate::{
     span::{Span, SpannedValue},
 };
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FiniteF64(f64);
+
+impl Eq for FiniteF64 {}
+
+impl PartialOrd for FiniteF64 {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for FiniteF64 {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.partial_cmp(&other.0).unwrap()
+    }
+}
+
+fn float_guard(f: f64, op_span: Span) -> Result<FiniteF64, RunnerError> {
+    if f.is_infinite() {
+        Err(RunnerError::Overflow {
+            location: (op_span.start..op_span.end).into(),
+            src: op_span.source,
+        })
+    } else if f.is_nan() {
+        Err(RunnerError::NaN {
+            location: (op_span.start..op_span.end).into(),
+            src: op_span.source,
+        })
+    } else {
+        Ok(FiniteF64(f))
+    }
+}
+
+impl FiniteF64 {
+    pub const PI: Self = Self(std::f64::consts::PI);
+
+    pub fn new(value: f64, source_span: Span) -> Result<Self, RunnerError> {
+        if value.is_infinite() {
+            Err(RunnerError::Overflow {
+                location: (source_span.start..source_span.end).into(),
+                src: source_span.source,
+            })
+        } else {
+            Ok(Self(value))
+        }
+    }
+
+    pub fn from_finite(value: f64) -> Self {
+        assert!(value.is_finite());
+        Self(value)
+    }
+
+    pub fn powf(op_span: Span, base: FiniteF64, exponent: FiniteF64) -> Result<Self, RunnerError> {
+        float_guard(base.0.powf(exponent.0), op_span)
+    }
+
+    pub fn div(op_span: Span, lhs: FiniteF64, rhs: FiniteF64) -> Result<Self, RunnerError> {
+        float_guard(lhs.0 / rhs.0, op_span)
+    }
+
+    pub fn mul(op_span: Span, lhs: FiniteF64, rhs: FiniteF64) -> Result<Self, RunnerError> {
+        float_guard(lhs.0 * rhs.0, op_span)
+    }
+
+    pub fn add(op_span: Span, lhs: FiniteF64, rhs: FiniteF64) -> Result<Self, RunnerError> {
+        float_guard(lhs.0 + rhs.0, op_span)
+    }
+
+    pub fn sub(op_span: Span, lhs: FiniteF64, rhs: FiniteF64) -> Result<Self, RunnerError> {
+        float_guard(lhs.0 - rhs.0, op_span)
+    }
+
+    pub fn abs(self) -> Self {
+        Self(self.0.abs())
+    }
+}
+
+impl From<FiniteF64> for f64 {
+    fn from(value: FiniteF64) -> Self {
+        value.0
+    }
+}
+
+impl std::ops::Neg for FiniteF64 {
+    type Output = Self;
+
+    fn neg(self) -> Self::Output {
+        Self(-self.0)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum ValueMagnitude {
     Int(i128),
-    Float(f64),
-}
-
-trait FloatGuard: Sized {
-    fn guard_infinity(self, op_span: Span) -> Result<Self, RunnerError>;
-}
-
-impl FloatGuard for f64 {
-    fn guard_infinity(self, op_span: Span) -> Result<Self, RunnerError> {
-        if self.is_infinite() {
-            Err(RunnerError::Overflow {
-                location: (op_span.start..op_span.end).into(),
-                src: op_span.source,
-            })
-        } else {
-            Ok(self)
-        }
-    }
+    Float(FiniteF64),
 }
 
 impl SpannedValue<ValueMagnitude> {
-    pub fn nan_guard(&self) -> Result<(), RunnerError> {
-        match self.value {
-            ValueMagnitude::Float(f) if f.is_nan() => Err(RunnerError::NaN {
-                location: (self.start..self.end).into(),
-                src: self.source.clone(),
-            }),
-            _ => Ok(()),
-        }
-    }
-
     pub fn eq(self, other: Self) -> Result<bool, RunnerError> {
-        self.nan_guard()?;
-        other.nan_guard()?;
-
         match (self.value, other.value) {
             (ValueMagnitude::Int(l), ValueMagnitude::Int(r)) => Ok(l == r),
             (ValueMagnitude::Float(l), ValueMagnitude::Float(r)) => Ok(l == r),
-            (ValueMagnitude::Int(l), ValueMagnitude::Float(r)) => Ok(l as f64 == r),
-            (ValueMagnitude::Float(l), ValueMagnitude::Int(r)) => Ok(l == r as f64),
+            (ValueMagnitude::Int(l), ValueMagnitude::Float(r)) => Ok(FiniteF64(l as f64) == r),
+            (ValueMagnitude::Float(l), ValueMagnitude::Int(r)) => Ok(l == FiniteF64(r as f64)),
         }
     }
 
     pub fn cmp(self, other: Self) -> Result<std::cmp::Ordering, RunnerError> {
-        self.nan_guard()?;
-        other.nan_guard()?;
-
         match (self.value, other.value) {
             (ValueMagnitude::Int(l), ValueMagnitude::Int(r)) => Ok(l.cmp(&r)),
-            (ValueMagnitude::Float(l), ValueMagnitude::Float(r)) => Ok(l.partial_cmp(&r).unwrap()),
-            (ValueMagnitude::Int(l), ValueMagnitude::Float(r)) => {
-                Ok((l as f64).partial_cmp(&r).unwrap())
-            }
-            (ValueMagnitude::Float(l), ValueMagnitude::Int(r)) => {
-                Ok(l.partial_cmp(&(r as f64)).unwrap())
-            }
+            (ValueMagnitude::Float(l), ValueMagnitude::Float(r)) => Ok(l.cmp(&r)),
+            (ValueMagnitude::Int(l), ValueMagnitude::Float(r)) => Ok((FiniteF64(l as f64)).cmp(&r)),
+            (ValueMagnitude::Float(l), ValueMagnitude::Int(r)) => Ok(l.cmp(&FiniteF64(r as f64))),
         }
     }
 }
@@ -103,15 +157,15 @@ impl ValueMagnitude {
         match self {
             ValueMagnitude::Int(n) => n.to_string(),
             ValueMagnitude::Float(f) => {
-                let abs = f.abs();
+                let abs = f.0.abs();
                 match rounding {
                     Some(r)
                         if abs >= 0.1f64.powi(r as i32) * 0.98
                             && abs <= (10.0f64.powi(r as i32) + f64::EPSILON) * 1.01 =>
                     {
-                        format!("{:.*}", r, f)
+                        format!("{:.*}", r, f.0)
                     }
-                    _ => f.to_string(),
+                    _ => f.0.to_string(),
                 }
             }
         }
@@ -127,20 +181,20 @@ impl ValueMagnitude {
     pub fn is_zero(&self) -> bool {
         match *self {
             ValueMagnitude::Int(i) => i == 0,
-            ValueMagnitude::Float(f) => f == 0.,
+            ValueMagnitude::Float(f) => f.0 == 0.,
         }
     }
 
-    pub fn into_float(self) -> f64 {
+    pub fn into_float(self) -> FiniteF64 {
         match self {
-            ValueMagnitude::Int(i) => i as f64,
+            ValueMagnitude::Int(i) => FiniteF64(i as f64),
             ValueMagnitude::Float(f) => f,
         }
     }
 
     pub fn into_int(self) -> i128 {
         match self {
-            ValueMagnitude::Float(f) => f as i128,
+            ValueMagnitude::Float(f) => f.0 as i128,
             ValueMagnitude::Int(i) => i,
         }
     }
@@ -152,22 +206,24 @@ impl ValueMagnitude {
                     .map(ValueMagnitude::Int)
                     .map(Ok)
                     .unwrap_or_else(|| {
-                        (b as f64)
-                            .powf(e as f64)
-                            .guard_infinity(op_span)
-                            .map(ValueMagnitude::Float)
+                        FiniteF64::powf(
+                            op_span.clone(),
+                            FiniteF64::new(b as f64, op_span.clone()).unwrap(),
+                            FiniteF64::new(e as f64, op_span).unwrap(),
+                        )
+                        .map(ValueMagnitude::Float)
                     })?)
             }
-            (b, e) => Ok(ValueMagnitude::Float(
-                b.into_float()
-                    .powf(e.into_float())
-                    .guard_infinity(op_span)?,
-            )),
+            (b, e) => Ok(ValueMagnitude::Float(FiniteF64::powf(
+                op_span,
+                b.into_float(),
+                e.into_float(),
+            )?)),
         }
     }
 
     pub fn div(
-        _span: Span,
+        span: Span,
         lhs: SpannedValue<Self>,
         rhs: SpannedValue<Self>,
     ) -> Result<Self, RunnerError> {
@@ -175,7 +231,9 @@ impl ValueMagnitude {
             (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) if (a % b) == 0 => {
                 ValueMagnitude::Int(a / b)
             }
-            (lhs, rhs) => ValueMagnitude::Float(lhs.into_float() / rhs.into_float()),
+            (lhs, rhs) => {
+                ValueMagnitude::Float(FiniteF64::div(span, lhs.into_float(), rhs.into_float())?)
+            }
         })
     }
 
@@ -253,44 +311,80 @@ impl ValueMagnitude {
     }
 
     pub fn mul(
-        _span: Span,
+        span: Span,
         lhs: SpannedValue<Self>,
         rhs: SpannedValue<Self>,
     ) -> Result<Self, RunnerError> {
         match (lhs.value, rhs.value) {
-            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => Ok(a
+            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => a
                 .checked_mul(b)
                 .map(ValueMagnitude::Int)
-                .unwrap_or_else(|| ValueMagnitude::Float((a as f64) * (b as f64)))),
-            (a, b) => Ok(ValueMagnitude::Float(a.into_float() * b.into_float())),
+                .map(Ok)
+                .unwrap_or_else(|| {
+                    FiniteF64::mul(
+                        span.clone(),
+                        FiniteF64::new(a as f64, span.clone()).unwrap(),
+                        FiniteF64::new(b as f64, span).unwrap(),
+                    )
+                    .map(ValueMagnitude::Float)
+                }),
+            (a, b) => Ok(ValueMagnitude::Float(FiniteF64::mul(
+                span,
+                a.into_float(),
+                b.into_float(),
+            )?)),
         }
     }
 
     pub fn add(
-        _span: Span,
+        span: Span,
         lhs: SpannedValue<Self>,
         rhs: SpannedValue<Self>,
     ) -> Result<Self, RunnerError> {
         match (lhs.value, rhs.value) {
-            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => Ok(a
+            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => a
                 .checked_add(b)
                 .map(ValueMagnitude::Int)
-                .unwrap_or_else(|| ValueMagnitude::Float((a as f64) + (b as f64)))),
-            (a, b) => Ok(ValueMagnitude::Float(a.into_float() + b.into_float())),
+                .map(Ok)
+                .unwrap_or_else(|| {
+                    FiniteF64::add(
+                        span.clone(),
+                        FiniteF64::new(a as f64, span.clone()).unwrap(),
+                        FiniteF64::new(b as f64, span).unwrap(),
+                    )
+                    .map(ValueMagnitude::Float)
+                }),
+            (a, b) => Ok(ValueMagnitude::Float(FiniteF64::add(
+                span,
+                a.into_float(),
+                b.into_float(),
+            )?)),
         }
     }
 
     pub fn sub(
-        _span: Span,
+        span: Span,
         lhs: SpannedValue<Self>,
         rhs: SpannedValue<Self>,
     ) -> Result<Self, RunnerError> {
         match (lhs.value, rhs.value) {
-            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => Ok(a
+            (ValueMagnitude::Int(a), ValueMagnitude::Int(b)) => a
                 .checked_sub(b)
                 .map(ValueMagnitude::Int)
-                .unwrap_or_else(|| ValueMagnitude::Float((a as f64) - (b as f64)))),
-            (a, b) => Ok(ValueMagnitude::Float(a.into_float() - b.into_float())),
+                .map(Ok)
+                .unwrap_or_else(|| {
+                    FiniteF64::sub(
+                        span.clone(),
+                        FiniteF64::new(a as f64, span.clone()).unwrap(),
+                        FiniteF64::new(b as f64, span).unwrap(),
+                    )
+                    .map(ValueMagnitude::Float)
+                }),
+            (a, b) => Ok(ValueMagnitude::Float(FiniteF64::sub(
+                span,
+                a.into_float(),
+                b.into_float(),
+            )?)),
         }
     }
 }

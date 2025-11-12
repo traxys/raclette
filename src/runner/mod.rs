@@ -6,6 +6,7 @@ use miette::{Context, Diagnostic, SourceSpan};
 
 use crate::{
     ast::{self, Variable},
+    runner::value::FiniteF64,
     span::{MaybeNamed, SpannedValue, SpanningExt},
 };
 
@@ -113,9 +114,9 @@ pub enum RunnerError {
         #[source_code]
         src: MaybeNamed,
     },
-    #[error("Operation on NaN")]
+    #[error("Operation returned a NaN value")]
     NaN {
-        #[label("This value is NaN")]
+        #[label("This calculation returned a NaN value")]
         location: SourceSpan,
         #[source_code]
         src: MaybeNamed,
@@ -185,7 +186,7 @@ impl Runner {
         values.insert(
             Variable(vec![Arc::from("pi")]),
             Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Float(std::f64::consts::PI),
+                magnitude: ValueMagnitude::Float(FiniteF64::PI),
                 unit: Unit::dimensionless(),
             }),
         );
@@ -263,8 +264,8 @@ impl Runner {
                         .unwrap_or(&self.default_scale)
                         .steps();
 
-                    let mut magnitude = value.magnitude.into_float();
-                    let mut abs_magnitude = magnitude.abs();
+                    let mut magnitude: f64 = value.magnitude.into_float().into();
+                    let mut abs_magnitude: f64 = magnitude.abs();
                     let mut render = scale_prefixes[0].render;
 
                     let last_unit = scale_prefixes.iter().last().unwrap();
@@ -369,7 +370,7 @@ impl Runner {
 
         Ok((
             if multiplier < 1. {
-                ValueMagnitude::Float(multiplier)
+                ValueMagnitude::Float(FiniteF64::from_finite(multiplier))
             } else {
                 ValueMagnitude::Int(multiplier as i128)
             },
@@ -532,7 +533,7 @@ impl Runner {
                 unit: Unit::dimensionless(),
             }),
             &ast::Literal::Float(v) => Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Float(v),
+                magnitude: ValueMagnitude::Float(FiniteF64::from_finite(v)),
                 unit: Unit::dimensionless(),
             }),
             ast::Literal::Atom(a) => Value::Atom(a.clone()),

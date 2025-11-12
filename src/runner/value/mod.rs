@@ -7,7 +7,7 @@ use std::sync::Arc;
 use super::{CastError, RunnerError};
 use crate::span::{Span, SpannedValue, SpanningExt};
 
-pub use magnitude::ValueMagnitude;
+pub use magnitude::{FiniteF64, ValueMagnitude};
 pub use numeric::NumericValue;
 pub use unit::{
     Dimension, ScaleRender, ScaleType, Unit, BYTE_UNIT, KNOWN_UNITS, MASS_UNIT, TIME_UNIT,
@@ -380,9 +380,11 @@ impl Value {
         let rhs_span = rhs.span();
 
         match (lhs.value, rhs.value) {
-            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(
-                NumericValue::pow(span, a.spanned(&lhs_span), b.spanned(&rhs_span))?,
-            )),
+            (Value::Numeric(a), Value::Numeric(b)) => Ok(Value::Numeric(NumericValue::pow(
+                span,
+                a.spanned(&lhs_span),
+                b.spanned(&rhs_span),
+            )?)),
             (Value::Numeric(_), r) => Err(RunnerError::InvalidType {
                 ty: r.ty(),
                 location: (rhs_span.start..rhs_span.end).into(),
