@@ -2,7 +2,7 @@ use clap::Parser;
 use itertools::Itertools;
 use lalrpop_util::lalrpop_mod;
 use miette::{Context, Diagnostic, IntoDiagnostic, Result, SourceCode, SourceSpan};
-use rustyline::{error::ReadlineError, history::FileHistory, Editor};
+use rustyline::{Editor, error::ReadlineError, history::FileHistory};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -154,10 +154,10 @@ fn main() -> Result<()> {
 
             let mut rl = Editor::<(), FileHistory>::new().into_diagnostic()?;
 
-            if let Err(e) = rl.load_history(&path) {
-                if path.exists() {
-                    println!("Error loading history: {:?}", e)
-                }
+            if let Err(e) = rl.load_history(&path)
+                && path.exists()
+            {
+                println!("Error loading history: {:?}", e)
             };
 
             loop {

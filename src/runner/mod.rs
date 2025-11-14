@@ -360,7 +360,7 @@ impl Runner {
             ast::Expr::Literal(l) => Ok(self.eval_literal(l)),
             ast::Expr::Dimensioned(d) => {
                 let value: NumericValue = self
-                    .eval_expr(&*d.expr)?
+                    .eval_expr(&d.expr)?
                     .spanned(&d.expr.span())
                     .try_into()?;
                 if !value.unit.is_dimensionless() {

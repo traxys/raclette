@@ -126,10 +126,10 @@ pub enum ScaleType {
 impl ScaleType {
     pub fn steps(&self) -> &'static [ScaleStep] {
         match self {
-            ScaleType::Metric => &*METRIC_SCALE,
-            ScaleType::TimeMetric => &*TIME_METRIC_SCALE,
-            ScaleType::Binary => &*BINARY_SCALE,
-            ScaleType::ShiftedMetric => &*SHIFTED_METRIC_SCALE,
+            ScaleType::Metric => &METRIC_SCALE,
+            ScaleType::TimeMetric => &TIME_METRIC_SCALE,
+            ScaleType::Binary => &BINARY_SCALE,
+            ScaleType::ShiftedMetric => &SHIFTED_METRIC_SCALE,
         }
     }
 
