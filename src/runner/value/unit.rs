@@ -103,7 +103,7 @@ impl Display for Unit {
                     "{}",
                     self.dimensions
                         .iter()
-                        .filter(|(_, &p)| p != 0)
+                        .filter(|&(_, &p)| p != 0)
                         .map(|(u, &p)| if p != 1 {
                             format!("{u}{p}")
                         } else {
