@@ -5,7 +5,10 @@ use enum_map::{Enum, EnumMap};
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 
-use crate::{runner::RunnerError, span::Span};
+use crate::{
+    runner::{value::ValueMagnitude, RunnerError},
+    span::Span,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Enum)]
 pub enum Dimension {
@@ -123,28 +126,28 @@ pub enum ScaleType {
 impl ScaleType {
     pub fn steps(&self) -> &'static [ScaleStep] {
         match self {
-            ScaleType::Metric => METRIC_SCALE,
-            ScaleType::TimeMetric => TIME_METRIC_SCALE,
-            ScaleType::Binary => BINARY_SCALE,
-            ScaleType::ShiftedMetric => SHIFTED_METRIC_SCALE,
+            ScaleType::Metric => &*METRIC_SCALE,
+            ScaleType::TimeMetric => &*TIME_METRIC_SCALE,
+            ScaleType::Binary => &*BINARY_SCALE,
+            ScaleType::ShiftedMetric => &*SHIFTED_METRIC_SCALE,
         }
     }
 
-    pub fn prefix(&self) -> impl Iterator<Item = (&'static str, f64)> {
+    pub fn prefix(&self) -> impl Iterator<Item = (&'static str, &'static ValueMagnitude)> {
         let steps = self.steps();
         steps
             .iter()
             .filter_map(|s| match s.render {
-                ScaleRender::Prefix(p) => Some(Either::Left(std::iter::once((p, s.order)))),
+                ScaleRender::Prefix(p) => Some(Either::Left(std::iter::once((p, &s.order)))),
                 ScaleRender::EitherPrefix { main, alternative } => Some(Either::Right(
-                    [(main, s.order), (alternative, s.order)].into_iter(),
+                    [(main, &s.order), (alternative, &s.order)].into_iter(),
                 )),
                 _ => None,
             })
             .flatten()
     }
 
-    pub fn all_prefix() -> impl Iterator<Item = (&'static str, f64)> {
+    pub fn all_prefix() -> impl Iterator<Item = (&'static str, &'static ValueMagnitude)> {
         Self::Metric
             .prefix()
             .chain(Self::TimeMetric.prefix())
@@ -165,186 +168,168 @@ pub enum ScaleRender {
     AsIs,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct ScaleStep {
-    pub order: f64,
+    pub order: ValueMagnitude,
     pub render: ScaleRender,
 }
 
-static TIME_METRIC_SCALE: &[ScaleStep] = &[
-    ScaleStep {
-        render: ScaleRender::Override("yr"),
-        order: 60. * 60. * 24. * 364.25,
-    },
-    ScaleStep {
-        render: ScaleRender::Override("day"),
-        order: 60. * 60. * 24.,
-    },
-    ScaleStep {
-        render: ScaleRender::Override("hr"),
-        order: 60. * 60.,
-    },
-    ScaleStep {
-        render: ScaleRender::Override("min"),
-        order: 60.,
-    },
-    ScaleStep {
-        render: ScaleRender::AsIs,
-        order: 1.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("m"),
-        order: 0.001,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("μ"),
-        order: 0.000001,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("u"),
-        order: 0.000001,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("n"),
-        order: 0.000000001,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("p"),
-        order: 0.000000000001,
-    },
-];
+fn div<A, B>(a: A, b: B) -> ValueMagnitude
+where
+    A: Into<ValueMagnitude>,
+    B: Into<ValueMagnitude>,
+{
+    ValueMagnitude::div_ok(a.into(), b.into())
+}
 
-static BINARY_SCALE: &[ScaleStep] = &[
-    ScaleStep {
-        render: ScaleRender::Prefix("Ti"),
-        order: 1024. * 1024. * 1024. * 1024.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("Gi"),
-        order: 1024. * 1024. * 1024.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("Mi"),
-        order: 1024. * 1024.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("Ki"),
-        order: 1024.,
-    },
-    ScaleStep {
-        render: ScaleRender::AsIs,
-        order: 1.,
-    },
-];
+fn mul<A, B>(a: A, b: B) -> ValueMagnitude
+where
+    A: Into<ValueMagnitude>,
+    B: Into<ValueMagnitude>,
+{
+    ValueMagnitude::mul_ok(a.into(), b.into())
+}
 
-#[allow(clippy::eq_op)]
-static SHIFTED_METRIC_SCALE: &[ScaleStep] = &[
-    ScaleStep {
-        render: ScaleRender::Prefix("E"),
-        order: 1000000000000000000. / 1000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("P"),
-        order: 1000000000000000. / 1000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("T"),
-        order: 1000000000000. / 1000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("G"),
-        order: 1000000000. / 1000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("M"),
-        order: 1000000. / 1000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("k"),
-        order: 1000. / 1000.,
-    },
-    ScaleStep {
-        render: ScaleRender::AsIs,
-        order: 1. / 1000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("c"),
-        order: 0.01 / 1000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("m"),
-        order: 0.001 / 1000.,
-    },
-    ScaleStep {
-        render: ScaleRender::EitherPrefix {
-            main: "μ",
-            alternative: "u",
+fn inv(a: impl Into<ValueMagnitude>) -> ValueMagnitude {
+    div(1, a)
+}
+
+static TIME_METRIC_SCALE: Lazy<Vec<ScaleStep>> = Lazy::new(|| {
+    vec![
+        ScaleStep {
+            render: ScaleRender::Override("yr"),
+            order: mul(mul(mul(60, 60), 24), div(36425, 100)),
         },
-        order: 0.000001 / 1000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("n"),
-        order: 0.000000001 / 1000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("p"),
-        order: 0.000000000001 / 1000.,
-    },
-];
-
-static METRIC_SCALE: &[ScaleStep] = &[
-    ScaleStep {
-        render: ScaleRender::Prefix("E"),
-        order: 1000000000000000000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("P"),
-        order: 1000000000000000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("T"),
-        order: 1000000000000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("G"),
-        order: 1000000000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("M"),
-        order: 1000000.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("k"),
-        order: 1000.,
-    },
-    ScaleStep {
-        render: ScaleRender::AsIs,
-        order: 1.,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("c"),
-        order: 0.01,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("m"),
-        order: 0.001,
-    },
-    ScaleStep {
-        render: ScaleRender::EitherPrefix {
-            main: "μ",
-            alternative: "u",
+        ScaleStep {
+            render: ScaleRender::Override("day"),
+            order: mul(mul(60, 60), 24),
         },
-        order: 0.000001,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("n"),
-        order: 0.000000001,
-    },
-    ScaleStep {
-        render: ScaleRender::Prefix("p"),
-        order: 0.000000000001,
-    },
-];
+        ScaleStep {
+            render: ScaleRender::Override("hr"),
+            order: mul(60, 60),
+        },
+        ScaleStep {
+            render: ScaleRender::Override("min"),
+            order: 60.into(),
+        },
+        ScaleStep {
+            render: ScaleRender::AsIs,
+            order: 1.into(),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("m"),
+            order: inv(1_000),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("μ"),
+            order: inv(1_000_000),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("u"),
+            order: inv(1_000_000),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("n"),
+            order: inv(1_000_000_000),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("p"),
+            order: inv(1_000_000_000_000),
+        },
+    ]
+});
+
+static BINARY_SCALE: Lazy<Vec<ScaleStep>> = Lazy::new(|| {
+    vec![
+        ScaleStep {
+            render: ScaleRender::Prefix("Ti"),
+            order: mul(mul(mul(1024, 1024), 1024), 1024),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("Gi"),
+            order: mul(mul(1024, 1024), 1024),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("Mi"),
+            order: mul(1024, 1024),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("Ki"),
+            order: 1024.into(),
+        },
+        ScaleStep {
+            render: ScaleRender::AsIs,
+            order: 1.into(),
+        },
+    ]
+});
+
+static METRIC_SCALE: Lazy<Vec<ScaleStep>> = Lazy::new(|| {
+    vec![
+        ScaleStep {
+            render: ScaleRender::Prefix("E"),
+            order: 1000000000000000000.into(),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("P"),
+            order: 1000000000000000.into(),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("T"),
+            order: 1000000000000.into(),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("G"),
+            order: 1000000000.into(),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("M"),
+            order: 1000000.into(),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("k"),
+            order: 1000.into(),
+        },
+        ScaleStep {
+            render: ScaleRender::AsIs,
+            order: 1.into(),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("c"),
+            order: inv(100),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("m"),
+            order: inv(1_000),
+        },
+        ScaleStep {
+            render: ScaleRender::EitherPrefix {
+                main: "μ",
+                alternative: "u",
+            },
+            order: inv(1_000_000),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("n"),
+            order: inv(1_000_000_000),
+        },
+        ScaleStep {
+            render: ScaleRender::Prefix("p"),
+            order: inv(1_000_000_000_000),
+        },
+    ]
+});
+
+static SHIFTED_METRIC_SCALE: Lazy<Vec<ScaleStep>> = Lazy::new(|| {
+    METRIC_SCALE
+        .iter()
+        .cloned()
+        .map(|mut v| {
+            v.order = div(v.order, 1000);
+            v
+        })
+        .collect()
+});
 
 pub static BYTE_UNIT: Lazy<Unit> = Lazy::new(|| {
     let mut unit = Unit::dimensionless();

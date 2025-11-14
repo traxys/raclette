@@ -19,6 +19,25 @@ pub enum TokenError {
     ParseFloat(#[from] ParseFloatError),
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct DecimalLiteral {
+    pub integer: i128,
+    pub decimal_count: u64,
+    pub decimals: u64,
+}
+
+impl std::fmt::Display for DecimalLiteral {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}.{:0>width$}",
+            self.integer,
+            self.decimals,
+            width = self.decimal_count as usize
+        )
+    }
+}
+
 #[derive(Debug, derive_more::Display, Logos, Clone)]
 #[logos(error = TokenError)]
 #[logos(skip r"[ \t\f]+")]
@@ -129,11 +148,18 @@ pub enum Token {
     )]
     #[display("<number:{}>", _0)]
     Number(i128),
-    #[regex("[0-9]+([eE][-+]?[0-9]+)?", |s| s.slice().parse(), priority = 1)]
-    #[regex("\\.[0-9]+([eE][-+]?[0-9]+)?", |s| s.slice().parse())]
-    #[regex("[0-9]+\\.[0-9]*([eE][-+]?[0-9]+)?", |s| s.slice().parse())]
-    #[display("<float:{}>", _0)]
-    Float(f64),
+    #[regex("[0-9]+\\.[0-9]*", |s| {
+        let (int, decimals) = s.slice().split_once('.').unwrap();
+        Ok::<_, TokenError>(
+            DecimalLiteral {
+                integer: int.parse()?,
+                decimal_count: decimals.len() as u64,
+                decimals: decimals.parse()?,
+            }
+        )
+    })]
+    #[display("<decimal:{}>", _0)]
+    Decimal(DecimalLiteral),
     #[regex("[a-zA-Z][a-zA-Z0-9_]*", callback = |lex| Arc::from(lex.slice()))]
     #[display("identifier({})", _0)]
     Ident(Arc<str>),
@@ -164,7 +190,7 @@ impl std::fmt::Debug for Variable {
 
 pub enum Literal {
     Number(i128),
-    Float(f64),
+    Decimal(DecimalLiteral),
     Atom(Arc<str>),
     Bool(bool),
 }
@@ -173,7 +199,7 @@ impl std::fmt::Debug for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Number(arg0) => write!(f, "{}", arg0),
-            Self::Float(arg0) => write!(f, "{}", arg0),
+            Self::Decimal(arg0) => write!(f, "{}", arg0),
             Self::Atom(s) => write!(f, ":{}", s),
             Self::Bool(b) => write!(f, "{b}"),
         }

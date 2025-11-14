@@ -93,7 +93,7 @@ pub static FUNCTIONS: Lazy<HashMap<Variable, &'static (dyn ValueFn + Sync + Send
             &(strip_unit as VFn1<NumericValue>),
         );
         funcs.insert(vec!["to", "int"].into(), &(to_int as VFn1<NumericValue>));
-        funcs.insert(vec!["factorial"].into(), &(factorial as SpnVFn1<u32>));
+        funcs.insert(vec!["factorial"].into(), &(factorial as VFn1<u64>));
 
         funcs.insert(
             vec!["to", "bin"].into(),
@@ -113,7 +113,7 @@ fn to_hex(v: i128) -> ValueResult {
 
 fn to_int(v: NumericValue) -> ValueResult {
     Ok(Value::Numeric(NumericValue {
-        magnitude: ValueMagnitude::Int(v.magnitude.into_int()),
+        magnitude: v.magnitude.round_to_int(),
         unit: v.unit,
     }))
 }
@@ -125,16 +125,9 @@ fn strip_unit(v: NumericValue) -> ValueResult {
     }))
 }
 
-fn factorial(call_site: SpannedValue<()>, v: u32) -> ValueResult {
+fn factorial(v: u64) -> ValueResult {
     Ok(Value::Numeric(NumericValue {
-        magnitude: ValueMagnitude::Int(
-            (1..=(v as i128))
-                .try_fold(1, i128::checked_mul)
-                .ok_or_else(|| RunnerError::Overflow {
-                    location: (call_site.start..call_site.end).into(),
-                    src: call_site.source,
-                })?,
-        ),
+        magnitude: ValueMagnitude::factorial(v),
         unit: Unit::dimensionless(),
     }))
 }

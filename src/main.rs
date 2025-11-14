@@ -130,7 +130,7 @@ fn main() -> Result<()> {
                 .into_report(expr.clone())?;
 
             if let Some(value) = runner.eval_input_statement(parsed)? {
-                println!("{}", runner.display_value(&value))
+                println!("{}", runner.display_value(value))
             }
         }
         true => {
@@ -182,7 +182,7 @@ fn main() -> Result<()> {
                                 println!("Runtime error:\n{e:?}");
                                 continue;
                             }
-                            Ok(Some(v)) => println!("{}", runner.display_value(&v)),
+                            Ok(Some(v)) => println!("{}", runner.display_value(v)),
                             Ok(None) => (),
                         };
                     }

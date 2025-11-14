@@ -23,7 +23,7 @@ impl SpannedValue<NumericValue> {
             });
         }
 
-        self.magnitude().eq(other.magnitude())
+        Ok(self.magnitude().eq(&other.magnitude()))
     }
 
     pub fn cmp(self, other: Self) -> Result<std::cmp::Ordering, RunnerError> {
@@ -37,7 +37,7 @@ impl SpannedValue<NumericValue> {
             });
         }
 
-        self.magnitude().cmp(other.magnitude())
+        Ok(self.magnitude().cmp(&other.magnitude()))
     }
 
     pub fn magnitude(self) -> SpannedValue<ValueMagnitude> {
@@ -274,7 +274,7 @@ impl NumericValue {
         if lhs.unit.is_dimensionless() {
             Ok(NumericValue {
                 unit: Unit::dimensionless(),
-                magnitude: lhs.value.magnitude.pow(span, rhs.value.magnitude)?,
+                magnitude: lhs.value.magnitude.pow(span, rhs.magnitude())?,
             })
         } else {
             let exponent: i128 = rhs.clone().magnitude().try_into()?;
@@ -290,7 +290,7 @@ impl NumericValue {
 
             Ok(NumericValue {
                 unit,
-                magnitude: lhs.value.magnitude.pow(span, rhs.value.magnitude)?,
+                magnitude: lhs.value.magnitude.pow(span, rhs.magnitude())?,
             })
         }
     }

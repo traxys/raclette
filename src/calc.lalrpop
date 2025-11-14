@@ -12,6 +12,7 @@ use crate::{
 		Function,
 		Call,
 		UserParseError,
+		DecimalLiteral,
 		DimensionedExpr,
 	},
 	span::SpannedValue,
@@ -60,7 +61,7 @@ extern {
 		">" => Token::Greater,
 		"<" => Token::Lesser,
 		num => Token::Number(<i128>),
-		float => Token::Float(<f64>),
+		decimal => Token::Decimal(<DecimalLiteral>),
 		ident => Token::Ident(<Arc<str>>),
 		unit => Token::Unit(<Arc<str>>),
 		binding => Token::Binding(<Arc<str>>),
@@ -273,7 +274,7 @@ ExprLiteral: Expr = {
 
 Literal: Literal = {
 	num => Literal::Number(<>),
-	float => Literal::Float(<>),
+	decimal => Literal::Decimal(<>),
 	"true" => Literal::Bool(true),
 	"false" => Literal::Bool(false),
 	":" <ident> => Literal::Atom(<>),

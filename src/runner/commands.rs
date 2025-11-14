@@ -5,7 +5,7 @@ use once_cell::sync::Lazy;
 
 use crate::span::MaybeNamed;
 
-use super::{value::BYTE_UNIT, NumericValue, RunnerError, ScaleType, Value, ValueMagnitude};
+use super::{value::BYTE_UNIT, NumericValue, RunnerError, ScaleType, Value};
 
 struct Round;
 impl ParamRunnerCommand for Round {
@@ -26,15 +26,14 @@ impl ParamRunnerCommand for Round {
     ) -> Result<(), RunnerError> {
         match value {
             Value::Atom(v) if &*v == "none" => state.round = None,
-            Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Int(n),
-                unit,
-            }) if unit.is_dimensionless() && TryInto::<usize>::try_into(n).is_ok() => {
-                state.round = Some(n as usize)
+            Value::Numeric(NumericValue { magnitude: n, unit })
+                if unit.is_dimensionless() && n.is_usize() =>
+            {
+                state.round = Some(n.as_usize())
             }
             v => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(&v),
+                    val: state.display_value(v),
                     location,
                     src,
                 })
@@ -70,7 +69,7 @@ impl ParamRunnerCommand for ByteScale {
             }
             v => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(&v),
+                    val: state.display_value(v),
                     location,
                     src,
                 })
@@ -102,7 +101,7 @@ impl ParamRunnerCommand for DefaultScale {
             Value::Atom(v) if &*v == "metric" => state.default_scale = ScaleType::Metric,
             v => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(&v),
+                    val: state.display_value(v),
                     location,
                     src,
                 })
@@ -141,7 +140,7 @@ impl RunnerCommand for Help {
             }
             Some(v) => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(&v),
+                    val: state.display_value(v),
                     location,
                     src,
                 })
@@ -266,7 +265,7 @@ impl<T: NoParamCommand> RunnerCommand for NP<T> {
     ) -> Result<(), RunnerError> {
         match value {
             Some(v) => Err(RunnerError::InvalidCommandValue {
-                val: state.display_value(&v),
+                val: state.display_value(v),
                 location,
                 src,
             }),

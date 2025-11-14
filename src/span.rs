@@ -5,12 +5,12 @@ use std::{
 
 use derivative::Derivative;
 use miette::{NamedSource, SourceCode, SourceSpan};
-//use once_cell::sync::Lazy;
 
 #[derive(Clone, Debug)]
 pub enum MaybeNamed {
     Named(Arc<NamedSource<String>>),
     Unamed(Arc<str>),
+    None,
 }
 
 impl From<NamedSource<String>> for MaybeNamed {
@@ -34,9 +34,8 @@ impl SourceCode for MaybeNamed {
     ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
         match self {
             MaybeNamed::Named(s) => s.read_span(span, context_lines_before, context_lines_after),
-            MaybeNamed::Unamed(s) => {
-                s.read_span(span, context_lines_before, context_lines_after)
-            }
+            MaybeNamed::Unamed(s) => s.read_span(span, context_lines_before, context_lines_after),
+            MaybeNamed::None => panic!("Attempted to raise error with `None` span"),
         }
     }
 }
@@ -67,12 +66,12 @@ impl<T> From<&SpannedValue<T>> for SourceSpan {
     }
 }
 
-/* pub static UNKNOWN_SPAN: Lazy<Span> = Lazy::new(|| Span {
-    start: 1,
+pub static NO_SPAN: SpannedValue<()> = SpannedValue {
+    start: 0,
     end: 0,
-    source: NamedSource::new("<unknown>", "").into(),
     value: (),
-}); */
+    source: MaybeNamed::None,
+};
 
 pub trait SpanningExt {
     fn spanned<U>(self, span: &SpannedValue<U>) -> SpannedValue<Self>

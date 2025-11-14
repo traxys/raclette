@@ -6,7 +6,6 @@ use miette::{Context, Diagnostic, SourceSpan};
 
 use crate::{
     ast::{self, Variable},
-    runner::value::FiniteF64,
     span::{MaybeNamed, SpannedValue, SpanningExt},
 };
 
@@ -38,10 +37,7 @@ impl CastError {
         Self {
             to,
             from: match &*val {
-                Value::Numeric(n) => match n.magnitude {
-                    ValueMagnitude::Int(_) => "int",
-                    ValueMagnitude::Float(_) => "float",
-                },
+                Value::Numeric(n) => n.magnitude.ty(),
                 v => v.ty(),
             },
             location: (val.start..val.end).into(),
@@ -181,15 +177,7 @@ pub struct Runner {
 
 impl Runner {
     pub fn new() -> Self {
-        let mut values = HashMap::new();
-
-        values.insert(
-            Variable(vec![Arc::from("pi")]),
-            Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Float(FiniteF64::PI),
-                unit: Unit::dimensionless(),
-            }),
-        );
+        let values = HashMap::new();
 
         let mut scales = HashMap::new();
         scales.insert(*TIME_UNIT, ScaleType::TimeMetric);
@@ -205,10 +193,10 @@ impl Runner {
         }
     }
 
-    pub fn display_value(&self, value: &Value) -> String {
+    pub fn display_value(&self, value: Value) -> String {
         match value {
             Value::Numeric(n) => self.display_numeric_value(n),
-            Value::Str(s) => s.clone(),
+            Value::Str(s) => s,
             Value::Atom(a) => format!(":{a}"),
             Value::Bool(v) => v.to_string(),
         }
@@ -229,14 +217,13 @@ impl Runner {
         }
     }
 
-    fn display_numeric_value(&self, value: &NumericValue) -> String {
-        let raw_magnitude = value.magnitude.as_string(self.round);
-
+    fn display_numeric_value(&self, value: NumericValue) -> String {
         if value.unit.is_dimensionless() {
-            raw_magnitude
+            value.magnitude.to_string(self.round)
         } else {
             match KNOWN_UNITS.get(&value.unit) {
                 None => {
+                    let raw_magnitude = value.magnitude.to_string(self.round);
                     let unit = value
                         .unit
                         .dimensions
@@ -264,29 +251,26 @@ impl Runner {
                         .unwrap_or(&self.default_scale)
                         .steps();
 
-                    let mut magnitude: f64 = value.magnitude.to_float().into();
-                    let mut abs_magnitude: f64 = magnitude.abs();
+                    let mut magnitude = value.magnitude;
                     let mut render = scale_prefixes[0].render;
 
                     let last_unit = scale_prefixes.iter().last().unwrap();
 
-                    if magnitude == 0. {
+                    if magnitude.is_zero() {
                         render = ScaleRender::AsIs;
-                    } else if abs_magnitude >= scale_prefixes[0].order {
-                        magnitude /= scale_prefixes[0].order;
-                        abs_magnitude /= scale_prefixes[0].order;
-                    } else if abs_magnitude < last_unit.order {
+                    } else if magnitude.ge_abs(&scale_prefixes[0].order) {
+                        magnitude =
+                            ValueMagnitude::div_ok(magnitude, scale_prefixes[0].order.clone());
+                    } else if magnitude.lt_abs(&last_unit.order) {
                         /* Smaller than the smallest unit */
-                        magnitude /= last_unit.order;
-                        abs_magnitude /= last_unit.order;
+                        magnitude = ValueMagnitude::div_ok(magnitude, last_unit.order.clone());
                         render = last_unit.render;
                     } else {
-                        for (&large, &small) in
+                        for (large, small) in
                             scale_prefixes.iter().zip(scale_prefixes.iter().skip(1))
                         {
-                            if abs_magnitude < large.order && abs_magnitude >= small.order {
-                                abs_magnitude /= small.order;
-                                magnitude /= small.order;
+                            if magnitude.lt_abs(&large.order) && magnitude.ge_abs(&small.order) {
+                                magnitude = ValueMagnitude::div_ok(magnitude, small.order.clone());
                                 render = small.render;
                                 break;
                             }
@@ -301,16 +285,8 @@ impl Runner {
                         ScaleRender::AsIs => Either::Left(*u),
                     };
 
-                    let magnitude = match abs_magnitude == (abs_magnitude as i64) as f64 {
-                        true => (magnitude as i64).to_string(),
-                        false => match self.round {
-                            Some(r) if abs_magnitude >= 0.1f64.powi(r as i32) * 0.98 => {
-                                format!("{:.*}", r, magnitude)
-                            }
-                            _ => magnitude.to_string(),
-                        },
-                    };
-                    format!("{magnitude} {unit_part}")
+                    let scaled_magnitude = magnitude.to_string(self.round);
+                    format!("{scaled_magnitude} {unit_part}")
                 }
             }
         }
@@ -320,7 +296,7 @@ impl Runner {
         &self,
         units: &[SpannedValue<(Arc<str>, i64)>],
     ) -> Result<(ValueMagnitude, Unit), RunnerError> {
-        let mut multiplier = 1.;
+        let mut multiplier = ValueMagnitude::new(1);
         let mut unit_acc = Unit::dimensionless();
 
         for span in units {
@@ -341,7 +317,7 @@ impl Runner {
             };
 
             if real_unit == *MASS_UNIT {
-                multiplier /= 1000.;
+                multiplier = ValueMagnitude::div_ok(multiplier, 1000.into());
             };
 
             if !prefix.is_empty() {
@@ -355,9 +331,9 @@ impl Runner {
                     }
                     Some((_, mult)) => {
                         if *scale > 0 {
-                            multiplier *= mult;
+                            multiplier = ValueMagnitude::mul_ok(multiplier, mult.clone());
                         } else {
-                            multiplier /= mult;
+                            multiplier = ValueMagnitude::div_ok(multiplier, mult.clone());
                         }
                     }
                 }
@@ -368,14 +344,7 @@ impl Runner {
             }
         }
 
-        Ok((
-            if multiplier < 1. {
-                ValueMagnitude::Float(FiniteF64::from_finite(multiplier))
-            } else {
-                ValueMagnitude::Int(multiplier as i128)
-            },
-            unit_acc,
-        ))
+        Ok((multiplier, unit_acc))
     }
 
     fn eval_expr(&mut self, expr: &ast::Expr) -> Result<Value, miette::Report> {
@@ -529,11 +498,11 @@ impl Runner {
     fn eval_literal(&mut self, lit: &ast::Literal) -> Value {
         match lit {
             &ast::Literal::Number(v) => Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Int(v),
+                magnitude: v.into(),
                 unit: Unit::dimensionless(),
             }),
-            &ast::Literal::Float(v) => Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Float(FiniteF64::from_finite(v)),
+            &ast::Literal::Decimal(literal) => Value::Numeric(NumericValue {
+                magnitude: ValueMagnitude::new_decimal(literal),
                 unit: Unit::dimensionless(),
             }),
             ast::Literal::Atom(a) => Value::Atom(a.clone()),

@@ -7,7 +7,7 @@ use std::sync::Arc;
 use super::{CastError, RunnerError};
 use crate::span::{Span, SpannedValue, SpanningExt};
 
-pub use magnitude::{FiniteF64, ValueMagnitude};
+pub use magnitude::ValueMagnitude;
 pub use numeric::NumericValue;
 pub use unit::{
     Dimension, ScaleRender, ScaleType, Unit, BYTE_UNIT, KNOWN_UNITS, MASS_UNIT, TIME_UNIT,
@@ -405,27 +405,6 @@ impl From<NumericValue> for Value {
     }
 }
 
-impl TryFrom<SpannedValue<Value>> for u32 {
-    type Error = CastError;
-
-    fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
-        let spn = value.span();
-        let numeric: i128 = value.try_into()?;
-
-        match numeric.try_into() {
-            Err(_) => Err(CastError::from_val(
-                Value::Numeric(NumericValue {
-                    magnitude: ValueMagnitude::Int(numeric),
-                    unit: Unit::dimensionless(),
-                })
-                .spanned(&spn),
-                "u32",
-            )),
-            Ok(v) => Ok(v),
-        }
-    }
-}
-
 impl TryFrom<SpannedValue<Value>> for bool {
     type Error = CastError;
 
@@ -437,19 +416,27 @@ impl TryFrom<SpannedValue<Value>> for bool {
     }
 }
 
-impl TryFrom<SpannedValue<Value>> for i128 {
-    type Error = CastError;
+macro_rules! int_from_value {
+    ($ty:ty) => {
+        impl TryFrom<SpannedValue<Value>> for $ty {
+            type Error = CastError;
 
-    fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
-        match value.value {
-            Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::Int(i),
-                ..
-            }) => Ok(i),
-            _ => Err(CastError::from_val(value, "int")),
+            fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
+                let span = value.span();
+                match value.value {
+                    Value::Numeric(numeric_value) => {
+                        Ok(numeric_value.magnitude.spanned(&span).try_into()?)
+                    }
+                    _ => Err(CastError::from_val(value, stringify!(ty))),
+                }
+            }
         }
-    }
+    };
 }
+
+int_from_value!(u64);
+int_from_value!(u32);
+int_from_value!(i128);
 
 impl TryFrom<SpannedValue<Value>> for NumericValue {
     type Error = CastError;
