@@ -94,7 +94,7 @@ impl std::ops::Neg for FiniteF64 {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum ValueMagnitude {
     Int(i128),
     Float(FiniteF64),
@@ -185,8 +185,8 @@ impl ValueMagnitude {
         }
     }
 
-    pub fn into_float(self) -> FiniteF64 {
-        match self {
+    pub fn to_float(&self) -> FiniteF64 {
+        match *self {
             ValueMagnitude::Int(i) => FiniteF64(i as f64),
             ValueMagnitude::Float(f) => f,
         }
@@ -216,8 +216,8 @@ impl ValueMagnitude {
             }
             (b, e) => Ok(ValueMagnitude::Float(FiniteF64::powf(
                 op_span,
-                b.into_float(),
-                e.into_float(),
+                b.to_float(),
+                e.to_float(),
             )?)),
         }
     }
@@ -232,7 +232,7 @@ impl ValueMagnitude {
                 ValueMagnitude::Int(a / b)
             }
             (lhs, rhs) => {
-                ValueMagnitude::Float(FiniteF64::div(span, lhs.into_float(), rhs.into_float())?)
+                ValueMagnitude::Float(FiniteF64::div(span, lhs.to_float(), rhs.to_float())?)
             }
         })
     }
@@ -330,8 +330,8 @@ impl ValueMagnitude {
                 }),
             (a, b) => Ok(ValueMagnitude::Float(FiniteF64::mul(
                 span,
-                a.into_float(),
-                b.into_float(),
+                a.to_float(),
+                b.to_float(),
             )?)),
         }
     }
@@ -356,8 +356,8 @@ impl ValueMagnitude {
                 }),
             (a, b) => Ok(ValueMagnitude::Float(FiniteF64::add(
                 span,
-                a.into_float(),
-                b.into_float(),
+                a.to_float(),
+                b.to_float(),
             )?)),
         }
     }
@@ -382,8 +382,8 @@ impl ValueMagnitude {
                 }),
             (a, b) => Ok(ValueMagnitude::Float(FiniteF64::sub(
                 span,
-                a.into_float(),
-                b.into_float(),
+                a.to_float(),
+                b.to_float(),
             )?)),
         }
     }

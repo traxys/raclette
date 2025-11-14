@@ -264,7 +264,7 @@ impl Runner {
                         .unwrap_or(&self.default_scale)
                         .steps();
 
-                    let mut magnitude: f64 = value.magnitude.into_float().into();
+                    let mut magnitude: f64 = value.magnitude.to_float().into();
                     let mut abs_magnitude: f64 = magnitude.abs();
                     let mut render = scale_prefixes[0].render;
 

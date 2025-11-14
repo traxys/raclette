@@ -23,9 +23,7 @@ impl SpannedValue<NumericValue> {
             });
         }
 
-        self.magnitude
-            .spanned(&self)
-            .eq(other.magnitude.spanned(&other))
+        self.magnitude().eq(other.magnitude())
     }
 
     pub fn cmp(self, other: Self) -> Result<std::cmp::Ordering, RunnerError> {
@@ -39,13 +37,12 @@ impl SpannedValue<NumericValue> {
             });
         }
 
-        self.magnitude
-            .spanned(&self)
-            .cmp(other.magnitude.spanned(&other))
+        self.magnitude().cmp(other.magnitude())
     }
 
-    pub fn magnitude(&self) -> SpannedValue<ValueMagnitude> {
-        self.magnitude.spanned(self)
+    pub fn magnitude(self) -> SpannedValue<ValueMagnitude> {
+        let span = self.span();
+        self.value.magnitude.spanned(&span)
     }
 }
 
@@ -56,8 +53,8 @@ impl NumericValue {
         rhs: SpannedValue<Self>,
     ) -> Result<NumericValue, RunnerError> {
         Ok(NumericValue {
-            magnitude: ValueMagnitude::mul(span, lhs.magnitude(), rhs.magnitude())?,
             unit: lhs.value.unit * rhs.value.unit,
+            magnitude: ValueMagnitude::mul(span, lhs.magnitude(), rhs.magnitude())?,
         })
     }
 
@@ -67,8 +64,8 @@ impl NumericValue {
         rhs: SpannedValue<Self>,
     ) -> Result<NumericValue, RunnerError> {
         Ok(NumericValue {
-            magnitude: ValueMagnitude::div(span, lhs.magnitude(), rhs.magnitude())?,
             unit: lhs.unit / rhs.unit,
+            magnitude: ValueMagnitude::div(span, lhs.magnitude(), rhs.magnitude())?,
         })
     }
 
@@ -88,8 +85,8 @@ impl NumericValue {
         }
 
         Ok(NumericValue {
-            magnitude: ValueMagnitude::add(span, lhs.magnitude(), rhs.magnitude())?,
             unit: lhs.value.unit,
+            magnitude: ValueMagnitude::add(span, lhs.magnitude(), rhs.magnitude())?,
         })
     }
 
@@ -109,8 +106,8 @@ impl NumericValue {
         }
 
         Ok(NumericValue {
-            magnitude: ValueMagnitude::sub(span, lhs.magnitude(), rhs.magnitude())?,
             unit: lhs.value.unit,
+            magnitude: ValueMagnitude::sub(span, lhs.magnitude(), rhs.magnitude())?,
         })
     }
 
@@ -128,8 +125,8 @@ impl NumericValue {
         }
 
         Ok(NumericValue {
-            magnitude: ValueMagnitude::shl(span, lhs.magnitude(), rhs.magnitude())?,
             unit: lhs.unit,
+            magnitude: ValueMagnitude::shl(span, lhs.magnitude(), rhs.magnitude())?,
         })
     }
 
@@ -147,8 +144,8 @@ impl NumericValue {
         }
 
         Ok(NumericValue {
-            magnitude: ValueMagnitude::shr(span, lhs.magnitude(), rhs.magnitude())?,
             unit: lhs.unit,
+            magnitude: ValueMagnitude::shr(span, lhs.magnitude(), rhs.magnitude())?,
         })
     }
 
@@ -166,8 +163,8 @@ impl NumericValue {
         }
 
         Ok(NumericValue {
-            magnitude: ValueMagnitude::rem(span, lhs.magnitude(), rhs.magnitude())?,
             unit: lhs.unit,
+            magnitude: ValueMagnitude::rem(span, lhs.magnitude(), rhs.magnitude())?,
         })
     }
 
@@ -193,8 +190,8 @@ impl NumericValue {
         }
 
         Ok(NumericValue {
-            magnitude: ValueMagnitude::bit_or(span, lhs.magnitude(), rhs.magnitude())?,
             unit: lhs.unit,
+            magnitude: ValueMagnitude::bit_or(span, lhs.magnitude(), rhs.magnitude())?,
         })
     }
 
@@ -220,8 +217,8 @@ impl NumericValue {
         }
 
         Ok(NumericValue {
-            magnitude: ValueMagnitude::bit_and(span, lhs.magnitude(), rhs.magnitude())?,
             unit: lhs.unit,
+            magnitude: ValueMagnitude::bit_and(span, lhs.magnitude(), rhs.magnitude())?,
         })
     }
 
@@ -247,15 +244,15 @@ impl NumericValue {
         }
 
         Ok(NumericValue {
-            magnitude: ValueMagnitude::bit_xor(span, lhs.magnitude(), rhs.magnitude())?,
             unit: lhs.unit,
+            magnitude: ValueMagnitude::bit_xor(span, lhs.magnitude(), rhs.magnitude())?,
         })
     }
 
     pub fn neg(span: Span, val: SpannedValue<Self>) -> Result<Self, RunnerError> {
         Ok(NumericValue {
-            magnitude: ValueMagnitude::neg(span, val.magnitude())?,
             unit: val.value.unit,
+            magnitude: ValueMagnitude::neg(span, val.magnitude())?,
         })
     }
 
@@ -276,11 +273,11 @@ impl NumericValue {
 
         if lhs.unit.is_dimensionless() {
             Ok(NumericValue {
-                magnitude: lhs.magnitude.pow(span, rhs.magnitude)?,
                 unit: Unit::dimensionless(),
+                magnitude: lhs.value.magnitude.pow(span, rhs.value.magnitude)?,
             })
         } else {
-            let exponent: i128 = rhs.value.magnitude.spanned(&rhs_span).try_into()?;
+            let exponent: i128 = rhs.clone().magnitude().try_into()?;
 
             if exponent.unsigned_abs() > i64::MAX as u128 {
                 return Err(RunnerError::UnitOverflow {
@@ -292,8 +289,8 @@ impl NumericValue {
             let unit = lhs.value.unit.pow(span.clone(), exponent as i64)?;
 
             Ok(NumericValue {
-                magnitude: lhs.magnitude.pow(span, rhs.magnitude)?,
                 unit,
+                magnitude: lhs.value.magnitude.pow(span, rhs.value.magnitude)?,
             })
         }
     }
