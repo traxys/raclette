@@ -6,7 +6,7 @@ use itertools::Itertools;
 use once_cell::sync::Lazy;
 
 use crate::{
-    runner::{value::ValueMagnitude, RunnerError},
+    runner::{RunnerError, value::ValueMagnitude},
     span::Span,
 };
 
@@ -57,7 +57,7 @@ impl Unit {
                     return Err(RunnerError::UnitOverflow {
                         location: (op_span.start..op_span.end).into(),
                         src: op_span.source,
-                    })
+                    });
                 }
             };
         }

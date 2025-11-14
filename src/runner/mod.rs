@@ -177,6 +177,7 @@ pub struct Runner {
 
 pub struct DisplayConfig {
     round: Option<usize>,
+    large_threshold: Option<usize>,
 }
 
 impl Runner {
@@ -193,7 +194,10 @@ impl Runner {
             values,
             scales,
             default_scale: ScaleType::Metric,
-            display_config: DisplayConfig { round: Some(2) },
+            display_config: DisplayConfig {
+                round: Some(2),
+                large_threshold: Some(1_000_000_000),
+            },
         }
     }
 

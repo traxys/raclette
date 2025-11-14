@@ -1,22 +1,25 @@
 use std::fmt::Write;
 
 use malachite::{
+    Integer, Natural, Rational,
     base::{
         num::{
             arithmetic::traits::{Abs, Factorial, Pow, RoundToMultiple, Sign},
             basic::traits::{One, Zero},
             comparison::traits::PartialOrdAbs,
-            conversion::traits::{ExactInto, IsInteger, WrappingInto},
+            conversion::{
+                string::options::ToSciOptions,
+                traits::{ExactInto, IsInteger, ToSci, WrappingInto},
+            },
         },
         rounding_modes::RoundingMode,
     },
-    Integer, Natural, Rational,
 };
 
 use crate::{
     ast::DecimalLiteral,
     runner::{CastError, DisplayConfig, RunnerError},
-    span::{Span, SpannedValue, SpanningExt, NO_SPAN},
+    span::{NO_SPAN, Span, SpannedValue, SpanningExt},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -83,6 +86,16 @@ impl From<i128> for ValueMagnitude {
 
 impl ValueMagnitude {
     pub fn to_string(&self, config: &DisplayConfig) -> String {
+        if let Some(thrs) = config.large_threshold
+            && self.0 >= thrs
+        {
+            let precision = thrs.ilog10() as usize;
+            let mut options = ToSciOptions::default();
+            options.set_precision(precision as u64);
+
+            return self.0.to_sci_with_options(options).to_string();
+        }
+
         match self.0.is_integer() {
             true => self.0.to_string(),
             false => {

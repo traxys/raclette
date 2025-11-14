@@ -43,6 +43,42 @@ impl ParamRunnerCommand for Round {
     }
 }
 
+struct LargeThreshold;
+impl ParamRunnerCommand for LargeThreshold {
+    fn name(&self) -> &'static str {
+        "large_threshold"
+    }
+
+    fn help(&self) -> &'static str {
+        "Values above which scientific notation is used. Values: :none | <number>, default: 1_000_000_000"
+    }
+
+    fn run(
+        &self,
+        state: &mut super::Runner,
+        value: Value,
+        location: SourceSpan,
+        src: MaybeNamed,
+    ) -> Result<(), RunnerError> {
+        match value {
+            Value::Atom(v) if &*v == "none" => state.display_config.large_threshold = None,
+            Value::Numeric(NumericValue { magnitude: n, unit })
+                if unit.is_dimensionless() && n.is_usize() =>
+            {
+                state.display_config.large_threshold = Some(n.as_usize())
+            }
+            v => {
+                return Err(RunnerError::InvalidCommandValue {
+                    val: state.display_value(v),
+                    location,
+                    src,
+                })
+            }
+        };
+        Ok(())
+    }
+}
+
 struct ByteScale;
 impl ParamRunnerCommand for ByteScale {
     fn name(&self) -> &'static str {
@@ -174,6 +210,7 @@ pub(super) static COMMANDS: Lazy<HashMap<&'static str, Box<dyn RunnerCommand + S
     Lazy::new(|| {
         let cmds: Vec<Box<dyn RunnerCommand + Send + Sync>> = vec![
             Box::new(PR(Round)),
+            Box::new(PR(LargeThreshold)),
             Box::new(PR(ByteScale)),
             Box::new(PR(DefaultScale)),
             Box::new(Help),
