@@ -15,7 +15,7 @@ use malachite::{
 
 use crate::{
     ast::DecimalLiteral,
-    runner::{CastError, RunnerError},
+    runner::{CastError, DisplayConfig, RunnerError},
     span::{Span, SpannedValue, SpanningExt, NO_SPAN},
 };
 
@@ -82,7 +82,7 @@ impl From<i128> for ValueMagnitude {
 }
 
 impl ValueMagnitude {
-    pub fn to_string(&self, rounding: Option<usize>) -> String {
+    pub fn to_string(&self, config: &DisplayConfig) -> String {
         match self.0.is_integer() {
             true => self.0.to_string(),
             false => {
@@ -100,7 +100,7 @@ impl ValueMagnitude {
 
                 s += ".";
 
-                match rounding {
+                match config.round {
                     Some(n) if base.len() + repeat.len() > n => {
                         s.reserve(n);
 

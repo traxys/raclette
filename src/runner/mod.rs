@@ -172,6 +172,10 @@ pub struct Runner {
     values: HashMap<Variable, Value>,
     scales: HashMap<Unit, ScaleType>,
     default_scale: ScaleType,
+    display_config: DisplayConfig,
+}
+
+pub struct DisplayConfig {
     round: Option<usize>,
 }
 
@@ -189,7 +193,7 @@ impl Runner {
             values,
             scales,
             default_scale: ScaleType::Metric,
-            round: Some(2),
+            display_config: DisplayConfig { round: Some(2) },
         }
     }
 
@@ -219,11 +223,11 @@ impl Runner {
 
     fn display_numeric_value(&self, value: NumericValue) -> String {
         if value.unit.is_dimensionless() {
-            value.magnitude.to_string(self.round)
+            value.magnitude.to_string(&self.display_config)
         } else {
             match KNOWN_UNITS.get(&value.unit) {
                 None => {
-                    let raw_magnitude = value.magnitude.to_string(self.round);
+                    let raw_magnitude = value.magnitude.to_string(&self.display_config);
                     let unit = value
                         .unit
                         .dimensions
@@ -285,7 +289,7 @@ impl Runner {
                         ScaleRender::AsIs => Either::Left(*u),
                     };
 
-                    let scaled_magnitude = magnitude.to_string(self.round);
+                    let scaled_magnitude = magnitude.to_string(&self.display_config);
                     format!("{scaled_magnitude} {unit_part}")
                 }
             }

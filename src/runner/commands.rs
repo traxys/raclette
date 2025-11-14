@@ -25,11 +25,11 @@ impl ParamRunnerCommand for Round {
         src: MaybeNamed,
     ) -> Result<(), RunnerError> {
         match value {
-            Value::Atom(v) if &*v == "none" => state.round = None,
+            Value::Atom(v) if &*v == "none" => state.display_config.round = None,
             Value::Numeric(NumericValue { magnitude: n, unit })
                 if unit.is_dimensionless() && n.is_usize() =>
             {
-                state.round = Some(n.as_usize())
+                state.display_config.round = Some(n.as_usize())
             }
             v => {
                 return Err(RunnerError::InvalidCommandValue {
