@@ -198,9 +198,9 @@ fn main() -> Result<()> {
                         break;
                     }
                 }
-            }
 
-            rl.save_history(&path).into_diagnostic()?;
+                rl.append_history(&path).into_diagnostic()?;
+            }
         }
     }
 
