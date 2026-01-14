@@ -58,7 +58,7 @@ macro_rules! try_from_int {
                 let ty = value.ty();
                 let integer: Integer = value.try_into()?;
 
-                if (<$ty>::MIN..=<$ty>::MAX).contains(&integer) {
+                if !(<$ty>::MIN..=<$ty>::MAX).contains(&integer) {
                     Err(CastError {
                         from: ty,
                         to: stringify!($ty),
