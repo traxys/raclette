@@ -6,13 +6,13 @@ use miette::{Context, Diagnostic, SourceSpan};
 
 use crate::{
     ast::{self, Variable},
-    span::{MaybeNamed, SpannedValue, SpanningExt},
+    span::{MaybeNamed, Span, SpannedValue, SpanningExt},
 };
 
 use functions::ValueFn;
 use value::{
-    Dimension, ScaleRender, ScaleType, Unit, ValueMagnitude, BYTE_UNIT, KNOWN_UNITS, MASS_UNIT,
-    TIME_UNIT,
+    BYTE_UNIT, Dimension, KNOWN_UNITS, MASS_UNIT, ScaleRender, ScaleType, TIME_UNIT, Unit,
+    ValueMagnitude,
 };
 
 use self::value::{NumericValue, Value};
@@ -300,6 +300,17 @@ impl Runner {
         }
     }
 
+    fn resolve_unit<'a>(&self, unit: &'a str, span: Span) -> Result<(&'a str, Unit), RunnerError> {
+        match KNOWN_UNITS.iter().find(|(_, n)| unit.ends_with(**n)) {
+            Some((&u, n)) => Ok((unit.strip_suffix(n).unwrap(), u)),
+            None => Err(RunnerError::InvalidUnit {
+                unit: unit.to_string(),
+                location: (span.start..span.end).into(),
+                src: span.source.clone(),
+            }),
+        }
+    }
+
     fn resolve_units(
         &self,
         units: &[SpannedValue<(Arc<str>, i64)>],
@@ -313,16 +324,7 @@ impl Runner {
                 continue;
             };
 
-            let (prefix, &real_unit) = match KNOWN_UNITS.iter().find(|(_, n)| unit.ends_with(**n)) {
-                Some((u, n)) => (unit.strip_suffix(n).unwrap(), u),
-                None => {
-                    return Err(RunnerError::InvalidUnit {
-                        unit: unit.to_string(),
-                        location: (span.start..span.end).into(),
-                        src: span.source.clone(),
-                    })
-                }
-            };
+            let (prefix, real_unit) = self.resolve_unit(unit, span.span())?;
 
             if real_unit == *MASS_UNIT {
                 multiplier = ValueMagnitude::div_ok(multiplier, 1000.into());
