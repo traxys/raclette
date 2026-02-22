@@ -324,10 +324,12 @@ impl Runner {
                 continue;
             };
 
+            let mut unit_mult = ValueMagnitude::new(1);
+
             let (prefix, real_unit) = self.resolve_unit(unit, span.span())?;
 
             if real_unit == *MASS_UNIT {
-                multiplier = ValueMagnitude::div_ok(multiplier, 1000.into());
+                unit_mult = ValueMagnitude::div_ok(unit_mult, 1000.into());
             };
 
             if !prefix.is_empty() {
@@ -340,14 +342,21 @@ impl Runner {
                         });
                     }
                     Some((_, mult)) => {
-                        if *scale > 0 {
-                            multiplier = ValueMagnitude::mul_ok(multiplier, mult.clone());
-                        } else {
-                            multiplier = ValueMagnitude::div_ok(multiplier, mult.clone());
-                        }
+                        unit_mult = ValueMagnitude::mul_ok(unit_mult, mult.clone());
                     }
                 }
             };
+
+            unit_mult = unit_mult.clone().pow(
+                span.span(),
+                ValueMagnitude::new((scale.abs()).into()).spanned(span),
+            )?;
+
+            if *scale > 0 {
+                multiplier = ValueMagnitude::mul_ok(multiplier, unit_mult);
+            } else {
+                multiplier = ValueMagnitude::div_ok(multiplier, unit_mult);
+            }
 
             for (dim, dim_scale) in real_unit.dimensions {
                 unit_acc.dimensions[dim] += scale * dim_scale;
