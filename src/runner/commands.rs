@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use miette::SourceSpan;
 use once_cell::sync::Lazy;
 
-use crate::span::MaybeNamed;
+use crate::{runner::value::KNOWN_UNITS, span::MaybeNamed};
 
-use super::{value::BYTE_UNIT, NumericValue, RunnerError, ScaleType, Value};
+use super::{NumericValue, RunnerError, ScaleType, Value, value::BYTE_UNIT};
 
 struct Round;
 impl ParamRunnerCommand for Round {
@@ -36,7 +36,7 @@ impl ParamRunnerCommand for Round {
                     val: state.display_value(v),
                     location,
                     src,
-                })
+                });
             }
         };
         Ok(())
@@ -72,7 +72,7 @@ impl ParamRunnerCommand for LargeThreshold {
                     val: state.display_value(v),
                     location,
                     src,
-                })
+                });
             }
         };
         Ok(())
@@ -108,7 +108,7 @@ impl ParamRunnerCommand for ByteScale {
                     val: state.display_value(v),
                     location,
                     src,
-                })
+                });
             }
         }
         Ok(())
@@ -140,7 +140,7 @@ impl ParamRunnerCommand for DefaultScale {
                     val: state.display_value(v),
                     location,
                     src,
-                })
+                });
             }
         }
         Ok(())
@@ -179,7 +179,7 @@ impl RunnerCommand for Help {
                     val: state.display_value(v),
                     location,
                     src,
-                })
+                });
             }
         }
         Ok(())
@@ -206,6 +206,26 @@ impl NoParamCommand for Functions {
     }
 }
 
+struct Units;
+impl NoParamCommand for Units {
+    fn name(&self) -> &'static str {
+        "units"
+    }
+
+    fn help(&self) -> &'static str {
+        "Display a list of known units"
+    }
+
+    fn run(&self, _: &mut super::Runner) -> Result<(), RunnerError> {
+        println!("Units:");
+        for (dimensions, name) in KNOWN_UNITS.iter() {
+            println!(" - {} ({})", name, dimensions.raw_display());
+        }
+
+        Ok(())
+    }
+}
+
 pub(super) static COMMANDS: Lazy<HashMap<&'static str, Box<dyn RunnerCommand + Send + Sync>>> =
     Lazy::new(|| {
         let cmds: Vec<Box<dyn RunnerCommand + Send + Sync>> = vec![
@@ -215,6 +235,7 @@ pub(super) static COMMANDS: Lazy<HashMap<&'static str, Box<dyn RunnerCommand + S
             Box::new(PR(DefaultScale)),
             Box::new(Help),
             Box::new(NP(Functions)),
+            Box::new(NP(Units)),
         ];
         let mut commands = HashMap::new();
 

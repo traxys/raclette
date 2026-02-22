@@ -64,6 +64,17 @@ impl Unit {
 
         Ok(self)
     }
+
+    pub fn raw_display(&self) -> String {
+        struct RawWrapper<'a>(&'a Unit);
+        impl<'a> std::fmt::Display for RawWrapper<'a> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                raw_unit_display(self.0, f)
+            }
+        }
+
+        RawWrapper(self).to_string()
+    }
 }
 
 #[allow(clippy::suspicious_arithmetic_impl)]
@@ -92,26 +103,28 @@ impl std::ops::Div for Unit {
     }
 }
 
+pub fn raw_unit_display(unit: &Unit, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(
+        f,
+        "{}",
+        unit.dimensions
+            .iter()
+            .filter(|&(_, &p)| p != 0)
+            .map(|(u, &p)| if p != 1 {
+                format!("{u}{p}")
+            } else {
+                u.to_string()
+            })
+            .join(".")
+    )
+}
+
 impl Display for Unit {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match KNOWN_UNITS.get(self) {
             Some(v) => write!(f, "{v}"),
             None if self.is_dimensionless() => write!(f, "scalar"),
-            None => {
-                write!(
-                    f,
-                    "{}",
-                    self.dimensions
-                        .iter()
-                        .filter(|&(_, &p)| p != 0)
-                        .map(|(u, &p)| if p != 1 {
-                            format!("{u}{p}")
-                        } else {
-                            u.to_string()
-                        })
-                        .join(".")
-                )
-            }
+            None => raw_unit_display(self, f),
         }
     }
 }
