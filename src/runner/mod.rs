@@ -180,6 +180,11 @@ pub struct DisplayConfig {
     large_threshold: Option<usize>,
 }
 
+enum ResolvedPrefix<'a> {
+    Prefix(&'a str),
+    Magnitude(ValueMagnitude),
+}
+
 impl Runner {
     pub fn new() -> Self {
         let values = HashMap::new();
@@ -300,9 +305,23 @@ impl Runner {
         }
     }
 
-    fn resolve_unit<'a>(&self, unit: &'a str, span: Span) -> Result<(&'a str, Unit), RunnerError> {
+    fn resolve_unit<'a>(
+        &self,
+        unit: &'a str,
+        span: Span,
+    ) -> Result<(ResolvedPrefix<'a>, Unit), RunnerError> {
+        for (scale_unit, scale) in self.scales.iter() {
+            for step in scale.steps() {
+                if let ScaleRender::Override(u) = step.render
+                    && u == unit
+                {
+                    return Ok((ResolvedPrefix::Magnitude(step.order.clone()), *scale_unit));
+                }
+            }
+        }
+
         match KNOWN_UNITS.iter().find(|(_, n)| unit.ends_with(**n)) {
-            Some((&u, n)) => Ok((unit.strip_suffix(n).unwrap(), u)),
+            Some((&u, n)) => Ok((ResolvedPrefix::Prefix(unit.strip_suffix(n).unwrap()), u)),
             None => Err(RunnerError::InvalidUnit {
                 unit: unit.to_string(),
                 location: (span.start..span.end).into(),
@@ -332,20 +351,26 @@ impl Runner {
                 unit_mult = ValueMagnitude::div_ok(unit_mult, 1000.into());
             };
 
-            if !prefix.is_empty() {
-                match ScaleType::all_prefix().find(|&(p, _)| p == prefix) {
-                    None => {
-                        return Err(RunnerError::InvalidUnit {
-                            unit: unit.to_string(),
-                            location: (span.start..span.end).into(),
-                            src: span.source.clone(),
-                        });
-                    }
-                    Some((_, mult)) => {
-                        unit_mult = ValueMagnitude::mul_ok(unit_mult, mult.clone());
+            match prefix {
+                ResolvedPrefix::Prefix("") => (),
+                ResolvedPrefix::Prefix(prefix) => {
+                    match ScaleType::all_prefix().find(|&(p, _)| p == prefix) {
+                        None => {
+                            return Err(RunnerError::InvalidUnit {
+                                unit: unit.to_string(),
+                                location: (span.start..span.end).into(),
+                                src: span.source.clone(),
+                            });
+                        }
+                        Some((_, mult)) => {
+                            unit_mult = ValueMagnitude::mul_ok(unit_mult, mult.clone());
+                        }
                     }
                 }
-            };
+                ResolvedPrefix::Magnitude(mult) => {
+                    unit_mult = ValueMagnitude::mul_ok(unit_mult, mult);
+                }
+            }
 
             unit_mult = unit_mult.clone().pow(
                 span.span(),
