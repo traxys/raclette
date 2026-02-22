@@ -373,8 +373,7 @@ pub static KNOWN_UNITS: Lazy<HashMap<Unit, &'static str>> = Lazy::new(|| {
     len.dimensions[Length] += 1;
     units.insert(len, "m");
 
-    let mut time = Unit::dimensionless();
-    time.dimensions[Time] += 1;
+    let time = *TIME_UNIT;
     units.insert(time, "s");
 
     units.insert(*MASS_UNIT, "g");
