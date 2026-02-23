@@ -20,6 +20,9 @@ pub enum Dimension {
     Time,
     // Expressed in Kilograms
     Mass,
+
+    // Discrete quantities
+    Message,
 }
 
 impl Display for Dimension {
@@ -29,6 +32,7 @@ impl Display for Dimension {
             Dimension::Length => write!(f, "m"),
             Dimension::Time => write!(f, "s"),
             Dimension::Mass => write!(f, "kg"),
+            Dimension::Message => write!(f, "msg"),
         }
     }
 }
@@ -41,7 +45,7 @@ pub struct Unit {
 impl Unit {
     pub fn dimensionless() -> Self {
         Self {
-            dimensions: EnumMap::from_array([0; 4]),
+            dimensions: EnumMap::from_array([0; _]),
         }
     }
 
@@ -366,6 +370,10 @@ pub static KNOWN_UNITS: Lazy<HashMap<Unit, &'static str>> = Lazy::new(|| {
     use Dimension::*;
 
     let mut units = HashMap::new();
+
+    let mut msg = Unit::dimensionless();
+    msg.dimensions[Message] += 1;
+    units.insert(msg, "msg");
 
     units.insert(*BYTE_UNIT, "B");
 

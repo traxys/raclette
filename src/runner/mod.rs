@@ -247,6 +247,7 @@ impl Runner {
                                 Dimension::Length => "m",
                                 Dimension::Time => "s",
                                 Dimension::Mass => "kg",
+                                Dimension::Message => "msg",
                             };
                             match scale {
                                 0 => None,
