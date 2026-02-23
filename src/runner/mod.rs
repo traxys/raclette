@@ -71,6 +71,14 @@ pub enum RunnerError {
         #[source_code]
         src: MaybeNamed,
     },
+    #[error("Unit could be interpreted in multiple ways")]
+    AmbiguousUnit {
+        unit: String,
+        #[label("this is not a valid unit")]
+        location: SourceSpan,
+        #[source_code]
+        src: MaybeNamed,
+    },
     #[error("Could not perform operation on this type")]
     InvalidType {
         ty: &'static str,
@@ -180,9 +188,9 @@ pub struct DisplayConfig {
     large_threshold: Option<usize>,
 }
 
-enum ResolvedPrefix<'a> {
-    Prefix(&'a str),
-    Magnitude(ValueMagnitude),
+enum ResolvedUnit<'a> {
+    Prefix(Vec<(&'a str, Unit)>),
+    Magnitude(ValueMagnitude, Unit),
 }
 
 impl Runner {
@@ -237,25 +245,37 @@ impl Runner {
             match KNOWN_UNITS.get(&value.unit) {
                 None => {
                     let raw_magnitude = value.magnitude.to_string(&self.display_config);
-                    let unit = value
+
+                    let (num_unit, denum_unit) = value
                         .unit
                         .dimensions
                         .iter()
-                        .filter_map(|(dim, &scale)| {
-                            let name = match dim {
-                                Dimension::Byte => "B",
-                                Dimension::Length => "m",
-                                Dimension::Time => "s",
-                                Dimension::Mass => "kg",
-                                Dimension::Message => "msg",
-                            };
-                            match scale {
-                                0 => None,
-                                1 => Some(name.to_string()),
-                                s => Some(format!("{name}{s}")),
-                            }
-                        })
-                        .join(".");
+                        .filter(|&(_, &scale)| scale != 0)
+                        .partition::<Vec<_>, _>(|&(_, &scale)| scale > 0);
+
+                    let join_units = |units: Vec<(Dimension, &i64)>| {
+                        units
+                            .into_iter()
+                            .map(|(dim, &scale)| match scale.abs() {
+                                0 => unreachable!(),
+                                1 => dim.to_string(),
+                                s => format!("{dim}{s}"),
+                            })
+                            .join(".")
+                    };
+
+                    let numerator = if num_unit.is_empty() {
+                        "1".into()
+                    } else {
+                        join_units(num_unit)
+                    };
+
+                    let unit = if denum_unit.is_empty() {
+                        numerator
+                    } else {
+                        numerator + "/" + &join_units(denum_unit)
+                    };
+
                     format!("{raw_magnitude} {unit}")
                 }
                 Some(u) => {
@@ -306,29 +326,31 @@ impl Runner {
         }
     }
 
-    fn resolve_unit<'a>(
-        &self,
-        unit: &'a str,
-        span: Span,
-    ) -> Result<(ResolvedPrefix<'a>, Unit), RunnerError> {
+    fn resolve_unit<'a>(&self, unit: &'a str, span: Span) -> Result<ResolvedUnit<'a>, RunnerError> {
         for (scale_unit, scale) in self.scales.iter() {
             for step in scale.steps() {
                 if let ScaleRender::Override(u) = step.render
                     && u == unit
                 {
-                    return Ok((ResolvedPrefix::Magnitude(step.order.clone()), *scale_unit));
+                    return Ok(ResolvedUnit::Magnitude(step.order.clone(), *scale_unit));
                 }
             }
         }
 
-        match KNOWN_UNITS.iter().find(|(_, n)| unit.ends_with(**n)) {
-            Some((&u, n)) => Ok((ResolvedPrefix::Prefix(unit.strip_suffix(n).unwrap()), u)),
-            None => Err(RunnerError::InvalidUnit {
+        let possible = KNOWN_UNITS
+            .iter()
+            .filter_map(|(&u, n)| unit.strip_suffix(n).map(|p| (p, u)))
+            .collect_vec();
+
+        if possible.is_empty() {
+            return Err(RunnerError::InvalidUnit {
                 unit: unit.to_string(),
                 location: (span.start..span.end).into(),
                 src: span.source.clone(),
-            }),
+            });
         }
+
+        Ok(ResolvedUnit::Prefix(possible))
     }
 
     fn resolve_units(
@@ -344,34 +366,45 @@ impl Runner {
                 continue;
             };
 
-            let mut unit_mult = ValueMagnitude::new(1);
+            let (mut unit_mult, unit) = match self.resolve_unit(unit, span.span())? {
+                ResolvedUnit::Prefix(items) => {
+                    let possible = items
+                        .into_iter()
+                        .filter_map(|(prefix, unit)| {
+                            if prefix.is_empty() {
+                                Some((ValueMagnitude::new(1), unit))
+                            } else {
+                                ScaleType::all_prefix()
+                                    .find(|&(p, _)| p == prefix)
+                                    .map(|(_, mult)| (mult.clone(), unit))
+                            }
+                        })
+                        .collect_vec();
 
-            let (prefix, real_unit) = self.resolve_unit(unit, span.span())?;
-
-            if real_unit == *MASS_UNIT {
-                unit_mult = ValueMagnitude::div_ok(unit_mult, 1000.into());
-            };
-
-            match prefix {
-                ResolvedPrefix::Prefix("") => (),
-                ResolvedPrefix::Prefix(prefix) => {
-                    match ScaleType::all_prefix().find(|&(p, _)| p == prefix) {
-                        None => {
+                    match possible.len() {
+                        0 => {
                             return Err(RunnerError::InvalidUnit {
                                 unit: unit.to_string(),
                                 location: (span.start..span.end).into(),
                                 src: span.source.clone(),
                             });
                         }
-                        Some((_, mult)) => {
-                            unit_mult = ValueMagnitude::mul_ok(unit_mult, mult.clone());
+                        1 => possible.into_iter().next().unwrap(),
+                        _ => {
+                            return Err(RunnerError::AmbiguousUnit {
+                                unit: unit.to_string(),
+                                location: (span.start..span.end).into(),
+                                src: span.source.clone(),
+                            });
                         }
                     }
                 }
-                ResolvedPrefix::Magnitude(mult) => {
-                    unit_mult = ValueMagnitude::mul_ok(unit_mult, mult);
-                }
-            }
+                ResolvedUnit::Magnitude(value_magnitude, unit) => (value_magnitude, unit),
+            };
+
+            if unit == *MASS_UNIT {
+                unit_mult = ValueMagnitude::div_ok(unit_mult, 1000.into());
+            };
 
             unit_mult = unit_mult.clone().pow(
                 span.span(),
@@ -384,7 +417,7 @@ impl Runner {
                 multiplier = ValueMagnitude::div_ok(multiplier, unit_mult);
             }
 
-            for (dim, dim_scale) in real_unit.dimensions {
+            for (dim, dim_scale) in unit.dimensions {
                 unit_acc.dimensions[dim] += scale * dim_scale;
             }
         }
