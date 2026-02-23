@@ -96,6 +96,18 @@ impl ValueMagnitude {
             return self.0.to_sci_with_options(options).to_string();
         }
 
+        if let Some(exp) = config.neg_exponent
+            && self.0 < malachite::Rational::from(10).pow(exp)
+        {
+            let mut options = ToSciOptions::default();
+            options.set_neg_exp_threshold(exp);
+            if let Some(r) = config.round {
+                options.set_precision(r as u64 + 1);
+            }
+
+            return self.0.to_sci_with_options(options).to_string();
+        }
+
         match self.0.is_integer() {
             true => self.0.to_string(),
             false => {
@@ -113,11 +125,17 @@ impl ValueMagnitude {
 
                 s += ".";
 
+                let zero_base = if int.is_empty() {
+                    base.iter().take_while(|p| **p == 0).count()
+                } else {
+                    0
+                };
+
                 match config.round {
-                    Some(n) if base.len() + repeat.len() > n => {
+                    Some(n) if (base.len() - zero_base) + repeat.len() > n => {
                         s.reserve(n);
 
-                        for d in frac.iter().take(n) {
+                        for d in frac.iter().take(n + zero_base) {
                             write!(&mut s, "{d}").unwrap();
                         }
 

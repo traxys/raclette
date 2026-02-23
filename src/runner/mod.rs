@@ -186,6 +186,7 @@ pub struct Runner {
 pub struct DisplayConfig {
     round: Option<usize>,
     large_threshold: Option<usize>,
+    neg_exponent: Option<i64>,
 }
 
 enum ResolvedUnit<'a> {
@@ -210,6 +211,7 @@ impl Runner {
             display_config: DisplayConfig {
                 round: Some(2),
                 large_threshold: Some(1_000_000_000),
+                neg_exponent: Some(-6),
             },
         }
     }
