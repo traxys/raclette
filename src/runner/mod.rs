@@ -248,14 +248,19 @@ pub struct Runner {
     last: Option<SpannedValue<Value>>,
     values: HashMap<Variable, Value>,
     scales: HashMap<Unit, ScaleType>,
-    default_scale: ScaleType,
+    default_scale: NamedValue<ScaleType>,
     display_config: DisplayConfig,
 }
 
+struct NamedValue<T> {
+    value: T,
+    name: Variable,
+}
+
 pub struct DisplayConfig {
-    round: Option<usize>,
-    large_threshold: Option<usize>,
-    neg_exponent: Option<i64>,
+    round: NamedValue<Option<usize>>,
+    large_threshold: NamedValue<Option<usize>>,
+    neg_exponent: NamedValue<Option<i64>>,
 }
 
 fn atom_or<V, F>(v: Option<V>, f: F) -> Value
@@ -336,6 +341,11 @@ fn eval_literal(lit: &ast::Literal) -> Value {
     }
 }
 
+enum VarSet {
+    Base,
+    Config,
+}
+
 impl Runner {
     pub fn new() -> Self {
         let mut values = HashMap::new();
@@ -350,12 +360,61 @@ impl Runner {
             last: None,
             values,
             scales,
-            default_scale: ScaleType::Metric,
-            display_config: DisplayConfig {
-                round: Some(2),
-                large_threshold: Some(1_000_000_000),
-                neg_exponent: Some(-6),
+            default_scale: NamedValue {
+                value: ScaleType::Metric,
+                name: vec!["default", "scale"].into(),
             },
+            display_config: DisplayConfig {
+                round: NamedValue {
+                    value: Some(2),
+                    name: vec!["round"].into(),
+                },
+                large_threshold: NamedValue {
+                    value: Some(1_000_000_000),
+                    name: vec!["large", "threshold"].into(),
+                },
+                neg_exponent: NamedValue {
+                    value: Some(-6),
+                    name: vec!["negative", "exponent"].into(),
+                },
+            },
+        }
+    }
+
+    fn varset_children(&self, varset: &VarSet) -> Vec<Variable> {
+        match varset {
+            VarSet::Base => todo!(),
+            VarSet::Config => vec![
+                self.default_scale.name.clone(),
+                self.display_config.round.name.clone(),
+                self.display_config.large_threshold.name.clone(),
+                self.display_config.neg_exponent.name.clone(),
+            ],
+        }
+    }
+
+    fn raw_resolve_varset(&self, set: &VarSet, name: &Variable) -> Option<Value> {
+        match set {
+            VarSet::Base => self.values.get(name).cloned(),
+            VarSet::Config => {
+                if &self.default_scale.name == name {
+                    Some(self.default_scale.value.atom())
+                } else if &self.display_config.round.name == name {
+                    Some(atom_int_or(
+                        self.display_config.round.value.map(|n| n as i128),
+                    ))
+                } else if &self.display_config.large_threshold.name == name {
+                    Some(atom_int_or(
+                        self.display_config.large_threshold.value.map(|n| n as i128),
+                    ))
+                } else if &self.display_config.neg_exponent.name == name {
+                    Some(atom_int_or(
+                        self.display_config.neg_exponent.value.map(|n| n as i128),
+                    ))
+                } else {
+                    None
+                }
+            }
         }
     }
 
@@ -365,28 +424,19 @@ impl Runner {
             Value::Str(s) => s,
             Value::Atom(a) => format!(":{a}"),
             Value::Bool(v) => v.to_string(),
-            Value::Config => {
+            v @ Value::Config => {
                 let mut value = String::new();
-                value += &format!(
-                    "default_scale: {}\n",
-                    self.display_value(self.default_scale.atom())
-                );
-                value += &format!(
-                    "round: {}\n",
-                    self.display_value(atom_int_or(self.display_config.round.map(|n| n as i128)))
-                );
-                value += &format!(
-                    "large_threshold: {}\n",
-                    self.display_value(atom_int_or(
-                        self.display_config.large_threshold.map(|n| n as i128)
-                    ))
-                );
-                value += &format!(
-                    "neg_exponent: {}",
-                    self.display_value(atom_int_or(
-                        self.display_config.neg_exponent.map(|n| n as i128)
-                    ))
-                );
+
+                let varset = v.to_varset();
+                for name in self.varset_children(&varset) {
+                    if !value.is_empty() {
+                        value.push('\n');
+                    }
+
+                    let child = self.raw_resolve_varset(&varset, &name).unwrap();
+
+                    value += &format!("{}: {}", name, self.display_value(child))
+                }
 
                 value
             }
@@ -460,7 +510,7 @@ impl Runner {
                             &unit,
                             self.scales
                                 .get(&num_unit)
-                                .unwrap_or(&self.default_scale)
+                                .unwrap_or(&self.default_scale.value)
                                 .steps(),
                             &self.display_config,
                         )
@@ -475,7 +525,7 @@ impl Runner {
                         known,
                         self.scales
                             .get(&unit)
-                            .unwrap_or(&self.default_scale)
+                            .unwrap_or(&self.default_scale.value)
                             .steps(),
                         &self.display_config,
                     )
@@ -583,6 +633,19 @@ impl Runner {
         Ok((multiplier, unit_acc))
     }
 
+    fn resolve_varset(
+        &self,
+        set: &VarSet,
+        name: &SpannedValue<Variable>,
+    ) -> Result<Value, RunnerError> {
+        self.raw_resolve_varset(set, name)
+            .ok_or_else(|| RunnerError::UndefinedIdentifier {
+                name: (**name).clone(),
+                location: (name.start..name.end).into(),
+                src: name.source.clone(),
+            })
+    }
+
     fn eval_expr(&mut self, expr: &ast::Expr) -> Result<Value, miette::Report> {
         match expr {
             ast::Expr::Literal(l) => Ok(eval_literal(l)),
@@ -609,17 +672,17 @@ impl Runner {
                 }
                 .into())
             }
-            ast::Expr::Variable(v) => {
-                let span = v.span();
-                match self.values.get(v) {
-                    None => Err(RunnerError::UndefinedIdentifier {
-                        name: (**v).clone(),
-                        location: (span.start..span.end).into(),
-                        src: span.source,
-                    }
-                    .into()),
-                    Some(v) => Ok((*v).clone()),
+            ast::Expr::Variable(vars) => {
+                let (last, path) = vars.split_last().unwrap();
+
+                let mut varset = VarSet::Base;
+                for p in path {
+                    let span = p.span();
+                    let next = self.resolve_varset(&varset, p)?;
+                    varset = next.spanned(&span).try_into()?;
                 }
+
+                Ok(self.resolve_varset(&varset, last)?)
             }
             ast::Expr::Assign(v, e) => {
                 let expr = self.eval_expr(e)?;

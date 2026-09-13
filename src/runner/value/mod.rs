@@ -5,7 +5,10 @@ mod unit;
 use std::sync::Arc;
 
 use super::{CastError, RunnerError};
-use crate::span::{Span, SpannedValue, SpanningExt};
+use crate::{
+    runner::VarSet,
+    span::{Span, SpannedValue, SpanningExt},
+};
 
 pub use magnitude::ValueMagnitude;
 pub use numeric::NumericValue;
@@ -40,6 +43,13 @@ impl Value {
             Value::Bool(_) => "bool",
             Value::Atom(_) => "atom",
             Value::Config => "config",
+        }
+    }
+
+    pub(super) fn to_varset(&self) -> VarSet {
+        match self {
+            Value::Config => VarSet::Config,
+            _ => panic!("value is not a varset: {self:?}"),
         }
     }
 
@@ -472,6 +482,17 @@ impl TryFrom<SpannedValue<Value>> for NumericValue {
                 ..
             } => Ok(n),
             SpannedValue { value: _, .. } => Err(CastError::from_val(value, "numeric")),
+        }
+    }
+}
+
+impl TryFrom<SpannedValue<Value>> for VarSet {
+    type Error = CastError;
+
+    fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
+        match value.value {
+            Value::Config => Ok(value.value.to_varset()),
+            _ => Err(CastError::from_val(value, "map")),
         }
     }
 }

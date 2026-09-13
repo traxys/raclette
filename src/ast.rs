@@ -18,7 +18,7 @@ pub enum TokenError {
     #[error("Float could not be parsed")]
     ParseFloat(#[from] ParseFloatError),
     #[error("Invalid escape sequence {0}")]
-    InvalidEscape(char)
+    InvalidEscape(char),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -233,6 +233,21 @@ impl std::fmt::Debug for Variable {
     }
 }
 
+impl std::fmt::Display for Variable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut first = true;
+        for word in &self.0 {
+            if !first {
+                write!(f, " ")?;
+            }
+            first = false;
+            write!(f, "{word}")?;
+        }
+
+        Ok(())
+    }
+}
+
 pub enum Literal {
     Number(i128),
     Decimal(DecimalLiteral),
@@ -398,7 +413,7 @@ impl std::fmt::Debug for DimensionedExpr {
 pub enum Expr {
     Dimensioned(Box<SpannedValue<DimensionedExpr>>),
     Literal(SpannedValue<Literal>),
-    Variable(SpannedValue<Variable>),
+    Variable(Vec<SpannedValue<Variable>>),
     Assign(SpannedValue<Variable>, Box<SpannedValue<Expr>>),
     BinOp(SpannedValue<BinOp>),
     Call(SpannedValue<Call>),
@@ -410,7 +425,7 @@ impl std::fmt::Debug for Expr {
         match self {
             Self::Dimensioned(d) => d.fmt(f),
             Self::Literal(arg0) => write!(f, "{:?}", **arg0),
-            Self::Variable(arg0) => f.debug_tuple("&").field(&**arg0).finish(),
+            Self::Variable(arg0) => f.debug_tuple("&").field(&arg0).finish(),
             Self::Assign(arg0, arg1) => write!(f, "{:?} = ({:?})", **arg0, ***arg1),
             Self::BinOp(arg0) => write!(f, "({:?})", arg0),
             Self::Call(arg0) => write!(f, "{arg0:?}"),

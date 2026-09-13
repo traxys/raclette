@@ -78,7 +78,7 @@ Spn<T>: SpannedValue<T> = {
     }
 };
 
-Variable: Variable = ident+ => Variable(<>);
+Name: Variable = ident+ => Variable(<>);
 SpnBox<T>: Box<SpannedValue<T>> = Spn<T> => Box::new(<>);
 Comma<T>: Vec<T> = {
     <mut v:(<T> ",")*> <e:T?> => match e {
@@ -104,11 +104,11 @@ InputStatementInner: InputStatement = {
 CommandValue: SpannedValue<Expr> = "=" <Spn<Expr>> => <>;
 
 Function: Function = {
-	Spn<Variable> => Function::Ref(<>),
+	Spn<Name> => Function::Ref(<>),
 };
 
 pub Expr: Expr = {
-	<Spn<Variable>> "=" <SpnBox<Expr>> => Expr::Assign(<>),
+	<Spn<Name>> "=" <SpnBox<Expr>> => Expr::Assign(<>),
 	ExprPipe => <>,
 };
 
@@ -265,9 +265,16 @@ DimensionedExpr: DimensionedExpr = {
 	"(" <DimensionedCast> ")" => <>,
 };
 
+VariableChain: Vec<SpannedValue<Variable>> = {
+    <mut v:(<Spn<Name>> ".")*> <e:Spn<Name>> => {
+        v.push(e);
+        v
+    }
+};
+
 ExprLiteral: Expr = {
 	LiteralExpr => <>,
-	Spn<Variable> => Expr::Variable(<>),
+	VariableChain => Expr::Variable(<>),
 	SpnBox<DimensionedExpr> => Expr::Dimensioned(<>),
 	Spn<Call> => Expr::Call(<>),
 	"(" <Expr> ")" => <>,
