@@ -23,6 +23,7 @@ pub enum Dimension {
 
     // Discrete quantities
     Message,
+    Person,
 }
 
 impl Display for Dimension {
@@ -33,6 +34,7 @@ impl Display for Dimension {
             Dimension::Time => write!(f, "s"),
             Dimension::Mass => write!(f, "kg"),
             Dimension::Message => write!(f, "msg"),
+            Dimension::Person => write!(f, "person"),
         }
     }
 }
@@ -374,6 +376,10 @@ pub static KNOWN_UNITS: Lazy<HashMap<Unit, &'static str>> = Lazy::new(|| {
     let mut msg = Unit::dimensionless();
     msg.dimensions[Message] += 1;
     units.insert(msg, "msg");
+
+    let mut person = Unit::dimensionless();
+    person.dimensions[Person] += 1;
+    units.insert(person, "person");
 
     units.insert(*BYTE_UNIT, "B");
 
