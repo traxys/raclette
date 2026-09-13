@@ -428,7 +428,16 @@ impl Runner {
             Value::Str(s) => s,
             Value::Atom(a) => format!(":{a}"),
             Value::Bool(v) => v.to_string(),
-            Value::Func(_) => "<...>".to_string(),
+            Value::Func(f) => {
+                let mut output = String::new();
+                for arg in f.arguments() {
+                    if !output.is_empty() {
+                        output.push(',');
+                    }
+                    output.push_str(arg);
+                }
+                format!("{output} :-> value")
+            },
             v @ (Value::Config | Value::Functions) => {
                 let mut value = String::new();
 

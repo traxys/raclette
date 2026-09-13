@@ -36,8 +36,11 @@ pub trait ValueFn: Debug {
 
         self.invoke_inner(runner, call_site, args)
     }
+    fn arity(&self) -> usize {
+        self.arguments().len()
+    }
 
-    fn arity(&self) -> usize;
+    fn arguments(&self) -> &'static [&'static str];
     fn invoke_inner(
         &self,
         runner: &Runner,
@@ -53,8 +56,8 @@ impl<T> ValueFn for VFn1<T>
 where
     T: ValueCast,
 {
-    fn arity(&self) -> usize {
-        1
+    fn arguments(&self) -> &'static [&'static str] {
+        &[T::NAME]
     }
 
     fn invoke_inner(
@@ -73,8 +76,8 @@ impl<T> ValueFn for RunVFn1<T>
 where
     T: ValueCast,
 {
-    fn arity(&self) -> usize {
-        1
+    fn arguments(&self) -> &'static [&'static str] {
+        &[T::NAME]
     }
 
     fn invoke_inner(
