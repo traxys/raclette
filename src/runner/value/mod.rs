@@ -6,7 +6,10 @@ use std::sync::Arc;
 
 use super::{CastError, RunnerError};
 use crate::{
-    runner::{VarSet, functions::Function},
+    runner::{
+        VarSet,
+        functions::{self, Function},
+    },
     span::{Span, SpannedValue, SpanningExt},
 };
 
@@ -521,6 +524,17 @@ impl ValueCast for VarSet {
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
         match v.value {
             Value::Config | Value::Functions | Value::Units => Ok(v.value.to_varset()),
+            _ => Err(v.raise_cast::<Self>()),
+        }
+    }
+}
+
+impl ValueCast for functions::Function {
+    const NAME: &'static str = "function";
+
+    fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
+        match v.value {
+            Value::Func(f) => Ok(f),
             _ => Err(v.raise_cast::<Self>()),
         }
     }

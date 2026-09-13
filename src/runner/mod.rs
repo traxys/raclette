@@ -485,13 +485,10 @@ impl Runner {
         func: &ast::Function,
     ) -> Result<&(dyn ValueFn + Send + Sync), RunnerError> {
         match func {
-            ast::Function::Ref(name) => functions::FUNCTIONS.get(name).copied().ok_or_else(|| {
-                RunnerError::UndefinedIdentifier {
-                    name: name.value.clone(),
-                    location: (name.start..name.end).into(),
-                    src: name.source.clone(),
-                }
-            }),
+            ast::Function::Ref(name) => self
+                .resolve_varset(&VarSet::Functions, name)?
+                .spanned(&name.span())
+                .cast(),
         }
     }
 
