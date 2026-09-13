@@ -345,6 +345,7 @@ enum VarSet {
     Base,
     Config,
     Functions,
+    Units,
 }
 
 impl Runner {
@@ -352,6 +353,7 @@ impl Runner {
         let mut values = HashMap::new();
         values.insert(vec!["config"].into(), Value::Config);
         values.insert(vec!["functions"].into(), Value::Functions);
+        values.insert(vec!["units"].into(), Value::Units);
 
         let mut scales = HashMap::new();
         scales.insert(*TIME_UNIT, ScaleType::TimeMetric);
@@ -393,6 +395,7 @@ impl Runner {
                 self.display_config.neg_exponent.name.clone(),
             ],
             VarSet::Functions => functions::FUNCTIONS.keys().cloned().collect(),
+            VarSet::Units => KNOWN_UNITS.values().map(|&n| vec![n].into()).collect(),
         }
     }
 
@@ -419,12 +422,28 @@ impl Runner {
                 }
             }
             VarSet::Functions => functions::FUNCTIONS.get(name).map(|&a| Value::Func(a)),
+            VarSet::Units => {
+                if name.0.len() != 1 {
+                    return None;
+                }
+
+                for (dimension, unit) in KNOWN_UNITS.iter() {
+                    if **unit == *name.0[0] {
+                        return Some(Value::Numeric(NumericValue {
+                            magnitude: 1.into(),
+                            unit: *dimension,
+                        }));
+                    }
+                }
+
+                None
+            }
         }
     }
 
-    pub fn display_value(&self, value: Value) -> String {
+    pub fn display_value(&self, value: Value, render_units: bool) -> String {
         match value {
-            Value::Numeric(n) => self.display_numeric_value(n),
+            Value::Numeric(n) => self.display_numeric_value(n, render_units),
             Value::Str(s) => s,
             Value::Atom(a) => format!(":{a}"),
             Value::Bool(v) => v.to_string(),
@@ -437,8 +456,8 @@ impl Runner {
                     output.push_str(arg);
                 }
                 format!("{output} :-> value")
-            },
-            v @ (Value::Config | Value::Functions) => {
+            }
+            v @ (Value::Config | Value::Functions | Value::Units) => {
                 let mut value = String::new();
 
                 let varset = v.to_varset();
@@ -449,7 +468,11 @@ impl Runner {
 
                     let child = self.raw_resolve_varset(&varset, &name).unwrap();
 
-                    value += &format!("{}: {}", name, self.display_value(child))
+                    value += &format!(
+                        "{}: {}",
+                        name,
+                        self.display_value(child, !matches!(v, Value::Units))
+                    )
                 }
 
                 value
@@ -472,12 +495,24 @@ impl Runner {
         }
     }
 
-    fn display_numeric_value(&self, value: NumericValue) -> String {
+    fn display_numeric_value(&self, value: NumericValue, render_units: bool) -> String {
         if value.unit.is_dimensionless() {
             value.magnitude.to_string(&self.display_config)
         } else {
             match KNOWN_UNITS.get(&value.unit) {
-                None => {
+                Some(known) if render_units => {
+                    let unit = value.unit;
+                    render_with_unit(
+                        value,
+                        known,
+                        self.scales
+                            .get(&unit)
+                            .unwrap_or(&self.default_scale.value)
+                            .steps(),
+                        &self.display_config,
+                    )
+                }
+                _ => {
                     let raw_magnitude = value.magnitude.to_string(&self.display_config);
 
                     let (num_unit, denum_unit) = value
@@ -531,18 +566,6 @@ impl Runner {
                     } else {
                         format!("{raw_magnitude} {unit}")
                     }
-                }
-                Some(known) => {
-                    let unit = value.unit;
-                    render_with_unit(
-                        value,
-                        known,
-                        self.scales
-                            .get(&unit)
-                            .unwrap_or(&self.default_scale.value)
-                            .steps(),
-                        &self.display_config,
-                    )
                 }
             }
         }

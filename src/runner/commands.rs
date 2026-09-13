@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use miette::SourceSpan;
 use once_cell::sync::Lazy;
 
-use crate::{runner::value::KNOWN_UNITS, span::MaybeNamed};
+use crate::span::MaybeNamed;
 
 use super::{NumericValue, RunnerError, ScaleType, Value, value::BYTE_UNIT};
 
@@ -33,7 +33,7 @@ impl ParamRunnerCommand for Round {
             }
             v => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(v),
+                    val: state.display_value(v, true),
                     location,
                     src,
                 });
@@ -69,7 +69,7 @@ impl ParamRunnerCommand for LargeThreshold {
             }
             v => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(v),
+                    val: state.display_value(v, true),
                     location,
                     src,
                 });
@@ -105,7 +105,7 @@ impl ParamRunnerCommand for ByteScale {
             }
             v => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(v),
+                    val: state.display_value(v, true),
                     location,
                     src,
                 });
@@ -137,7 +137,7 @@ impl ParamRunnerCommand for DefaultScale {
             Value::Atom(v) if &*v == "metric" => state.default_scale.value = ScaleType::Metric,
             v => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(v),
+                    val: state.display_value(v, true),
                     location,
                     src,
                 });
@@ -176,32 +176,12 @@ impl RunnerCommand for Help {
             }
             Some(v) => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(v),
+                    val: state.display_value(v, true),
                     location,
                     src,
                 });
             }
         }
-        Ok(())
-    }
-}
-
-struct Units;
-impl NoParamCommand for Units {
-    fn name(&self) -> &'static str {
-        "units"
-    }
-
-    fn help(&self) -> &'static str {
-        "Display a list of known units"
-    }
-
-    fn run(&self, _: &mut super::Runner) -> Result<(), RunnerError> {
-        println!("Units:");
-        for (dimensions, name) in KNOWN_UNITS.iter() {
-            println!(" - {} ({})", name, dimensions.raw_display());
-        }
-
         Ok(())
     }
 }
@@ -214,7 +194,6 @@ pub(super) static COMMANDS: Lazy<HashMap<&'static str, Box<dyn RunnerCommand + S
             Box::new(PR(ByteScale)),
             Box::new(PR(DefaultScale)),
             Box::new(Help),
-            Box::new(NP(Units)),
         ];
         let mut commands = HashMap::new();
 
@@ -272,41 +251,6 @@ impl<T: ParamRunnerCommand> RunnerCommand for PR<T> {
         match value {
             Some(v) => self.0.run(state, v, location, src),
             None => Err(RunnerError::MissingCommandValue { location, src }),
-        }
-    }
-}
-
-trait NoParamCommand {
-    fn name(&self) -> &'static str;
-    fn help(&self) -> &'static str;
-
-    fn run(&self, state: &mut super::Runner) -> Result<(), RunnerError>;
-}
-
-struct NP<T>(T);
-impl<T: NoParamCommand> RunnerCommand for NP<T> {
-    fn name(&self) -> &'static str {
-        self.0.name()
-    }
-
-    fn help(&self) -> &'static str {
-        self.0.help()
-    }
-
-    fn run(
-        &self,
-        state: &mut super::Runner,
-        value: Option<Value>,
-        location: SourceSpan,
-        src: MaybeNamed,
-    ) -> Result<(), RunnerError> {
-        match value {
-            Some(v) => Err(RunnerError::InvalidCommandValue {
-                val: state.display_value(v),
-                location,
-                src,
-            }),
-            None => self.0.run(state),
         }
     }
 }

@@ -24,6 +24,7 @@ pub enum Value {
     Atom(Arc<str>),
     Config,
     Functions,
+    Units,
     Func(Function),
 }
 
@@ -36,7 +37,8 @@ impl Value {
             | Value::Bool(_)
             | Value::Config
             | Value::Functions
-            | Value::Func(_) => false,
+            | Value::Func(_)
+            | Value::Units => false,
         }
     }
 
@@ -49,6 +51,7 @@ impl Value {
             Value::Config => "config",
             Value::Functions => "functions",
             Value::Func(_) => "function",
+            Value::Units => "units",
         }
     }
 
@@ -56,6 +59,7 @@ impl Value {
         match self {
             Value::Config => VarSet::Config,
             Value::Functions => VarSet::Functions,
+            Value::Units => VarSet::Units,
             _ => panic!("value is not a varset: {self:?}"),
         }
     }
@@ -516,7 +520,7 @@ impl ValueCast for VarSet {
 
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
         match v.value {
-            Value::Config | Value::Functions => Ok(v.value.to_varset()),
+            Value::Config | Value::Functions | Value::Units => Ok(v.value.to_varset()),
             _ => Err(v.raise_cast::<Self>()),
         }
     }
