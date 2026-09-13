@@ -363,13 +363,13 @@ impl std::fmt::Debug for Call {
 }
 
 pub enum Function {
-    Ref(SpannedValue<Variable>),
+    Ref(SpannedValue<Vec<SpannedValue<Variable>>>),
 }
 
 impl std::fmt::Debug for Function {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Function::Ref(a) => write!(f, "{:?}", **a),
+            Function::Ref(a) => write!(f, "{:?}", a),
         }
     }
 }

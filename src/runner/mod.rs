@@ -354,6 +354,9 @@ impl Runner {
         values.insert(vec!["config"].into(), Value::Config);
         values.insert(vec!["functions"].into(), Value::Functions);
         values.insert(vec!["units"].into(), Value::Units);
+        for (name, &func) in functions::FUNCTIONS.iter() {
+            values.insert(name.clone(), Value::Func(func));
+        }
 
         let mut scales = HashMap::new();
         scales.insert(*TIME_UNIT, ScaleType::TimeMetric);
@@ -485,10 +488,7 @@ impl Runner {
         func: &ast::Function,
     ) -> Result<&(dyn ValueFn + Send + Sync), RunnerError> {
         match func {
-            ast::Function::Ref(name) => self
-                .resolve_varset(&VarSet::Functions, name)?
-                .spanned(&name.span())
-                .cast(),
+            ast::Function::Ref(name) => self.resolve_path(name)?.spanned(&name.span()).cast(),
         }
     }
 
@@ -680,6 +680,19 @@ impl Runner {
             })
     }
 
+    fn resolve_path(&self, path: &[SpannedValue<Variable>]) -> Result<Value, RunnerError> {
+        let (last, path) = path.split_last().unwrap();
+
+        let mut varset = VarSet::Base;
+        for p in path {
+            let span = p.span();
+            let next = self.resolve_varset(&varset, p)?;
+            varset = next.spanned(&span).cast()?;
+        }
+
+        self.resolve_varset(&varset, last)
+    }
+
     fn eval_expr(&mut self, expr: &ast::Expr) -> Result<Value, miette::Report> {
         match expr {
             ast::Expr::Literal(l) => Ok(eval_literal(l)),
@@ -704,18 +717,7 @@ impl Runner {
                 }
                 .into())
             }
-            ast::Expr::Variable(vars) => {
-                let (last, path) = vars.split_last().unwrap();
-
-                let mut varset = VarSet::Base;
-                for p in path {
-                    let span = p.span();
-                    let next = self.resolve_varset(&varset, p)?;
-                    varset = next.spanned(&span).cast()?;
-                }
-
-                Ok(self.resolve_varset(&varset, last)?)
-            }
+            ast::Expr::Variable(vars) => Ok(self.resolve_path(vars)?),
             ast::Expr::Assign(v, e) => {
                 let expr = self.eval_expr(e)?;
                 self.values.insert((**v).clone(), expr.clone());

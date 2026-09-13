@@ -104,7 +104,7 @@ InputStatementInner: InputStatement = {
 CommandValue: SpannedValue<Expr> = "=" <Spn<Expr>> => <>;
 
 Function: Function = {
-	Spn<Name> => Function::Ref(<>),
+	Spn<VariableChain> => Function::Ref(<>),
 };
 
 pub Expr: Expr = {
