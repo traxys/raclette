@@ -655,10 +655,8 @@ impl Runner {
         match expr {
             ast::Expr::Literal(l) => Ok(eval_literal(l)),
             ast::Expr::Dimensioned(d) => {
-                let value: NumericValue = self
-                    .eval_expr(&d.expr)?
-                    .spanned(&d.expr.span())
-                    .try_into()?;
+                let value: NumericValue =
+                    self.eval_expr(&d.expr)?.spanned(&d.expr.span()).cast()?;
                 if !value.unit.is_dimensionless() {
                     return Err(CastError::from_val(
                         Value::Numeric(value).spanned(&d.expr.span()),
@@ -684,7 +682,7 @@ impl Runner {
                 for p in path {
                     let span = p.span();
                     let next = self.resolve_varset(&varset, p)?;
-                    varset = next.spanned(&span).try_into()?;
+                    varset = next.spanned(&span).cast()?;
                 }
 
                 Ok(self.resolve_varset(&varset, last)?)
@@ -783,14 +781,14 @@ impl Runner {
                 !Value::eq(b.span(), lhs, rhs).wrap_err("could not check equality")?,
             )),
             ast::BinOpKind::LogicalOr => {
-                let lhs = lhs.try_into()?;
-                let rhs = rhs.try_into()?;
+                let lhs = lhs.cast()?;
+                let rhs = rhs.cast()?;
 
                 Ok(Value::Bool(lhs || rhs))
             }
             ast::BinOpKind::LogicalAnd => {
-                let lhs = lhs.try_into()?;
-                let rhs = rhs.try_into()?;
+                let lhs = lhs.cast()?;
+                let rhs = rhs.cast()?;
 
                 Ok(Value::Bool(lhs && rhs))
             }

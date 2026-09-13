@@ -6,7 +6,7 @@ use once_cell::sync::Lazy;
 use crate::{
     ParseDiagnosticExt,
     ast::Variable,
-    runner::{BoxedDiagnostic, Runner, RunnerParseError, eval_literal},
+    runner::{BoxedDiagnostic, Runner, RunnerParseError, eval_literal, value::ValueCast},
     span::{Span, SpannedValue, SpanningExt},
 };
 
@@ -52,7 +52,7 @@ type RunVFn1<T> = fn(&Runner, T) -> ValueResult;
 
 impl<T> ValueFn for VFn1<T>
 where
-    T: TryFrom<SpannedValue<Value>, Error = CastError>,
+    T: ValueCast,
 {
     fn arity(&self) -> usize {
         1
@@ -66,13 +66,13 @@ where
     ) -> ValueResult {
         let (arg,) = args.into_iter().collect_tuple().unwrap();
 
-        (self)(arg.try_into()?)
+        (self)(arg.cast()?)
     }
 }
 
 impl<T> ValueFn for RunVFn1<T>
 where
-    T: TryFrom<SpannedValue<Value>, Error = CastError>,
+    T: ValueCast,
 {
     fn arity(&self) -> usize {
         1
@@ -86,13 +86,13 @@ where
     ) -> ValueResult {
         let (arg,) = args.into_iter().collect_tuple().unwrap();
 
-        (self)(runner, arg.try_into()?)
+        (self)(runner, arg.cast()?)
     }
 }
 
 impl<T> ValueFn for SpnVFn1<T>
 where
-    T: TryFrom<SpannedValue<Value>, Error = CastError>,
+    T: ValueCast,
 {
     fn arity(&self) -> usize {
         1
@@ -106,7 +106,7 @@ where
     ) -> ValueResult {
         let (arg,) = args.into_iter().collect_tuple().unwrap();
 
-        (self)(call_site, arg.try_into()?)
+        (self)(call_site, arg.cast()?)
     }
 }
 

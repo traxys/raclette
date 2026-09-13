@@ -419,56 +419,77 @@ impl Value {
     }
 }
 
+impl SpannedValue<Value> {
+    fn raise_cast<S>(self) -> RunnerError
+    where
+        S: ValueCast,
+    {
+        CastError::from_val(self, S::NAME).into()
+    }
+
+    pub(crate) fn cast<S: ValueCast>(self) -> Result<S, RunnerError> {
+        S::convert(self)
+    }
+}
+
 impl From<NumericValue> for Value {
     fn from(value: NumericValue) -> Self {
         Self::Numeric(value)
     }
 }
 
-impl TryFrom<SpannedValue<Value>> for bool {
-    type Error = CastError;
+pub(crate) trait ValueCast
+where
+    Self: Sized,
+{
+    const NAME: &'static str;
 
-    fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
-        match value.value {
+    fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError>;
+}
+
+impl ValueCast for bool {
+    const NAME: &'static str = "bool";
+
+    fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
+        match v.value {
             Value::Bool(b) => Ok(b),
-            _ => Err(CastError::from_val(value, "bool")),
+            _ => Err(v.raise_cast::<Self>()),
         }
     }
 }
 
-impl TryFrom<SpannedValue<Value>> for String {
-    type Error = CastError;
+impl ValueCast for SpannedValue<String> {
+    const NAME: &'static str = "string";
 
-    fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
-        let s: SpannedValue<String> = value.try_into()?;
-        Ok(s.value)
-    }
-}
-
-impl TryFrom<SpannedValue<Value>> for SpannedValue<String> {
-    type Error = CastError;
-
-    fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
-        let span = value.span();
-        match value.value {
+    fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
+        let span = v.span();
+        match v.value {
             Value::Str(s) => Ok(s.spanned(&span)),
-            _ => Err(CastError::from_val(value, "string")),
+            _ => Err(v.raise_cast::<Self>()),
         }
+    }
+}
+
+impl ValueCast for String {
+    const NAME: &'static str = <SpannedValue<String> as ValueCast>::NAME;
+
+    fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
+        Ok(<SpannedValue<String> as ValueCast>::convert(v)?.value)
     }
 }
 
 macro_rules! int_from_value {
     ($ty:ty) => {
-        impl TryFrom<SpannedValue<Value>> for $ty {
-            type Error = CastError;
+        impl ValueCast for $ty {
+            const NAME: &'static str = stringify!($ty);
 
-            fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
+            fn convert(value: SpannedValue<Value>) -> Result<Self, RunnerError> {
                 let span = value.span();
                 match value.value {
                     Value::Numeric(numeric_value) => {
                         Ok(numeric_value.magnitude.spanned(&span).try_into()?)
                     }
-                    _ => Err(CastError::from_val(value, stringify!(ty))),
+                    _ => Err(value.raise_cast::<Self>()),
                 }
             }
         }
@@ -479,27 +500,24 @@ int_from_value!(u64);
 int_from_value!(u32);
 int_from_value!(i128);
 
-impl TryFrom<SpannedValue<Value>> for NumericValue {
-    type Error = CastError;
+impl ValueCast for NumericValue {
+    const NAME: &'static str = "numeric";
 
-    fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
-        match value {
-            SpannedValue {
-                value: Value::Numeric(n),
-                ..
-            } => Ok(n),
-            SpannedValue { value: _, .. } => Err(CastError::from_val(value, "numeric")),
+    fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
+        match v.value {
+            Value::Numeric(n) => Ok(n),
+            _ => Err(v.raise_cast::<Self>()),
         }
     }
 }
 
-impl TryFrom<SpannedValue<Value>> for VarSet {
-    type Error = CastError;
+impl ValueCast for VarSet {
+    const NAME: &'static str = "map";
 
-    fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
-        match value.value {
-            Value::Config | Value::Functions => Ok(value.value.to_varset()),
-            _ => Err(CastError::from_val(value, "map")),
+    fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
+        match v.value {
+            Value::Config | Value::Functions => Ok(v.value.to_varset()),
+            _ => Err(v.raise_cast::<Self>()),
         }
     }
 }
