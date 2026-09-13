@@ -10,8 +10,7 @@ use crate::span::{Span, SpannedValue, SpanningExt};
 pub use magnitude::ValueMagnitude;
 pub use numeric::NumericValue;
 pub use unit::{
-    BYTE_UNIT, KNOWN_UNITS, MASS_UNIT, ScaleRender, ScaleStep, ScaleType, TIME_UNIT,
-    Unit,
+    BYTE_UNIT, KNOWN_UNITS, MASS_UNIT, ScaleRender, ScaleStep, ScaleType, TIME_UNIT, Unit,
 };
 
 #[derive(Debug, Clone)]
@@ -421,8 +420,18 @@ impl TryFrom<SpannedValue<Value>> for String {
     type Error = CastError;
 
     fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
+        let s: SpannedValue<String> = value.try_into()?;
+        Ok(s.value)
+    }
+}
+
+impl TryFrom<SpannedValue<Value>> for SpannedValue<String> {
+    type Error = CastError;
+
+    fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
+        let span = value.span();
         match value.value {
-            Value::Str(s) => Ok(s),
+            Value::Str(s) => Ok(s.spanned(&span)),
             _ => Err(CastError::from_val(value, "string")),
         }
     }

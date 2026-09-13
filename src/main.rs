@@ -24,7 +24,7 @@ mod runner;
 mod span;
 
 #[derive(thiserror::Error, Debug, Diagnostic)]
-enum ParseError {
+pub enum ParseError {
     #[diagnostic(code(calc::parsing::invalid_token))]
     #[error("Token is invalid")]
     Invalid {

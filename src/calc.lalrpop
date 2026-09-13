@@ -273,6 +273,11 @@ ExprLiteral: Expr = {
 	"(" <Expr> ")" => <>,
 };
 
+pub DimensionedLiteral: (SpannedValue<Literal>, Vec<SpannedValue<(Arc<str>, i64)>>) = {
+	<expr:Spn<Literal>> <unit:ManyUnit> => (expr, unit),
+	<expr:Spn<Literal>> => (expr, Vec::new()),
+};
+
 Literal: Literal = {
 	num => Literal::Number(<>),
 	decimal => Literal::Decimal(<>),

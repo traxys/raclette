@@ -3,11 +3,16 @@ use std::{collections::HashMap, sync::Arc};
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 
-use crate::{ast::Variable, span::SpannedValue};
+use crate::{
+    ParseDiagnosticExt,
+    ast::Variable,
+    runner::{BoxedDiagnostic, Runner, RunnerParseError, eval_literal},
+    span::{Span, SpannedValue, SpanningExt},
+};
 
 use super::{
-    value::{NumericValue, Unit, ValueMagnitude},
     CastError, RunnerError, Value,
+    value::{NumericValue, Unit, ValueMagnitude},
 };
 
 type ValueResult = Result<Value, RunnerError>;
@@ -15,6 +20,7 @@ type ValueResult = Result<Value, RunnerError>;
 pub trait ValueFn {
     fn invoke(
         &self,
+        runner: &Runner,
         callee: SpannedValue<()>,
         call_site: SpannedValue<()>,
         args: Vec<SpannedValue<Value>>,
@@ -28,12 +34,13 @@ pub trait ValueFn {
             });
         }
 
-        self.invoke_inner(call_site, args)
+        self.invoke_inner(runner, call_site, args)
     }
 
     fn arity(&self) -> usize;
     fn invoke_inner(
         &self,
+        runner: &Runner,
         call_site: SpannedValue<()>,
         args: Vec<SpannedValue<Value>>,
     ) -> ValueResult;
@@ -41,6 +48,7 @@ pub trait ValueFn {
 
 type VFn1<T> = fn(T) -> ValueResult;
 type SpnVFn1<T> = fn(SpannedValue<()>, T) -> ValueResult;
+type RunVFn1<T> = fn(&Runner, T) -> ValueResult;
 
 impl<T> ValueFn for VFn1<T>
 where
@@ -50,10 +58,35 @@ where
         1
     }
 
-    fn invoke_inner(&self, _: SpannedValue<()>, args: Vec<SpannedValue<Value>>) -> ValueResult {
+    fn invoke_inner(
+        &self,
+        _: &Runner,
+        _: SpannedValue<()>,
+        args: Vec<SpannedValue<Value>>,
+    ) -> ValueResult {
         let (arg,) = args.into_iter().collect_tuple().unwrap();
 
         (self)(arg.try_into()?)
+    }
+}
+
+impl<T> ValueFn for RunVFn1<T>
+where
+    T: TryFrom<SpannedValue<Value>, Error = CastError>,
+{
+    fn arity(&self) -> usize {
+        1
+    }
+
+    fn invoke_inner(
+        &self,
+        runner: &Runner,
+        _: SpannedValue<()>,
+        args: Vec<SpannedValue<Value>>,
+    ) -> ValueResult {
+        let (arg,) = args.into_iter().collect_tuple().unwrap();
+
+        (self)(runner, arg.try_into()?)
     }
 }
 
@@ -67,6 +100,7 @@ where
 
     fn invoke_inner(
         &self,
+        _: &Runner,
         call_site: SpannedValue<()>,
         args: Vec<SpannedValue<Value>>,
     ) -> ValueResult {
@@ -101,6 +135,7 @@ pub static FUNCTIONS: Lazy<HashMap<Variable, &'static (dyn ValueFn + Sync + Send
         );
 
         funcs.insert(vec!["len"].into(), &(length as VFn1<_>));
+        funcs.insert(vec!["parse"].into(), &(parse as RunVFn1<_>));
 
         funcs
     });
@@ -139,4 +174,59 @@ fn length(v: String) -> ValueResult {
         magnitude: ValueMagnitude::new(v.len() as _),
         unit: Unit::dimensionless(),
     }))
+}
+
+fn parse(runner: &Runner, value: SpannedValue<String>) -> ValueResult {
+    let parser = crate::calc::DimensionedLiteralParser::new();
+
+    let sub_input = value.as_str().into();
+
+    match parser
+        .parse(&sub_input, crate::ast::lexer(&value.value))
+        .into_parse_diagnostic()
+    {
+        Ok((literal, unit)) => {
+            let inner = eval_literal(&literal);
+
+            let literal_span = Span {
+                start: value.start + 1 + literal.start,
+                end: value.start + 1 + literal.end,
+                source: value.source.clone(),
+                value: (),
+            };
+
+            match inner {
+                Value::Numeric(numeric_value) => {
+                    let (multiplied, unit) = runner.resolve_units(&unit)?;
+
+                    Ok(NumericValue {
+                        magnitude: ValueMagnitude::mul(
+                            value.span(),
+                            numeric_value.magnitude.spanned(&literal_span),
+                            multiplied.spanned(&value.span()),
+                        )?,
+                        unit,
+                    }
+                    .into())
+                }
+                v => {
+                    if !unit.is_empty() {
+                        Err(
+                            CastError::from_val(v.spanned(&literal_span), "dimensionless literal")
+                                .into(),
+                        )
+                    } else {
+                        Ok(v)
+                    }
+                }
+            }
+        }
+        Err(error) => Err(RunnerError::ParseError(BoxedDiagnostic(Box::new(
+            RunnerParseError {
+                error,
+                location: (value.start..value.end).into(),
+                src: value.source.clone(),
+            },
+        )))),
+    }
 }

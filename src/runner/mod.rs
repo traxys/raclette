@@ -47,6 +47,72 @@ impl CastError {
 }
 
 #[derive(thiserror::Error, Debug, Diagnostic)]
+#[error("Parsing failure")]
+pub struct RunnerParseError {
+    #[source]
+    #[diagnostic_source]
+    error: crate::ParseError,
+    #[label("this input could not be parsed")]
+    location: SourceSpan,
+    #[source_code]
+    src: MaybeNamed,
+}
+
+pub struct BoxedDiagnostic<T>(Box<T>);
+
+impl<T: std::fmt::Debug> std::fmt::Debug for BoxedDiagnostic<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<T: std::fmt::Display> std::fmt::Display for BoxedDiagnostic<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl<T: std::error::Error> std::error::Error for BoxedDiagnostic<T> {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
+}
+
+impl<T: Diagnostic> Diagnostic for BoxedDiagnostic<T> {
+    fn code<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.0.code()
+    }
+
+    fn severity(&self) -> Option<miette::Severity> {
+        self.0.severity()
+    }
+
+    fn help<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.0.help()
+    }
+
+    fn url<'a>(&'a self) -> Option<Box<dyn std::fmt::Display + 'a>> {
+        self.0.url()
+    }
+
+    fn source_code(&self) -> Option<&dyn miette::SourceCode> {
+        self.0.source_code()
+    }
+
+    fn labels(&self) -> Option<Box<dyn Iterator<Item = miette::LabeledSpan> + '_>> {
+        self.0.labels()
+    }
+
+    fn related<'a>(&'a self) -> Option<Box<dyn Iterator<Item = &'a dyn Diagnostic> + 'a>> {
+        self.0.related()
+    }
+
+    fn diagnostic_source(&self) -> Option<&dyn Diagnostic> {
+        self.0.diagnostic_source()
+    }
+}
+
+#[derive(thiserror::Error, Debug, Diagnostic)]
 pub enum RunnerError {
     #[error("Undefined Identifier: '{name:?}'")]
     UndefinedIdentifier {
@@ -170,6 +236,9 @@ pub enum RunnerError {
         #[source_code]
         src: MaybeNamed,
     },
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    ParseError(BoxedDiagnostic<RunnerParseError>),
     #[error("Could not cast value")]
     #[diagnostic(transparent)]
     Cast(#[from] CastError),
@@ -233,6 +302,22 @@ fn render_with_unit(
 
     let scaled_magnitude = magnitude.to_string(display_config);
     format!("{scaled_magnitude} {unit_part}")
+}
+
+fn eval_literal(lit: &ast::Literal) -> Value {
+    match lit {
+        &ast::Literal::Number(v) => Value::Numeric(NumericValue {
+            magnitude: v.into(),
+            unit: Unit::dimensionless(),
+        }),
+        &ast::Literal::Decimal(literal) => Value::Numeric(NumericValue {
+            magnitude: ValueMagnitude::new_decimal(literal),
+            unit: Unit::dimensionless(),
+        }),
+        ast::Literal::Atom(a) => Value::Atom(a.clone()),
+        &ast::Literal::Bool(b) => Value::Bool(b),
+        ast::Literal::String(s) => Value::Str(s.to_string()),
+    }
 }
 
 impl Runner {
@@ -458,7 +543,7 @@ impl Runner {
 
     fn eval_expr(&mut self, expr: &ast::Expr) -> Result<Value, miette::Report> {
         match expr {
-            ast::Expr::Literal(l) => Ok(self.eval_literal(l)),
+            ast::Expr::Literal(l) => Ok(eval_literal(l)),
             ast::Expr::Dimensioned(d) => {
                 let value: NumericValue = self
                     .eval_expr(&d.expr)?
@@ -511,7 +596,7 @@ impl Runner {
                     })
                     .collect::<Result<_, _>>()?;
                 let f = self.resolve_function(&c.fun)?;
-                f.invoke(c.fun.span(), c.span(), args).map_err(Into::into)
+                f.invoke(self, c.fun.span(), c.span(), args).map_err(Into::into)
             }
         }
     }
@@ -604,22 +689,6 @@ impl Runner {
         }
     }
 
-    fn eval_literal(&mut self, lit: &ast::Literal) -> Value {
-        match lit {
-            &ast::Literal::Number(v) => Value::Numeric(NumericValue {
-                magnitude: v.into(),
-                unit: Unit::dimensionless(),
-            }),
-            &ast::Literal::Decimal(literal) => Value::Numeric(NumericValue {
-                magnitude: ValueMagnitude::new_decimal(literal),
-                unit: Unit::dimensionless(),
-            }),
-            ast::Literal::Atom(a) => Value::Atom(a.clone()),
-            &ast::Literal::Bool(b) => Value::Bool(b),
-            ast::Literal::String(s) => Value::Str(s.to_string())
-        }
-    }
-
     pub fn handle_command(
         &mut self,
         name: SpannedValue<Arc<str>>,
@@ -650,7 +719,7 @@ impl Runner {
                 None => Err(RunnerError::NoStoredValue)?,
                 Some(last) => {
                     let f = self.resolve_function(&func)?;
-                    f.invoke(func.span(), span.clone(), vec![last.clone()])?
+                    f.invoke(self, func.span(), span.clone(), vec![last.clone()])?
                 }
             },
         };
