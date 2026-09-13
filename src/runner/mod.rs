@@ -310,13 +310,21 @@ impl Runner {
                     let numerator = if num_unit.is_dimensionless() {
                         "1".into()
                     } else {
-                        join_units(num_unit)
+                        match KNOWN_UNITS.get(&num_unit) {
+                            Some(u) => u.to_string(),
+                            None => join_units(num_unit),
+                        }
                     };
 
                     let unit = if denum_unit.is_dimensionless() {
                         numerator
                     } else {
-                        numerator + "/" + &join_units(denum_unit)
+                        numerator
+                            + "/"
+                            + &match KNOWN_UNITS.get(&(Unit::dimensionless() / denum_unit)) {
+                                Some(u) => u.to_string(),
+                                None => join_units(denum_unit),
+                            }
                     };
 
                     format!("{raw_magnitude} {unit}")
