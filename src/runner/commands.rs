@@ -33,7 +33,7 @@ impl ParamRunnerCommand for Round {
             }
             v => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(v, true),
+                    val: state.display_value(v, true, 0),
                     location,
                     src,
                 });
@@ -69,7 +69,7 @@ impl ParamRunnerCommand for LargeThreshold {
             }
             v => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(v, true),
+                    val: state.display_value(v, true, 0),
                     location,
                     src,
                 });
@@ -105,7 +105,7 @@ impl ParamRunnerCommand for ByteScale {
             }
             v => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(v, true),
+                    val: state.display_value(v, true, 0),
                     location,
                     src,
                 });
@@ -137,7 +137,7 @@ impl ParamRunnerCommand for DefaultScale {
             Value::Atom(v) if &*v == "metric" => state.default_scale.value = ScaleType::Metric,
             v => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(v, true),
+                    val: state.display_value(v, true, 0),
                     location,
                     src,
                 });
@@ -176,7 +176,7 @@ impl RunnerCommand for Help {
             }
             Some(v) => {
                 return Err(RunnerError::InvalidCommandValue {
-                    val: state.display_value(v, true),
+                    val: state.display_value(v, true, 0),
                     location,
                     src,
                 });

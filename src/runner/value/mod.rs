@@ -28,6 +28,7 @@ pub enum Value {
     Config,
     Functions,
     Units,
+    Variables,
     Func(Function),
 }
 
@@ -41,7 +42,8 @@ impl Value {
             | Value::Config
             | Value::Functions
             | Value::Func(_)
-            | Value::Units => false,
+            | Value::Units
+            | Value::Variables => false,
         }
     }
 
@@ -55,6 +57,7 @@ impl Value {
             Value::Functions => "functions",
             Value::Func(_) => "function",
             Value::Units => "units",
+            Value::Variables => "variables",
         }
     }
 
@@ -63,6 +66,7 @@ impl Value {
             Value::Config => VarSet::Config,
             Value::Functions => VarSet::Functions,
             Value::Units => VarSet::Units,
+            Value::Variables => VarSet::Base,
             _ => panic!("value is not a varset: {self:?}"),
         }
     }
@@ -523,7 +527,9 @@ impl ValueCast for VarSet {
 
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
         match v.value {
-            Value::Config | Value::Functions | Value::Units => Ok(v.value.to_varset()),
+            Value::Config | Value::Functions | Value::Units | Value::Variables => {
+                Ok(v.value.to_varset())
+            }
             _ => Err(v.raise_cast::<Self>()),
         }
     }

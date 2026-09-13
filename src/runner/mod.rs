@@ -354,6 +354,7 @@ impl Runner {
         values.insert(vec!["config"].into(), Value::Config);
         values.insert(vec!["functions"].into(), Value::Functions);
         values.insert(vec!["units"].into(), Value::Units);
+        values.insert(vec!["variables"].into(), Value::Variables);
         for (name, &func) in functions::FUNCTIONS.iter() {
             values.insert(name.clone(), Value::Func(func));
         }
@@ -390,7 +391,7 @@ impl Runner {
 
     fn varset_children(&self, varset: &VarSet) -> Vec<Variable> {
         match varset {
-            VarSet::Base => todo!(),
+            VarSet::Base => self.values.keys().cloned().collect(),
             VarSet::Config => vec![
                 self.default_scale.name.clone(),
                 self.display_config.round.name.clone(),
@@ -444,7 +445,7 @@ impl Runner {
         }
     }
 
-    pub fn display_value(&self, value: Value, render_units: bool) -> String {
+    pub fn display_value(&self, value: Value, render_units: bool, indent: usize) -> String {
         match value {
             Value::Numeric(n) => self.display_numeric_value(n, render_units),
             Value::Str(s) => s,
@@ -460,13 +461,16 @@ impl Runner {
                 }
                 format!("{output} :-> value")
             }
-            v @ (Value::Config | Value::Functions | Value::Units) => {
+            v @ (Value::Config | Value::Functions | Value::Units | Value::Variables) => {
                 let mut value = String::new();
 
                 let varset = v.to_varset();
                 for name in self.varset_children(&varset) {
                     if !value.is_empty() {
                         value.push('\n');
+                        for _ in 0..indent {
+                            value.push(' ')
+                        }
                     }
 
                     let child = self.raw_resolve_varset(&varset, &name).unwrap();
@@ -474,7 +478,14 @@ impl Runner {
                     value += &format!(
                         "{}: {}",
                         name,
-                        self.display_value(child, !matches!(v, Value::Units))
+                        if matches!(varset, VarSet::Base)
+                            && name.0.len() == 1
+                            && *name.0[0] == *"variables"
+                        {
+                            "<...>".to_string()
+                        } else {
+                            self.display_value(child, !matches!(v, Value::Units), indent + 4)
+                        }
                     )
                 }
 
