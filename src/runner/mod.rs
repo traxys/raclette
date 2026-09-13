@@ -11,8 +11,8 @@ use crate::{
 
 use functions::ValueFn;
 use value::{
-    BYTE_UNIT, Dimension, KNOWN_UNITS, MASS_UNIT, ScaleRender, ScaleType, TIME_UNIT, Unit,
-    ValueMagnitude,
+    BYTE_UNIT, Dimension, KNOWN_UNITS, MASS_UNIT, ScaleRender, ScaleStep, ScaleType, TIME_UNIT,
+    Unit, ValueMagnitude,
 };
 
 use self::value::{NumericValue, Value};
@@ -194,6 +194,47 @@ enum ResolvedUnit<'a> {
     Magnitude(ValueMagnitude, Unit),
 }
 
+fn render_with_unit(
+    value: NumericValue,
+    unit: &str,
+    scale_prefixes: &[ScaleStep],
+    display_config: &DisplayConfig,
+) -> String {
+    let mut magnitude = value.magnitude;
+    let mut render = scale_prefixes[0].render;
+
+    let last_unit = scale_prefixes.iter().last().unwrap();
+
+    if magnitude.is_zero() {
+        render = ScaleRender::AsIs;
+    } else if magnitude.ge_abs(&scale_prefixes[0].order) {
+        magnitude = ValueMagnitude::div_ok(magnitude, scale_prefixes[0].order.clone());
+    } else if magnitude.lt_abs(&last_unit.order) {
+        /* Smaller than the smallest unit */
+        magnitude = ValueMagnitude::div_ok(magnitude, last_unit.order.clone());
+        render = last_unit.render;
+    } else {
+        for (large, small) in scale_prefixes.iter().zip(scale_prefixes.iter().skip(1)) {
+            if magnitude.lt_abs(&large.order) && magnitude.ge_abs(&small.order) {
+                magnitude = ValueMagnitude::div_ok(magnitude, small.order.clone());
+                render = small.render;
+                break;
+            }
+        }
+    };
+
+    let unit_part = match render {
+        ScaleRender::Override(o) => Either::Left(o),
+        ScaleRender::Prefix(p) | ScaleRender::EitherPrefix { main: p, .. } => {
+            Either::Right(format!("{p}{unit}"))
+        }
+        ScaleRender::AsIs => Either::Left(unit),
+    };
+
+    let scaled_magnitude = magnitude.to_string(display_config);
+    format!("{scaled_magnitude} {unit_part}")
+}
+
 impl Runner {
     pub fn new() -> Self {
         let values = HashMap::new();
@@ -280,49 +321,17 @@ impl Runner {
 
                     format!("{raw_magnitude} {unit}")
                 }
-                Some(u) => {
-                    let scale_prefixes = self
-                        .scales
-                        .get(&value.unit)
-                        .unwrap_or(&self.default_scale)
-                        .steps();
-
-                    let mut magnitude = value.magnitude;
-                    let mut render = scale_prefixes[0].render;
-
-                    let last_unit = scale_prefixes.iter().last().unwrap();
-
-                    if magnitude.is_zero() {
-                        render = ScaleRender::AsIs;
-                    } else if magnitude.ge_abs(&scale_prefixes[0].order) {
-                        magnitude =
-                            ValueMagnitude::div_ok(magnitude, scale_prefixes[0].order.clone());
-                    } else if magnitude.lt_abs(&last_unit.order) {
-                        /* Smaller than the smallest unit */
-                        magnitude = ValueMagnitude::div_ok(magnitude, last_unit.order.clone());
-                        render = last_unit.render;
-                    } else {
-                        for (large, small) in
-                            scale_prefixes.iter().zip(scale_prefixes.iter().skip(1))
-                        {
-                            if magnitude.lt_abs(&large.order) && magnitude.ge_abs(&small.order) {
-                                magnitude = ValueMagnitude::div_ok(magnitude, small.order.clone());
-                                render = small.render;
-                                break;
-                            }
-                        }
-                    };
-
-                    let unit_part = match render {
-                        ScaleRender::Override(o) => Either::Left(o),
-                        ScaleRender::Prefix(p) | ScaleRender::EitherPrefix { main: p, .. } => {
-                            Either::Right(format!("{p}{u}"))
-                        }
-                        ScaleRender::AsIs => Either::Left(*u),
-                    };
-
-                    let scaled_magnitude = magnitude.to_string(&self.display_config);
-                    format!("{scaled_magnitude} {unit_part}")
+                Some(known) => {
+                    let unit = value.unit;
+                    render_with_unit(
+                        value,
+                        known,
+                        self.scales
+                            .get(&unit)
+                            .unwrap_or(&self.default_scale)
+                            .steps(),
+                        &self.display_config,
+                    )
                 }
             }
         }
