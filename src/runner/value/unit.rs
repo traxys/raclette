@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Display};
+use std::{collections::HashMap, fmt::Display, sync::Arc};
 
 use either::Either;
 use enum_map::{Enum, EnumMap};
@@ -6,7 +6,10 @@ use itertools::Itertools;
 use once_cell::sync::Lazy;
 
 use crate::{
-    runner::{RunnerError, value::ValueMagnitude},
+    runner::{
+        RunnerError,
+        value::{Value, ValueMagnitude},
+    },
     span::Span,
 };
 
@@ -191,6 +194,15 @@ impl ScaleType {
             .chain(Self::Binary.prefix())
             .unique_by(|(p, _)| *p)
             .sorted_by(|(pa, _), (pb, _)| pb.len().cmp(&pa.len()))
+    }
+
+    pub fn atom(&self) -> Value {
+        match self {
+            ScaleType::Metric => Value::Atom(Arc::from("metric")),
+            ScaleType::TimeMetric => Value::Atom(Arc::from("time")),
+            ScaleType::ShiftedMetric => Value::Atom(Arc::from("metric")),
+            ScaleType::Binary => Value::Atom(Arc::from("binary")),
+        }
     }
 }
 

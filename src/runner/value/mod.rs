@@ -19,6 +19,7 @@ pub enum Value {
     Str(String),
     Bool(bool),
     Atom(Arc<str>),
+    Config,
 }
 
 impl Value {
@@ -28,6 +29,7 @@ impl Value {
             Value::Str(_) => false,
             Value::Atom(_) => false,
             Value::Bool(_) => false,
+            Value::Config => false,
         }
     }
 
@@ -37,6 +39,7 @@ impl Value {
             Value::Str(_) => "str",
             Value::Bool(_) => "bool",
             Value::Atom(_) => "atom",
+            Value::Config => "config",
         }
     }
 
@@ -468,18 +471,7 @@ impl TryFrom<SpannedValue<Value>> for NumericValue {
                 value: Value::Numeric(n),
                 ..
             } => Ok(n),
-            SpannedValue {
-                value: Value::Str(_),
-                ..
-            } => Err(CastError::from_val(value, "numeric")),
-            SpannedValue {
-                value: Value::Atom(_),
-                ..
-            } => Err(CastError::from_val(value, "numeric")),
-            SpannedValue {
-                value: Value::Bool(_),
-                ..
-            } => Err(CastError::from_val(value, "numeric")),
+            SpannedValue { value: _, .. } => Err(CastError::from_val(value, "numeric")),
         }
     }
 }

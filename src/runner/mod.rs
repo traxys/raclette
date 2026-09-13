@@ -258,6 +258,22 @@ pub struct DisplayConfig {
     neg_exponent: Option<i64>,
 }
 
+fn atom_or<V, F>(v: Option<V>, f: F) -> Value
+where
+    F: Fn(V) -> Value,
+{
+    v.map(f).unwrap_or_else(|| Value::Atom(Arc::from("none")))
+}
+
+fn atom_int_or(v: Option<i128>) -> Value {
+    atom_or(v, |n| {
+        Value::Numeric(NumericValue {
+            magnitude: n.into(),
+            unit: Unit::dimensionless(),
+        })
+    })
+}
+
 enum ResolvedUnit<'a> {
     Prefix(Vec<(&'a str, Unit)>),
     Magnitude(ValueMagnitude, Unit),
@@ -322,7 +338,8 @@ fn eval_literal(lit: &ast::Literal) -> Value {
 
 impl Runner {
     pub fn new() -> Self {
-        let values = HashMap::new();
+        let mut values = HashMap::new();
+        values.insert(vec!["config"].into(), Value::Config);
 
         let mut scales = HashMap::new();
         scales.insert(*TIME_UNIT, ScaleType::TimeMetric);
@@ -348,6 +365,31 @@ impl Runner {
             Value::Str(s) => s,
             Value::Atom(a) => format!(":{a}"),
             Value::Bool(v) => v.to_string(),
+            Value::Config => {
+                let mut value = String::new();
+                value += &format!(
+                    "default_scale: {}\n",
+                    self.display_value(self.default_scale.atom())
+                );
+                value += &format!(
+                    "round: {}\n",
+                    self.display_value(atom_int_or(self.display_config.round.map(|n| n as i128)))
+                );
+                value += &format!(
+                    "large_threshold: {}\n",
+                    self.display_value(atom_int_or(
+                        self.display_config.large_threshold.map(|n| n as i128)
+                    ))
+                );
+                value += &format!(
+                    "neg_exponent: {}",
+                    self.display_value(atom_int_or(
+                        self.display_config.neg_exponent.map(|n| n as i128)
+                    ))
+                );
+
+                value
+            }
         }
     }
 
@@ -596,7 +638,8 @@ impl Runner {
                     })
                     .collect::<Result<_, _>>()?;
                 let f = self.resolve_function(&c.fun)?;
-                f.invoke(self, c.fun.span(), c.span(), args).map_err(Into::into)
+                f.invoke(self, c.fun.span(), c.span(), args)
+                    .map_err(Into::into)
             }
         }
     }
