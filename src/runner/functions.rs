@@ -47,7 +47,6 @@ pub trait ValueFn: Debug {
 }
 
 type VFn1<T> = fn(T) -> ValueResult;
-type SpnVFn1<T> = fn(SpannedValue<()>, T) -> ValueResult;
 type RunVFn1<T> = fn(&Runner, T) -> ValueResult;
 
 impl<T> ValueFn for VFn1<T>
@@ -87,26 +86,6 @@ where
         let (arg,) = args.into_iter().collect_tuple().unwrap();
 
         (self)(runner, arg.cast()?)
-    }
-}
-
-impl<T> ValueFn for SpnVFn1<T>
-where
-    T: ValueCast,
-{
-    fn arity(&self) -> usize {
-        1
-    }
-
-    fn invoke_inner(
-        &self,
-        _: &Runner,
-        call_site: SpannedValue<()>,
-        args: Vec<SpannedValue<Value>>,
-    ) -> ValueResult {
-        let (arg,) = args.into_iter().collect_tuple().unwrap();
-
-        (self)(call_site, arg.cast()?)
     }
 }
 
