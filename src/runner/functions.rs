@@ -100,6 +100,8 @@ pub static FUNCTIONS: Lazy<HashMap<Variable, &'static (dyn ValueFn + Sync + Send
             funcs[&vec!["to", "binary"].into()],
         );
 
+        funcs.insert(vec!["len"].into(), &(length as VFn1<_>));
+
         funcs
     });
 
@@ -128,6 +130,13 @@ fn strip_unit(v: NumericValue) -> ValueResult {
 fn factorial(v: u64) -> ValueResult {
     Ok(Value::Numeric(NumericValue {
         magnitude: ValueMagnitude::factorial(v),
+        unit: Unit::dimensionless(),
+    }))
+}
+
+fn length(v: String) -> ValueResult {
+    Ok(Value::Numeric(NumericValue {
+        magnitude: ValueMagnitude::new(v.len() as _),
         unit: Unit::dimensionless(),
     }))
 }

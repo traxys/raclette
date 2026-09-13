@@ -417,6 +417,17 @@ impl TryFrom<SpannedValue<Value>> for bool {
     }
 }
 
+impl TryFrom<SpannedValue<Value>> for String {
+    type Error = CastError;
+
+    fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
+        match value.value {
+            Value::Str(s) => Ok(s),
+            _ => Err(CastError::from_val(value, "string")),
+        }
+    }
+}
+
 macro_rules! int_from_value {
     ($ty:ty) => {
         impl TryFrom<SpannedValue<Value>> for $ty {
