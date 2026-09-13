@@ -186,26 +186,6 @@ impl RunnerCommand for Help {
     }
 }
 
-struct Functions;
-impl NoParamCommand for Functions {
-    fn name(&self) -> &'static str {
-        "functions"
-    }
-
-    fn help(&self) -> &'static str {
-        "Display a list of available functions"
-    }
-
-    fn run(&self, _: &mut super::Runner) -> Result<(), RunnerError> {
-        println!("Functions:");
-        for name in super::functions::FUNCTIONS.keys() {
-            println!("  - {}", name.0.join(" "))
-        }
-
-        Ok(())
-    }
-}
-
 struct Units;
 impl NoParamCommand for Units {
     fn name(&self) -> &'static str {
@@ -234,7 +214,6 @@ pub(super) static COMMANDS: Lazy<HashMap<&'static str, Box<dyn RunnerCommand + S
             Box::new(PR(ByteScale)),
             Box::new(PR(DefaultScale)),
             Box::new(Help),
-            Box::new(NP(Functions)),
             Box::new(NP(Units)),
         ];
         let mut commands = HashMap::new();

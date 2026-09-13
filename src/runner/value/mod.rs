@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use super::{CastError, RunnerError};
 use crate::{
-    runner::VarSet,
+    runner::{VarSet, functions::Function},
     span::{Span, SpannedValue, SpanningExt},
 };
 
@@ -23,16 +23,20 @@ pub enum Value {
     Bool(bool),
     Atom(Arc<str>),
     Config,
+    Functions,
+    Func(Function),
 }
 
 impl Value {
     pub fn is_zero(&self) -> bool {
         match self {
             Value::Numeric(n) => n.magnitude.is_zero(),
-            Value::Str(_) => false,
-            Value::Atom(_) => false,
-            Value::Bool(_) => false,
-            Value::Config => false,
+            Value::Str(_)
+            | Value::Atom(_)
+            | Value::Bool(_)
+            | Value::Config
+            | Value::Functions
+            | Value::Func(_) => false,
         }
     }
 
@@ -43,12 +47,15 @@ impl Value {
             Value::Bool(_) => "bool",
             Value::Atom(_) => "atom",
             Value::Config => "config",
+            Value::Functions => "functions",
+            Value::Func(_) => "function",
         }
     }
 
     pub(super) fn to_varset(&self) -> VarSet {
         match self {
             Value::Config => VarSet::Config,
+            Value::Functions => VarSet::Functions,
             _ => panic!("value is not a varset: {self:?}"),
         }
     }
@@ -491,7 +498,7 @@ impl TryFrom<SpannedValue<Value>> for VarSet {
 
     fn try_from(value: SpannedValue<Value>) -> Result<Self, Self::Error> {
         match value.value {
-            Value::Config => Ok(value.value.to_varset()),
+            Value::Config | Value::Functions => Ok(value.value.to_varset()),
             _ => Err(CastError::from_val(value, "map")),
         }
     }

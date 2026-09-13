@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, fmt::Debug, sync::Arc};
 
 use itertools::Itertools;
 use once_cell::sync::Lazy;
@@ -17,7 +17,7 @@ use super::{
 
 type ValueResult = Result<Value, RunnerError>;
 
-pub trait ValueFn {
+pub trait ValueFn: Debug {
     fn invoke(
         &self,
         runner: &Runner,
@@ -116,29 +116,30 @@ impl From<Vec<&str>> for Variable {
     }
 }
 
-pub static FUNCTIONS: Lazy<HashMap<Variable, &'static (dyn ValueFn + Sync + Send + 'static)>> =
-    Lazy::new(|| {
-        let mut funcs: HashMap<_, &'static (dyn ValueFn + Sync + Send + 'static)> = HashMap::new();
+pub type Function = &'static (dyn ValueFn + Sync + Send + 'static);
 
-        funcs.insert(vec!["to", "binary"].into(), &(to_binary as VFn1<i128>));
-        funcs.insert(vec!["to", "hex"].into(), &(to_hex as VFn1<i128>));
-        funcs.insert(
-            vec!["strip", "unit"].into(),
-            &(strip_unit as VFn1<NumericValue>),
-        );
-        funcs.insert(vec!["to", "int"].into(), &(to_int as VFn1<NumericValue>));
-        funcs.insert(vec!["factorial"].into(), &(factorial as VFn1<u64>));
+pub static FUNCTIONS: Lazy<HashMap<Variable, Function>> = Lazy::new(|| {
+    let mut funcs: HashMap<_, &'static (dyn ValueFn + Sync + Send + 'static)> = HashMap::new();
 
-        funcs.insert(
-            vec!["to", "bin"].into(),
-            funcs[&vec!["to", "binary"].into()],
-        );
+    funcs.insert(vec!["to", "binary"].into(), &(to_binary as VFn1<i128>));
+    funcs.insert(vec!["to", "hex"].into(), &(to_hex as VFn1<i128>));
+    funcs.insert(
+        vec!["strip", "unit"].into(),
+        &(strip_unit as VFn1<NumericValue>),
+    );
+    funcs.insert(vec!["to", "int"].into(), &(to_int as VFn1<NumericValue>));
+    funcs.insert(vec!["factorial"].into(), &(factorial as VFn1<u64>));
 
-        funcs.insert(vec!["len"].into(), &(length as VFn1<_>));
-        funcs.insert(vec!["parse"].into(), &(parse as RunVFn1<_>));
+    funcs.insert(
+        vec!["to", "bin"].into(),
+        funcs[&vec!["to", "binary"].into()],
+    );
 
-        funcs
-    });
+    funcs.insert(vec!["len"].into(), &(length as VFn1<_>));
+    funcs.insert(vec!["parse"].into(), &(parse as RunVFn1<_>));
+
+    funcs
+});
 
 fn to_binary(v: i128) -> ValueResult {
     Ok(Value::Str(format!("0b{v:b}")))

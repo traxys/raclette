@@ -344,12 +344,14 @@ fn eval_literal(lit: &ast::Literal) -> Value {
 enum VarSet {
     Base,
     Config,
+    Functions,
 }
 
 impl Runner {
     pub fn new() -> Self {
         let mut values = HashMap::new();
         values.insert(vec!["config"].into(), Value::Config);
+        values.insert(vec!["functions"].into(), Value::Functions);
 
         let mut scales = HashMap::new();
         scales.insert(*TIME_UNIT, ScaleType::TimeMetric);
@@ -390,6 +392,7 @@ impl Runner {
                 self.display_config.large_threshold.name.clone(),
                 self.display_config.neg_exponent.name.clone(),
             ],
+            VarSet::Functions => functions::FUNCTIONS.keys().cloned().collect(),
         }
     }
 
@@ -415,6 +418,7 @@ impl Runner {
                     None
                 }
             }
+            VarSet::Functions => functions::FUNCTIONS.get(name).map(|&a| Value::Func(a)),
         }
     }
 
@@ -424,7 +428,8 @@ impl Runner {
             Value::Str(s) => s,
             Value::Atom(a) => format!(":{a}"),
             Value::Bool(v) => v.to_string(),
-            v @ Value::Config => {
+            Value::Func(_) => "<...>".to_string(),
+            v @ (Value::Config | Value::Functions) => {
                 let mut value = String::new();
 
                 let varset = v.to_varset();
@@ -831,5 +836,11 @@ impl Runner {
         };
         self.last = Some(value.clone().spanned(&span));
         Ok(Some(value))
+    }
+}
+
+impl Default for Runner {
+    fn default() -> Self {
+        Self::new()
     }
 }
