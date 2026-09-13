@@ -307,12 +307,12 @@ impl Runner {
                             .join(".")
                     };
 
-                    let numerator = if num_unit.is_dimensionless() {
-                        "1".into()
+                    let (known_numerator, numerator) = if num_unit.is_dimensionless() {
+                        (false, "1".into())
                     } else {
                         match KNOWN_UNITS.get(&num_unit) {
-                            Some(u) => u.to_string(),
-                            None => join_units(num_unit),
+                            Some(u) => (true, u.to_string()),
+                            None => (false, join_units(num_unit)),
                         }
                     };
 
@@ -327,7 +327,19 @@ impl Runner {
                             }
                     };
 
-                    format!("{raw_magnitude} {unit}")
+                    if known_numerator {
+                        render_with_unit(
+                            value,
+                            &unit,
+                            self.scales
+                                .get(&num_unit)
+                                .unwrap_or(&self.default_scale)
+                                .steps(),
+                            &self.display_config,
+                        )
+                    } else {
+                        format!("{raw_magnitude} {unit}")
+                    }
                 }
                 Some(known) => {
                     let unit = value.unit;
