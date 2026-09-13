@@ -65,6 +65,7 @@ extern {
 		ident => Token::Ident(<Arc<str>>),
 		unit => Token::Unit(<Arc<str>>),
 		binding => Token::Binding(<Arc<str>>),
+		str => Token::String(<Arc<str>>)
 	}
 }
 
@@ -275,6 +276,7 @@ ExprLiteral: Expr = {
 Literal: Literal = {
 	num => Literal::Number(<>),
 	decimal => Literal::Decimal(<>),
+	str => Literal::String(<>),
 	"true" => Literal::Bool(true),
 	"false" => Literal::Bool(false),
 	":" <ident> => Literal::Atom(<>),

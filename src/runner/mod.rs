@@ -616,6 +616,7 @@ impl Runner {
             }),
             ast::Literal::Atom(a) => Value::Atom(a.clone()),
             &ast::Literal::Bool(b) => Value::Bool(b),
+            ast::Literal::String(s) => Value::Str(s.to_string())
         }
     }
 

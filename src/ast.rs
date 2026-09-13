@@ -17,6 +17,8 @@ pub enum TokenError {
     ParseInt(#[from] ParseIntError),
     #[error("Float could not be parsed")]
     ParseFloat(#[from] ParseFloatError),
+    #[error("Invalid escape sequence {0}")]
+    InvalidEscape(char)
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -36,6 +38,46 @@ impl std::fmt::Display for DecimalLiteral {
             width = self.decimal_count as usize
         )
     }
+}
+
+fn parse_string(s: &str) -> Result<Arc<str>, TokenError> {
+    let mut inner = &s[1..s.len() - 1];
+    let mut output = String::new();
+
+    while let Some(index) = inner.find('\\') {
+        output += &inner[..index];
+        match inner[index + 1..].chars().next().unwrap() {
+            'n' => output += "\n",
+            'r' => output += "\r",
+            't' => output += "\t",
+            '\\' => output += "\\",
+            '"' => output += "\"",
+            c => return Err(TokenError::InvalidEscape(c)),
+        }
+        inner = &inner[index + 2..];
+    }
+
+    output += inner;
+    Ok(output.into())
+}
+
+fn display_string(s: &str) -> String {
+    let mut output = String::new();
+
+    output.push('"');
+    for c in s.chars() {
+        match c {
+            '\n' => output += "\\n",
+            '\t' => output += "\\t",
+            '\r' => output += "\\r",
+            '"' => output += "\\\"",
+            '\\' => output += "\\\\",
+            c => output.push(c),
+        }
+    }
+    output.push('"');
+
+    output
 }
 
 #[derive(Debug, derive_more::Display, Logos, Clone)]
@@ -169,6 +211,9 @@ pub enum Token {
     #[regex("('|,)[a-zA-Z]+", callback = |lex| Arc::from(&lex.slice()[1..]))]
     #[display("unit({})", _0)]
     Unit(Arc<str>),
+    #[regex(r#""([^"\\\x00-\x1F]|\\(["\\nrt/]|u[a-fA-F0-9]{4}))*""#, |lex| parse_string(lex.slice()))]
+    #[display("{}", display_string(_0))]
+    String(Arc<str>),
     #[token("true")]
     True,
     #[token("false")]
@@ -193,6 +238,7 @@ pub enum Literal {
     Decimal(DecimalLiteral),
     Atom(Arc<str>),
     Bool(bool),
+    String(Arc<str>),
 }
 
 impl std::fmt::Debug for Literal {
@@ -202,6 +248,7 @@ impl std::fmt::Debug for Literal {
             Self::Decimal(arg0) => write!(f, "{}", arg0),
             Self::Atom(s) => write!(f, ":{}", s),
             Self::Bool(b) => write!(f, "{b}"),
+            Self::String(c) => write!(f, "{c:?}"),
         }
     }
 }
