@@ -11,8 +11,8 @@ use crate::{
 
 use functions::ValueFn;
 use value::{
-    BYTE_UNIT, Dimension, KNOWN_UNITS, MASS_UNIT, ScaleRender, ScaleStep, ScaleType, TIME_UNIT,
-    Unit, ValueMagnitude,
+    BYTE_UNIT, KNOWN_UNITS, MASS_UNIT, ScaleRender, ScaleStep, ScaleType, TIME_UNIT, Unit,
+    ValueMagnitude,
 };
 
 use self::value::{NumericValue, Value};
@@ -294,26 +294,26 @@ impl Runner {
                         .dimensions
                         .iter()
                         .filter(|&(_, &scale)| scale != 0)
-                        .partition::<Vec<_>, _>(|&(_, &scale)| scale > 0);
+                        .partition::<Unit, _>(|&(_, &scale)| scale > 0);
 
-                    let join_units = |units: Vec<(Dimension, &i64)>| {
-                        units
+                    let join_units = |unit: Unit| {
+                        unit.dimensions
                             .into_iter()
-                            .map(|(dim, &scale)| match scale.abs() {
-                                0 => unreachable!(),
-                                1 => dim.to_string(),
-                                s => format!("{dim}{s}"),
+                            .flat_map(|(dim, scale)| match scale.abs() {
+                                0 => None,
+                                1 => Some(dim.to_string()),
+                                s => Some(format!("{dim}{s}")),
                             })
                             .join(".")
                     };
 
-                    let numerator = if num_unit.is_empty() {
+                    let numerator = if num_unit.is_dimensionless() {
                         "1".into()
                     } else {
                         join_units(num_unit)
                     };
 
-                    let unit = if denum_unit.is_empty() {
+                    let unit = if denum_unit.is_dimensionless() {
                         numerator
                     } else {
                         numerator + "/" + &join_units(denum_unit)

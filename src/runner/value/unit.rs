@@ -83,6 +83,24 @@ impl Unit {
     }
 }
 
+impl<N> Extend<(Dimension, N)> for Unit
+where
+    N: std::ops::Deref<Target = i64>,
+{
+    fn extend<T: IntoIterator<Item = (Dimension, N)>>(&mut self, iter: T) {
+        for (dimension, value) in iter {
+            assert_eq!(self.dimensions[dimension], 0);
+            self.dimensions[dimension] = *value;
+        }
+    }
+}
+
+impl Default for Unit {
+    fn default() -> Self {
+        Self::dimensionless()
+    }
+}
+
 #[allow(clippy::suspicious_arithmetic_impl)]
 impl std::ops::Mul for Unit {
     type Output = Self;
