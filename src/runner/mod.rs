@@ -478,10 +478,7 @@ impl Runner {
                     value += &format!(
                         "{}: {}",
                         name,
-                        if matches!(varset, VarSet::Base)
-                            && name.0.len() == 1
-                            && *name.0[0] == *"variables"
-                        {
+                        if matches!(child, Value::Variables) {
                             "<...>".to_string()
                         } else {
                             self.display_value(child, !matches!(v, Value::Units), indent + 4)
