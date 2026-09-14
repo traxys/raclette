@@ -345,7 +345,7 @@ fn eval_literal(lit: &ast::Literal) -> Value {
 }
 
 macro_rules! define_config {
-    ($($value:ident, $($name:literal),+);*) => {
+    ($($value:ident, $($name:literal),+);* $(;)?) => {
         #[derive(Clone, Copy)]
         enum Config {
         $(
@@ -361,9 +361,10 @@ macro_rules! define_config {
 
 define_config! {
     DefaultScale, "default", "scale";
+    ByteScale, "byte", "scale";
     Round, "round";
     LargeThreshold, "large", "threshold";
-    NegExponent, "negative", "exponent"
+    NegExponent, "negative", "exponent";
 }
 
 impl Config {
@@ -439,6 +440,7 @@ impl Runner {
                 atom_int_or(self.display_config.large_threshold.map(|n| n as i128))
             }
             Config::NegExponent => atom_int_or(self.display_config.neg_exponent.map(|n| n as i128)),
+            Config::ByteScale => self.scales[&BYTE_UNIT].atom(),
         }
     }
 
@@ -743,6 +745,17 @@ impl Runner {
                     return Err(CastError::from_val(value, ":metric | :binary").into());
                 }
             },
+            Config::ByteScale => match &value.value {
+                Value::Atom(v) if &**v == "binary" => {
+                    self.scales.insert(*BYTE_UNIT, ScaleType::Binary);
+                }
+                Value::Atom(v) if &**v == "metric" => {
+                    self.scales.insert(*BYTE_UNIT, ScaleType::Metric);
+                }
+                _ => {
+                    return Err(CastError::from_val(value, ":metric | :binary").into());
+                }
+            },
             Config::Round => self.display_config.round = value.clone().cast()?,
             Config::LargeThreshold => self.display_config.large_threshold = value.clone().cast()?,
             Config::NegExponent => self.display_config.neg_exponent = value.clone().cast()?,
@@ -787,6 +800,7 @@ impl Runner {
             }
             VarSet::Config => match Config::try_parse(last.clone())? {
                 Config::DefaultScale => "default unit scale to use, :metric or :binary",
+                Config::ByteScale => "scale to use for bytes, :metric or :binary",
                 Config::Round => "number of digits to round to, :none or number",
                 Config::LargeThreshold => "largest value to fully render, :none or number",
                 Config::NegExponent => {
