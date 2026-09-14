@@ -25,11 +25,11 @@ impl ParamRunnerCommand for Round {
         src: MaybeNamed,
     ) -> Result<(), RunnerError> {
         match value {
-            Value::Atom(v) if &*v == "none" => state.display_config.round.value = None,
+            Value::Atom(v) if &*v == "none" => state.display_config.round = None,
             Value::Numeric(NumericValue { magnitude: n, unit })
                 if unit.is_dimensionless() && n.is_usize() =>
             {
-                state.display_config.round.value = Some(n.as_usize())
+                state.display_config.round = Some(n.as_usize())
             }
             v => {
                 return Err(RunnerError::InvalidCommandValue {
@@ -61,11 +61,11 @@ impl ParamRunnerCommand for LargeThreshold {
         src: MaybeNamed,
     ) -> Result<(), RunnerError> {
         match value {
-            Value::Atom(v) if &*v == "none" => state.display_config.large_threshold.value = None,
+            Value::Atom(v) if &*v == "none" => state.display_config.large_threshold = None,
             Value::Numeric(NumericValue { magnitude: n, unit })
                 if unit.is_dimensionless() && n.is_usize() =>
             {
-                state.display_config.large_threshold.value = Some(n.as_usize())
+                state.display_config.large_threshold = Some(n.as_usize())
             }
             v => {
                 return Err(RunnerError::InvalidCommandValue {
@@ -133,8 +133,8 @@ impl ParamRunnerCommand for DefaultScale {
         src: MaybeNamed,
     ) -> Result<(), RunnerError> {
         match value {
-            Value::Atom(v) if &*v == "binary" => state.default_scale.value = ScaleType::Binary,
-            Value::Atom(v) if &*v == "metric" => state.default_scale.value = ScaleType::Metric,
+            Value::Atom(v) if &*v == "binary" => state.default_scale = ScaleType::Binary,
+            Value::Atom(v) if &*v == "metric" => state.default_scale = ScaleType::Metric,
             v => {
                 return Err(RunnerError::InvalidCommandValue {
                     val: state.display_value(v, true, 0),

@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use either::Either;
 use itertools::Itertools;
 use miette::{Context, Diagnostic, SourceSpan};
+use once_cell::sync::Lazy;
 
 use crate::{
     ast::{self, Expr, Variable},
@@ -255,19 +256,14 @@ pub struct Runner {
     last: Option<SpannedValue<Value>>,
     values: HashMap<Variable, Value>,
     scales: HashMap<Unit, ScaleType>,
-    default_scale: NamedValue<ScaleType>,
+    default_scale: ScaleType,
     display_config: DisplayConfig,
 }
 
-struct NamedValue<T> {
-    value: T,
-    name: Variable,
-}
-
 pub struct DisplayConfig {
-    round: NamedValue<Option<usize>>,
-    large_threshold: NamedValue<Option<usize>>,
-    neg_exponent: NamedValue<Option<i64>>,
+    round: Option<usize>,
+    large_threshold: Option<usize>,
+    neg_exponent: Option<i64>,
 }
 
 fn atom_or<V, F>(v: Option<V>, f: F) -> Value
@@ -348,6 +344,48 @@ fn eval_literal(lit: &ast::Literal) -> Value {
     }
 }
 
+macro_rules! define_config {
+    ($($value:ident, $($name:literal),+);*) => {
+        #[derive(Clone, Copy)]
+        enum Config {
+        $(
+            $value,
+        )*
+        }
+
+        static CONFIG_NAMES: Lazy<Vec<(Config, Variable)>> = Lazy::new(|| vec![
+            $((Config::$value, vec![$($name,)+].into()),)*
+        ]);
+    };
+}
+
+define_config! {
+    DefaultScale, "default", "scale";
+    Round, "round";
+    LargeThreshold, "large", "threshold";
+    NegExponent, "negative", "exponent"
+}
+
+impl Config {
+    fn parse(variable: &Variable) -> Option<Self> {
+        for (v, var) in CONFIG_NAMES.iter() {
+            if variable == var {
+                return Some(*v);
+            }
+        }
+
+        None
+    }
+
+    fn try_parse(variable: SpannedValue<Variable>) -> Result<Self, RunnerError> {
+        Self::parse(&variable.value).ok_or_else(|| RunnerError::UndefinedIdentifier {
+            name: (*variable).clone(),
+            location: (variable.start..variable.end).into(),
+            src: variable.source.clone(),
+        })
+    }
+}
+
 enum VarSet {
     Base,
     Config,
@@ -375,23 +413,11 @@ impl Runner {
             last: None,
             values,
             scales,
-            default_scale: NamedValue {
-                value: ScaleType::Metric,
-                name: vec!["default", "scale"].into(),
-            },
+            default_scale: ScaleType::Metric,
             display_config: DisplayConfig {
-                round: NamedValue {
-                    value: Some(2),
-                    name: vec!["round"].into(),
-                },
-                large_threshold: NamedValue {
-                    value: Some(1_000_000_000),
-                    name: vec!["large", "threshold"].into(),
-                },
-                neg_exponent: NamedValue {
-                    value: Some(-6),
-                    name: vec!["negative", "exponent"].into(),
-                },
+                round: Some(2),
+                large_threshold: Some(1_000_000_000),
+                neg_exponent: Some(-6),
             },
         }
     }
@@ -399,39 +425,27 @@ impl Runner {
     fn varset_children(&self, varset: &VarSet) -> Vec<Variable> {
         match varset {
             VarSet::Base => self.values.keys().cloned().collect(),
-            VarSet::Config => vec![
-                self.default_scale.name.clone(),
-                self.display_config.round.name.clone(),
-                self.display_config.large_threshold.name.clone(),
-                self.display_config.neg_exponent.name.clone(),
-            ],
+            VarSet::Config => CONFIG_NAMES.iter().map(|n| n.1.clone()).collect_vec(),
             VarSet::Functions => functions::FUNCTIONS.keys().cloned().collect(),
             VarSet::Units => KNOWN_UNITS.values().map(|&n| vec![n].into()).collect(),
+        }
+    }
+
+    fn get_config(&self, config: Config) -> Value {
+        match config {
+            Config::DefaultScale => self.default_scale.atom(),
+            Config::Round => atom_int_or(self.display_config.round.map(|n| n as i128)),
+            Config::LargeThreshold => {
+                atom_int_or(self.display_config.large_threshold.map(|n| n as i128))
+            }
+            Config::NegExponent => atom_int_or(self.display_config.neg_exponent.map(|n| n as i128)),
         }
     }
 
     fn raw_resolve_varset(&self, set: &VarSet, name: &Variable) -> Option<Value> {
         match set {
             VarSet::Base => self.values.get(name).cloned(),
-            VarSet::Config => {
-                if &self.default_scale.name == name {
-                    Some(self.default_scale.value.atom())
-                } else if &self.display_config.round.name == name {
-                    Some(atom_int_or(
-                        self.display_config.round.value.map(|n| n as i128),
-                    ))
-                } else if &self.display_config.large_threshold.name == name {
-                    Some(atom_int_or(
-                        self.display_config.large_threshold.value.map(|n| n as i128),
-                    ))
-                } else if &self.display_config.neg_exponent.name == name {
-                    Some(atom_int_or(
-                        self.display_config.neg_exponent.value.map(|n| n as i128),
-                    ))
-                } else {
-                    None
-                }
-            }
+            VarSet::Config => Some(self.get_config(Config::parse(name)?)),
             VarSet::Functions => functions::FUNCTIONS.get(name).map(|&a| Value::Func(a)),
             VarSet::Units => {
                 if name.0.len() != 1 {
@@ -524,7 +538,7 @@ impl Runner {
                         known,
                         self.scales
                             .get(&unit)
-                            .unwrap_or(&self.default_scale.value)
+                            .unwrap_or(&self.default_scale)
                             .steps(),
                         &self.display_config,
                     )
@@ -576,7 +590,7 @@ impl Runner {
                             &unit,
                             self.scales
                                 .get(&num_unit)
-                                .unwrap_or(&self.default_scale.value)
+                                .unwrap_or(&self.default_scale)
                                 .steps(),
                             &self.display_config,
                         )
@@ -716,6 +730,27 @@ impl Runner {
         Ok((varset, last))
     }
 
+    fn assign_config(
+        &mut self,
+        config: Config,
+        value: SpannedValue<Value>,
+    ) -> Result<(), RunnerError> {
+        match config {
+            Config::DefaultScale => match &value.value {
+                Value::Atom(v) if &**v == "binary" => self.default_scale = ScaleType::Binary,
+                Value::Atom(v) if &**v == "metric" => self.default_scale = ScaleType::Metric,
+                _ => {
+                    return Err(CastError::from_val(value, ":metric | :binary").into());
+                }
+            },
+            Config::Round => self.display_config.round = value.clone().cast()?,
+            Config::LargeThreshold => self.display_config.large_threshold = value.clone().cast()?,
+            Config::NegExponent => self.display_config.neg_exponent = value.clone().cast()?,
+        }
+
+        Ok(())
+    }
+
     fn assign_value(
         &mut self,
         place: &[SpannedValue<Variable>],
@@ -725,31 +760,7 @@ impl Runner {
 
         match set {
             VarSet::Config => {
-                if last.value == self.default_scale.name {
-                    match &value.value {
-                        Value::Atom(v) if &**v == "binary" => {
-                            self.default_scale.value = ScaleType::Binary
-                        }
-                        Value::Atom(v) if &**v == "metric" => {
-                            self.default_scale.value = ScaleType::Metric
-                        }
-                        _ => {
-                            return Err(CastError::from_val(value, ":metric | :binary").into());
-                        }
-                    }
-                } else if last.value == self.display_config.round.name {
-                    self.display_config.round.value = value.clone().cast()?;
-                } else if last.value == self.display_config.large_threshold.name {
-                    self.display_config.large_threshold.value = value.clone().cast()?;
-                } else if last.value == self.display_config.neg_exponent.name {
-                    self.display_config.neg_exponent.value = value.clone().cast()?;
-                } else {
-                    return Err(RunnerError::UndefinedIdentifier {
-                        name: (**last).clone(),
-                        location: (last.start..last.end).into(),
-                        src: last.source.clone(),
-                    });
-                }
+                self.assign_config(Config::try_parse(last.clone())?, value.clone())?;
             }
             VarSet::Base => {
                 self.values.insert(last.value.clone(), value.value.clone());
@@ -774,20 +785,13 @@ impl Runner {
                 let unit = self.resolve_varset(&set, last)?;
                 self.display_value(unit, false, 0)
             }
-            VarSet::Config => if **last == self.default_scale.name {
-                "default unit scale to use, :metric or :binary"
-            } else if **last == self.display_config.round.name {
-                "number of digits to round to, :none or number"
-            } else if **last == self.display_config.large_threshold.name {
-                "largest value to fully render, :none or number"
-            } else if **last == self.display_config.neg_exponent.name {
-                "smallest value to fully render as an exponent, :none or number"
-            } else {
-                return Err(RunnerError::UndefinedIdentifier {
-                    name: (**last).clone(),
-                    location: (last.start..last.end).into(),
-                    src: last.source.clone(),
-                });
+            VarSet::Config => match Config::try_parse(last.clone())? {
+                Config::DefaultScale => "default unit scale to use, :metric or :binary",
+                Config::Round => "number of digits to round to, :none or number",
+                Config::LargeThreshold => "largest value to fully render, :none or number",
+                Config::NegExponent => {
+                    "smallest value to fully render as an exponent, :none or number"
+                }
             }
             .into(),
         };

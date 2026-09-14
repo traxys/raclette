@@ -87,7 +87,7 @@ impl From<i128> for ValueMagnitude {
 
 impl ValueMagnitude {
     pub fn to_string(&self, config: &DisplayConfig) -> String {
-        if let Some(thrs) = config.large_threshold.value
+        if let Some(thrs) = config.large_threshold
             && self.0 >= thrs
         {
             let precision = thrs.ilog10() as usize;
@@ -97,12 +97,12 @@ impl ValueMagnitude {
             return self.0.to_sci_with_options(options).to_string();
         }
 
-        if let Some(exp) = config.neg_exponent.value
+        if let Some(exp) = config.neg_exponent
             && self.0 < malachite::Rational::from(10).pow(exp)
         {
             let mut options = ToSciOptions::default();
             options.set_neg_exp_threshold(exp);
-            if let Some(r) = config.round.value {
+            if let Some(r) = config.round {
                 options.set_precision(r as u64 + 1);
             }
 
@@ -132,7 +132,7 @@ impl ValueMagnitude {
                     0
                 };
 
-                match config.round.value {
+                match config.round {
                     Some(n) if (base.len() - zero_base) + repeat.len() > n => {
                         s.reserve(n);
 
