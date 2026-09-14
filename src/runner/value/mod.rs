@@ -458,6 +458,17 @@ where
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError>;
 }
 
+impl<S: ValueCast> ValueCast for SpannedValue<S> {
+    fn name() -> Cow<'static, str> {
+        S::name()
+    }
+
+    fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
+        let span = v.span();
+        Ok(S::convert(v)?.spanned(&span))
+    }
+}
+
 impl ValueCast for bool {
     fn name() -> Cow<'static, str> {
         "bool".into()
@@ -471,27 +482,16 @@ impl ValueCast for bool {
     }
 }
 
-impl ValueCast for SpannedValue<String> {
+impl ValueCast for String {
     fn name() -> Cow<'static, str> {
         "string".into()
     }
 
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
-        let span = v.span();
         match v.value {
-            Value::Str(s) => Ok(s.spanned(&span)),
+            Value::Str(s) => Ok(s),
             _ => Err(v.raise_cast::<Self>()),
         }
-    }
-}
-
-impl ValueCast for String {
-    fn name() -> Cow<'static, str> {
-        SpannedValue::<String>::name()
-    }
-
-    fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
-        Ok(<SpannedValue<String> as ValueCast>::convert(v)?.value)
     }
 }
 
@@ -523,7 +523,6 @@ impl ValueCast for NumericValue {
     fn name() -> Cow<'static, str> {
         "numeric".into()
     }
-
 
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
         match v.value {
