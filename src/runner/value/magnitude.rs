@@ -77,6 +77,7 @@ try_from_int!(i64);
 try_from_int!(i128);
 try_from_int!(u32);
 try_from_int!(u64);
+try_from_int!(usize);
 
 impl From<i128> for ValueMagnitude {
     fn from(value: i128) -> Self {

@@ -236,6 +236,13 @@ pub enum RunnerError {
         #[source_code]
         src: MaybeNamed,
     },
+    #[error("Value can’t be assigned")]
+    Unassignable {
+        #[label("this location is not assignable")]
+        location: SourceSpan,
+        #[source_code]
+        src: MaybeNamed,
+    },
     #[diagnostic(transparent)]
     #[error(transparent)]
     ParseError(BoxedDiagnostic<RunnerParseError>),
@@ -496,7 +503,12 @@ impl Runner {
         func: &ast::Function,
     ) -> Result<&(dyn ValueFn + Send + Sync), RunnerError> {
         match func {
-            ast::Function::Ref(name) => self.resolve_path(name)?.spanned(&name.span()).cast(),
+            ast::Function::Ref(name) => {
+                let (set, last) = self.resolve_path(name)?;
+                self.resolve_varset(&set, last)?
+                    .spanned(&name.span())
+                    .cast()
+            }
         }
     }
 
@@ -688,7 +700,10 @@ impl Runner {
             })
     }
 
-    fn resolve_path(&self, path: &[SpannedValue<Variable>]) -> Result<Value, RunnerError> {
+    fn resolve_path<'a>(
+        &self,
+        path: &'a [SpannedValue<Variable>],
+    ) -> Result<(VarSet, &'a SpannedValue<Variable>), RunnerError> {
         let (last, path) = path.split_last().unwrap();
 
         let mut varset = VarSet::Base;
@@ -698,7 +713,56 @@ impl Runner {
             varset = next.spanned(&span).cast()?;
         }
 
-        self.resolve_varset(&varset, last)
+        Ok((varset, last))
+    }
+
+    fn assign_value(
+        &mut self,
+        place: &[SpannedValue<Variable>],
+        value: SpannedValue<Value>,
+    ) -> Result<Value, RunnerError> {
+        let (set, last) = self.resolve_path(place)?;
+
+        match set {
+            VarSet::Config => {
+                if last.value == self.default_scale.name {
+                    match &value.value {
+                        Value::Atom(v) if &**v == "binary" => {
+                            self.default_scale.value = ScaleType::Binary
+                        }
+                        Value::Atom(v) if &**v == "metric" => {
+                            self.default_scale.value = ScaleType::Metric
+                        }
+                        _ => {
+                            return Err(CastError::from_val(value, ":metric | :binary").into());
+                        }
+                    }
+                } else if last.value == self.display_config.round.name {
+                    self.display_config.round.value = value.clone().cast()?;
+                } else if last.value == self.display_config.large_threshold.name {
+                    self.display_config.large_threshold.value = value.clone().cast()?;
+                } else if last.value == self.display_config.neg_exponent.name {
+                    self.display_config.neg_exponent.value = value.clone().cast()?;
+                } else {
+                    return Err(RunnerError::UndefinedIdentifier {
+                        name: (**last).clone(),
+                        location: (last.start..last.end).into(),
+                        src: last.source.clone(),
+                    });
+                }
+            }
+            VarSet::Base => {
+                self.values.insert(last.value.clone(), value.value.clone());
+            }
+            VarSet::Functions | VarSet::Units => {
+                return Err(RunnerError::Unassignable {
+                    location: (last.start..last.end).into(),
+                    src: last.source.clone(),
+                });
+            }
+        };
+
+        Ok(value.value)
     }
 
     fn eval_expr(&mut self, expr: &ast::Expr) -> Result<Value, miette::Report> {
@@ -725,11 +789,13 @@ impl Runner {
                 }
                 .into())
             }
-            ast::Expr::Variable(vars) => Ok(self.resolve_path(vars)?),
+            ast::Expr::Variable(vars) => {
+                let (set, last) = self.resolve_path(vars)?;
+                Ok(self.resolve_varset(&set, last)?)
+            }
             ast::Expr::Assign(v, e) => {
-                let expr = self.eval_expr(e)?;
-                self.values.insert((**v).clone(), expr.clone());
-                Ok(expr)
+                let expr = self.eval_expr(e)?.spanned(e);
+                Ok(self.assign_value(v, expr)?)
             }
             ast::Expr::BinOp(b) => self.eval_bin_op(b),
             ast::Expr::UnaryOp(u) => self.eval_unary_op(u),

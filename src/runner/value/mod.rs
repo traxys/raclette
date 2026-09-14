@@ -469,6 +469,19 @@ impl<S: ValueCast> ValueCast for SpannedValue<S> {
     }
 }
 
+impl<S: ValueCast> ValueCast for Option<S> {
+    fn name() -> Cow<'static, str> {
+        format!(":none | {}", S::name()).into()
+    }
+
+    fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
+        match &v.value {
+            Value::Atom(a) if &**a == "none" => Ok(None),
+            _ => S::convert(v).map(Some),
+        }
+    }
+}
+
 impl ValueCast for bool {
     fn name() -> Cow<'static, str> {
         "bool".into()
@@ -518,6 +531,8 @@ macro_rules! int_from_value {
 int_from_value!(u64);
 int_from_value!(u32);
 int_from_value!(i128);
+int_from_value!(usize);
+int_from_value!(i64);
 
 impl ValueCast for NumericValue {
     fn name() -> Cow<'static, str> {
