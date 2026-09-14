@@ -36,8 +36,27 @@ pub trait ValueFn: Debug {
 
         self.invoke_inner(runner, call_site, args)
     }
+
     fn arity(&self) -> usize {
         self.arguments().len()
+    }
+
+    fn is_help(&self) -> bool {
+        false
+    }
+
+    fn description(&self) -> &'static str;
+
+    fn help(&self) -> String {
+        let mut arguments = String::new();
+        for arg in self.arguments() {
+            if !arguments.is_empty() {
+                arguments.push(',');
+            }
+            arguments.push_str(&arg);
+        }
+
+        format!("{arguments} : {}", self.description())
     }
 
     fn arguments(&self) -> Vec<Cow<'static, str>>;
@@ -49,15 +68,24 @@ pub trait ValueFn: Debug {
     ) -> ValueResult;
 }
 
-type VFn1<T> = fn(T) -> ValueResult;
-type RunVFn1<T> = fn(&Runner, T) -> ValueResult;
+type VFn1<T, H> = fn(T, H) -> ValueResult;
+type RunVFn1<T, H> = fn(&Runner, T, H) -> ValueResult;
 
-impl<T> ValueFn for VFn1<T>
+trait HelpProvider: Default {
+    fn help() -> &'static str;
+}
+
+impl<T, H> ValueFn for VFn1<T, H>
 where
     T: ValueCast,
+    H: HelpProvider,
 {
     fn arguments(&self) -> Vec<Cow<'static, str>> {
         vec![T::name()]
+    }
+
+    fn description(&self) -> &'static str {
+        H::help()
     }
 
     fn invoke_inner(
@@ -68,16 +96,21 @@ where
     ) -> ValueResult {
         let (arg,) = args.into_iter().collect_tuple().unwrap();
 
-        (self)(arg.cast()?)
+        (self)(arg.cast()?, H::default())
     }
 }
 
-impl<T> ValueFn for RunVFn1<T>
+impl<T, H> ValueFn for RunVFn1<T, H>
 where
     T: ValueCast,
+    H: HelpProvider,
 {
     fn arguments(&self) -> Vec<Cow<'static, str>> {
         vec![T::name()]
+    }
+
+    fn description(&self) -> &'static str {
+        H::help()
     }
 
     fn invoke_inner(
@@ -88,7 +121,7 @@ where
     ) -> ValueResult {
         let (arg,) = args.into_iter().collect_tuple().unwrap();
 
-        (self)(runner, arg.cast()?)
+        (self)(runner, arg.cast()?, H::default())
     }
 }
 
@@ -98,68 +131,125 @@ impl From<Vec<&str>> for Variable {
     }
 }
 
+#[derive(Debug)]
+#[allow(unused)]
+struct Help;
+
+static HELP: Help = Help;
+
+impl ValueFn for Help {
+    fn arguments(&self) -> Vec<Cow<'static, str>> {
+        vec!["item".into()]
+    }
+
+    fn invoke_inner(
+        &self,
+        _: &Runner,
+        _: SpannedValue<()>,
+        _: Vec<SpannedValue<Value>>,
+    ) -> ValueResult {
+        unreachable!("Help is a special function and can’t be called")
+    }
+
+    fn is_help(&self) -> bool {
+        true
+    }
+
+    fn description(&self) -> &'static str {
+        "display the help for the specified identifier"
+    }
+}
+
 pub type Function = &'static (dyn ValueFn + Sync + Send + 'static);
 
 pub static FUNCTIONS: Lazy<HashMap<Variable, Function>> = Lazy::new(|| {
-    let mut funcs: HashMap<_, &'static (dyn ValueFn + Sync + Send + 'static)> = HashMap::new();
+    let mut funcs: HashMap<_, Function> = HashMap::new();
 
-    funcs.insert(vec!["to", "binary"].into(), &(to_binary as VFn1<i128>));
-    funcs.insert(vec!["to", "hex"].into(), &(to_hex as VFn1<i128>));
+    funcs.insert(vec!["to", "binary"].into(), &(to_binary as VFn1<i128, _>));
+    funcs.insert(vec!["to", "hex"].into(), &(to_hex as VFn1<i128, _>));
     funcs.insert(
         vec!["strip", "unit"].into(),
-        &(strip_unit as VFn1<NumericValue>),
+        &(strip_unit as VFn1<NumericValue, _>),
     );
-    funcs.insert(vec!["to", "int"].into(), &(to_int as VFn1<NumericValue>));
-    funcs.insert(vec!["factorial"].into(), &(factorial as VFn1<u64>));
+    funcs.insert(vec!["to", "int"].into(), &(to_int as VFn1<NumericValue, _>));
+    funcs.insert(vec!["factorial"].into(), &(factorial as VFn1<u64, _>));
 
     funcs.insert(
         vec!["to", "bin"].into(),
         funcs[&vec!["to", "binary"].into()],
     );
 
-    funcs.insert(vec!["len"].into(), &(length as VFn1<_>));
-    funcs.insert(vec!["parse"].into(), &(parse as RunVFn1<_>));
+    funcs.insert(vec!["len"].into(), &(length as VFn1<_, _>));
+    funcs.insert(vec!["parse"].into(), &(parse as RunVFn1<_, _>));
+
+    funcs.insert(vec!["help"].into(), &HELP);
 
     funcs
 });
 
-fn to_binary(v: i128) -> ValueResult {
+macro_rules! help {
+    ($name:ident, $desc:literal) => {
+        #[derive(Default)]
+        struct $name;
+
+        impl HelpProvider for $name {
+            fn help() -> &'static str {
+                $desc
+            }
+        }
+    };
+}
+
+help!(
+    ToBinary,
+    "generate a string of the binary representation of the number"
+);
+fn to_binary(v: i128, _: ToBinary) -> ValueResult {
     Ok(Value::Str(format!("0b{v:b}")))
 }
 
-fn to_hex(v: i128) -> ValueResult {
+help!(
+    ToHex,
+    "generate a string of the hexadecimal representation of the number"
+);
+fn to_hex(v: i128, _: ToHex) -> ValueResult {
     Ok(Value::Str(format!("0x{v:x}")))
 }
 
-fn to_int(v: NumericValue) -> ValueResult {
+help!(ToInt, "convert the number to an integer, by rounding");
+fn to_int(v: NumericValue, _: ToInt) -> ValueResult {
     Ok(Value::Numeric(NumericValue {
         magnitude: v.magnitude.round_to_int(),
         unit: v.unit,
     }))
 }
 
-fn strip_unit(v: NumericValue) -> ValueResult {
+help!(StripUnit, "remove the unit of the specified number");
+fn strip_unit(v: NumericValue, _: StripUnit) -> ValueResult {
     Ok(Value::Numeric(NumericValue {
         magnitude: v.magnitude,
         unit: Unit::dimensionless(),
     }))
 }
 
-fn factorial(v: u64) -> ValueResult {
+help!(Factorial, "compute the factorial of the input");
+fn factorial(v: u64, _: Factorial) -> ValueResult {
     Ok(Value::Numeric(NumericValue {
         magnitude: ValueMagnitude::factorial(v),
         unit: Unit::dimensionless(),
     }))
 }
 
-fn length(v: String) -> ValueResult {
+help!(Length, "compute the length of the input string");
+fn length(v: String, _: Length) -> ValueResult {
     Ok(Value::Numeric(NumericValue {
         magnitude: ValueMagnitude::new(v.len() as _),
         unit: Unit::dimensionless(),
     }))
 }
 
-fn parse(runner: &Runner, value: SpannedValue<String>) -> ValueResult {
+help!(Parse, "parse the input string as a raclette literral");
+fn parse(runner: &Runner, value: SpannedValue<String>, _: Parse) -> ValueResult {
     let parser = crate::calc::DimensionedLiteralParser::new();
 
     let sub_input = value.as_str().into();

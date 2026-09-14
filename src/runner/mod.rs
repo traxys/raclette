@@ -5,7 +5,7 @@ use itertools::Itertools;
 use miette::{Context, Diagnostic, SourceSpan};
 
 use crate::{
-    ast::{self, Variable},
+    ast::{self, Expr, Variable},
     span::{MaybeNamed, Span, SpannedValue, SpanningExt},
 };
 
@@ -33,7 +33,7 @@ pub struct CastError {
 }
 
 impl CastError {
-    fn from_val<'a>(val: SpannedValue<Value>, to: &'a str) -> Self {
+    fn from_val(val: SpannedValue<Value>, to: &str) -> Self {
         Self {
             to: to.into(),
             from: match &*val {
@@ -501,7 +501,7 @@ impl Runner {
     fn resolve_function(
         &self,
         func: &ast::Function,
-    ) -> Result<&(dyn ValueFn + Send + Sync), RunnerError> {
+    ) -> Result<&'static (dyn ValueFn + Send + Sync), RunnerError> {
         match func {
             ast::Function::Ref(name) => {
                 let (set, last) = self.resolve_path(name)?;
@@ -765,6 +765,36 @@ impl Runner {
         Ok(value.value)
     }
 
+    fn eval_help(&self, argument: &[SpannedValue<Variable>]) -> Result<Value, RunnerError> {
+        let (set, last) = self.resolve_path(argument)?;
+
+        let description = match set {
+            VarSet::Base | VarSet::Functions => self.resolve_varset(&set, last)?.help().to_string(),
+            VarSet::Units => {
+                let unit = self.resolve_varset(&set, last)?;
+                self.display_value(unit, false, 0)
+            }
+            VarSet::Config => if **last == self.default_scale.name {
+                "default unit scale to use, :metric or :binary"
+            } else if **last == self.display_config.round.name {
+                "number of digits to round to, :none or number"
+            } else if **last == self.display_config.large_threshold.name {
+                "largest value to fully render, :none or number"
+            } else if **last == self.display_config.neg_exponent.name {
+                "smallest value to fully render as an exponent, :none or number"
+            } else {
+                return Err(RunnerError::UndefinedIdentifier {
+                    name: (**last).clone(),
+                    location: (last.start..last.end).into(),
+                    src: last.source.clone(),
+                });
+            }
+            .into(),
+        };
+
+        Ok(Value::Str(description))
+    }
+
     fn eval_expr(&mut self, expr: &ast::Expr) -> Result<Value, miette::Report> {
         match expr {
             ast::Expr::Literal(l) => Ok(eval_literal(l)),
@@ -800,17 +830,41 @@ impl Runner {
             ast::Expr::BinOp(b) => self.eval_bin_op(b),
             ast::Expr::UnaryOp(u) => self.eval_unary_op(u),
             ast::Expr::Call(c) => {
-                let args = c
-                    .args
-                    .iter()
-                    .map(|e| {
-                        let span = e.span();
-                        self.eval_expr(e).map(|v| v.spanned(&span))
-                    })
-                    .collect::<Result<_, _>>()?;
                 let f = self.resolve_function(&c.fun)?;
-                f.invoke(self, c.fun.span(), c.span(), args)
-                    .map_err(Into::into)
+
+                if f.is_help() {
+                    if c.args.len() != 1 {
+                        return Err(RunnerError::FunctionArity {
+                            provided: c.args.len(),
+                            arity: 1,
+                            f: (c.fun.start..c.fun.end).into(),
+                            src: c.fun.source.clone(),
+                        }
+                        .into());
+                    }
+
+                    match &c.args[0].value {
+                        Expr::Variable(v) => self.eval_help(v).map_err(Into::into),
+                        _ => Err(CastError {
+                            from: "value",
+                            to: "variable name".into(),
+                            location: (c.args[0].start..c.args[0].end).into(),
+                            src: c.args[0].source.clone(),
+                        }
+                        .into()),
+                    }
+                } else {
+                    let args = c
+                        .args
+                        .iter()
+                        .map(|e| {
+                            let span = e.span();
+                            self.eval_expr(e).map(|v| v.spanned(&span))
+                        })
+                        .collect::<Result<_, _>>()?;
+                    f.invoke(self, c.fun.span(), c.span(), args)
+                        .map_err(Into::into)
+                }
             }
         }
     }

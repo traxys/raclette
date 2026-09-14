@@ -33,6 +33,20 @@ pub enum Value {
 }
 
 impl Value {
+    pub fn help(&self) -> String {
+        match self {
+            Value::Numeric(_) => "numeric value".into(),
+            Value::Str(_) => "string value".into(),
+            Value::Bool(_) => "boolean value".into(),
+            Value::Atom(_) => "atom".into(),
+            Value::Config => "raclette configuration".into(),
+            Value::Functions => "available functions".into(),
+            Value::Units => "known units".into(),
+            Value::Variables => "known variables".into(),
+            Value::Func(f) => f.help(),
+        }
+    }
+
     pub fn is_zero(&self) -> bool {
         match self {
             Value::Numeric(n) => n.magnitude.is_zero(),
