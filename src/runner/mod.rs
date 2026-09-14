@@ -25,7 +25,7 @@ mod value;
 #[error("Could not cast from {from} to {to}")]
 pub struct CastError {
     from: &'static str,
-    to: &'static str,
+    to: String,
     #[label("this value is of type {from}")]
     location: SourceSpan,
     #[source_code]
@@ -33,9 +33,9 @@ pub struct CastError {
 }
 
 impl CastError {
-    fn from_val(val: SpannedValue<Value>, to: &'static str) -> Self {
+    fn from_val<'a>(val: SpannedValue<Value>, to: &'a str) -> Self {
         Self {
-            to,
+            to: to.into(),
             from: match &*val {
                 Value::Numeric(n) => n.magnitude.ty(),
                 v => v.ty(),
@@ -457,7 +457,7 @@ impl Runner {
                     if !output.is_empty() {
                         output.push(',');
                     }
-                    output.push_str(arg);
+                    output.push_str(&arg);
                 }
                 format!("{output} :-> value")
             }

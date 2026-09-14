@@ -40,7 +40,7 @@ impl TryFrom<SpannedValue<ValueMagnitude>> for Integer {
         } else {
             Err(CastError {
                 from: value.ty(),
-                to: "int",
+                to: "int".into(),
                 location: (value.start..value.end).into(),
                 src: value.source,
             })
@@ -61,7 +61,7 @@ macro_rules! try_from_int {
                 if !(<$ty>::MIN..=<$ty>::MAX).contains(&integer) {
                     Err(CastError {
                         from: ty,
-                        to: stringify!($ty),
+                        to: stringify!($ty).into(),
                         location: (span.start..span.end).into(),
                         src: span.source,
                     })

@@ -2,7 +2,7 @@ mod magnitude;
 mod numeric;
 mod unit;
 
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 
 use super::{CastError, RunnerError};
 use crate::{
@@ -435,7 +435,7 @@ impl SpannedValue<Value> {
     where
         S: ValueCast,
     {
-        CastError::from_val(self, S::NAME).into()
+        CastError::from_val(self, &S::name()).into()
     }
 
     pub(crate) fn cast<S: ValueCast>(self) -> Result<S, RunnerError> {
@@ -453,13 +453,15 @@ pub(crate) trait ValueCast
 where
     Self: Sized,
 {
-    const NAME: &'static str;
+    fn name() -> Cow<'static, str>;
 
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError>;
 }
 
 impl ValueCast for bool {
-    const NAME: &'static str = "bool";
+    fn name() -> Cow<'static, str> {
+        "bool".into()
+    }
 
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
         match v.value {
@@ -470,7 +472,9 @@ impl ValueCast for bool {
 }
 
 impl ValueCast for SpannedValue<String> {
-    const NAME: &'static str = "string";
+    fn name() -> Cow<'static, str> {
+        "string".into()
+    }
 
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
         let span = v.span();
@@ -482,7 +486,9 @@ impl ValueCast for SpannedValue<String> {
 }
 
 impl ValueCast for String {
-    const NAME: &'static str = <SpannedValue<String> as ValueCast>::NAME;
+    fn name() -> Cow<'static, str> {
+        SpannedValue::<String>::name()
+    }
 
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
         Ok(<SpannedValue<String> as ValueCast>::convert(v)?.value)
@@ -492,7 +498,9 @@ impl ValueCast for String {
 macro_rules! int_from_value {
     ($ty:ty) => {
         impl ValueCast for $ty {
-            const NAME: &'static str = stringify!($ty);
+            fn name() -> Cow<'static, str> {
+                stringify!($ty).into()
+            }
 
             fn convert(value: SpannedValue<Value>) -> Result<Self, RunnerError> {
                 let span = value.span();
@@ -512,7 +520,10 @@ int_from_value!(u32);
 int_from_value!(i128);
 
 impl ValueCast for NumericValue {
-    const NAME: &'static str = "numeric";
+    fn name() -> Cow<'static, str> {
+        "numeric".into()
+    }
+
 
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
         match v.value {
@@ -523,7 +534,9 @@ impl ValueCast for NumericValue {
 }
 
 impl ValueCast for VarSet {
-    const NAME: &'static str = "map";
+    fn name() -> Cow<'static, str> {
+        "map".into()
+    }
 
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
         match v.value {
@@ -536,7 +549,9 @@ impl ValueCast for VarSet {
 }
 
 impl ValueCast for functions::Function {
-    const NAME: &'static str = "function";
+    fn name() -> Cow<'static, str> {
+        "function".into()
+    }
 
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
         match v.value {

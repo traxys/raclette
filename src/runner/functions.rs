@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Debug, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, fmt::Debug, sync::Arc};
 
 use itertools::Itertools;
 use once_cell::sync::Lazy;
@@ -40,7 +40,7 @@ pub trait ValueFn: Debug {
         self.arguments().len()
     }
 
-    fn arguments(&self) -> &'static [&'static str];
+    fn arguments(&self) -> Vec<Cow<'static, str>>;
     fn invoke_inner(
         &self,
         runner: &Runner,
@@ -56,8 +56,8 @@ impl<T> ValueFn for VFn1<T>
 where
     T: ValueCast,
 {
-    fn arguments(&self) -> &'static [&'static str] {
-        &[T::NAME]
+    fn arguments(&self) -> Vec<Cow<'static, str>> {
+        vec![T::name()]
     }
 
     fn invoke_inner(
@@ -76,8 +76,8 @@ impl<T> ValueFn for RunVFn1<T>
 where
     T: ValueCast,
 {
-    fn arguments(&self) -> &'static [&'static str] {
-        &[T::NAME]
+    fn arguments(&self) -> Vec<Cow<'static, str>> {
+        vec![T::name()]
     }
 
     fn invoke_inner(
