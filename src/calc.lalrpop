@@ -97,10 +97,7 @@ InputStatementInner: InputStatement = {
 	"|>" <Spn<Function>> => InputStatement::LastRedirect(<>),
 	Expr => InputStatement::Expr(<>),
 	SpnBox<DimensionedCast> => InputStatement::Expr(Expr::Dimensioned(<>)),
-	"." <Spn<ident>> <CommandValue?> => InputStatement::Command(<>),
 };
-
-CommandValue: SpannedValue<Expr> = "=" <Spn<Expr>> => <>;
 
 Function: Function = {
 	Spn<VariableChain> => Function::Ref(<>),

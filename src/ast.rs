@@ -331,7 +331,6 @@ impl std::fmt::Debug for BinOp {
 pub enum InputStatement {
     Expr(Expr),
     LastRedirect(SpannedValue<Function>),
-    Command(SpannedValue<Arc<str>>, Option<SpannedValue<Expr>>),
 }
 
 impl std::fmt::Debug for InputStatement {
@@ -339,7 +338,6 @@ impl std::fmt::Debug for InputStatement {
         match self {
             Self::Expr(arg0) => write!(f, "{arg0:?}"),
             Self::LastRedirect(arg0) => write!(f, "|> ({arg0:?})"),
-            Self::Command(name, value) => write!(f, ".{:?}={:?}", name, value),
         }
     }
 }

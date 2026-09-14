@@ -18,7 +18,6 @@ use value::{
 
 use self::value::{NumericValue, Value};
 
-mod commands;
 mod functions;
 mod value;
 
@@ -975,31 +974,12 @@ impl Runner {
         }
     }
 
-    pub fn handle_command(
-        &mut self,
-        name: SpannedValue<Arc<str>>,
-        value: Option<Value>,
-    ) -> Result<(), RunnerError> {
-        let location = (name.start..name.end).into();
-        let src = name.source;
-
-        match commands::COMMANDS.get(&*name.value) {
-            Some(cmd) => cmd.run(self, value, location, src),
-            _ => Err(RunnerError::UnknownCommand { location, src }),
-        }
-    }
-
     pub fn eval_input_statement(
         &mut self,
         expr: SpannedValue<ast::InputStatement>,
     ) -> Result<Option<Value>, miette::Report> {
         let span = expr.span();
         let value = match expr.value {
-            ast::InputStatement::Command(name, val) => {
-                let v = val.as_ref().map(|e| self.eval_expr(e)).transpose()?;
-                self.handle_command(name, v)?;
-                return Ok(None);
-            }
             ast::InputStatement::Expr(e) => self.eval_expr(&e)?,
             ast::InputStatement::LastRedirect(func) => match &self.last {
                 None => Err(RunnerError::NoStoredValue)?,
