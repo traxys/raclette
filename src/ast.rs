@@ -190,13 +190,19 @@ pub enum Token {
     )]
     #[display("<number:{}>", _0)]
     Number(i128),
-    #[regex("[0-9]+\\.[0-9]*", |s| {
+    #[regex("[0-9]+\\.[0-9]*", callback = |s| {
         let (int, decimals) = s.slice().split_once('.').unwrap();
         Ok::<_, TokenError>(
             DecimalLiteral {
-                integer: int.parse()?,
+                integer: match int.parse() {
+                    Ok(n) => n,
+                    Err(e) => return CallbackResult::Error(e.into()),
+                },
                 decimal_count: decimals.len() as u64,
-                decimals: decimals.parse()?,
+                decimals: match decimals.parse() {
+                    Ok(n) => n,
+                    Err(e) => return CallbackResult::Error(e.into()),
+                }
             }
         )
     })]
