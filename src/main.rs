@@ -9,6 +9,11 @@ use rustyline::{
     highlight::Highlighter, hint::Hinter, history::FileHistory, validate::Validator,
 };
 
+use crate::{
+    ast::{InputStatement, Variable},
+    span::SpannedValue,
+};
+
 #[derive(Parser, Debug)]
 struct Args {
     expr: Vec<String>,
@@ -136,6 +141,85 @@ impl Highlighter for &RacletteHelper {}
 
 impl Completer for &RacletteHelper {
     type Candidate = String;
+
+    fn complete(
+        &self,
+        line: &str,
+        pos: usize,
+        _: &rustyline::Context<'_>,
+    ) -> rustyline::Result<(usize, Vec<Self::Candidate>)> {
+        let Ok(parsed) = self.parser.parse(&line.into(), ast::lexer(line)) else {
+            return Ok((pos, vec![]));
+        };
+
+        if !(parsed.start..=parsed.end).contains(&pos) {
+            return Ok((pos, vec![]));
+        }
+
+        fn get_chain(
+            pos: usize,
+            v: &[SpannedValue<Variable>],
+        ) -> Option<&[SpannedValue<Variable>]> {
+            let (index, _) = v
+                .iter()
+                .enumerate()
+                .find(|(_, v)| (v.start..=v.end).contains(&pos))?;
+
+            Some(&v[0..=index])
+        }
+
+        fn get_chain_in_expr(pos: usize, expr: &ast::Expr) -> Option<&[SpannedValue<Variable>]> {
+            match expr {
+                ast::Expr::Literal(_) => None,
+                ast::Expr::Dimensioned(d) => get_chain_in_expr(pos, &d.expr),
+                ast::Expr::Variable(v) => get_chain(pos, v),
+                ast::Expr::Assign(v, e) => get_chain(pos, v).or_else(|| get_chain_in_expr(pos, e)),
+                ast::Expr::BinOp(b) => {
+                    get_chain_in_expr(pos, &b.lhs).or_else(|| get_chain_in_expr(pos, &b.rhs))
+                }
+                ast::Expr::Call(c) => match &c.fun.value {
+                    ast::Function::Ref(r) => get_chain(pos, r),
+                }
+                .or_else(|| {
+                    for arg in &c.args {
+                        match get_chain_in_expr(pos, arg) {
+                            Some(v) => return Some(v),
+                            None => continue,
+                        }
+                    }
+
+                    None
+                }),
+                ast::Expr::UnaryOp(u) => get_chain_in_expr(pos, &u.operand),
+            }
+        }
+
+        let Some(variable) = (match &parsed.value {
+            InputStatement::Expr(expr) => get_chain_in_expr(pos, expr),
+            InputStatement::LastRedirect(v) => match &v.value {
+                ast::Function::Ref(c) => get_chain(pos, c),
+            },
+        }) else {
+            return Ok((pos, vec![]));
+        };
+
+        let (last, path) = variable.split_last().unwrap();
+        let Ok(children) = self.runner.borrow().path_variables(path) else {
+            return Ok((pos, vec![]));
+        };
+
+        let last_len = last.end - last.start;
+
+        let mut completions = Vec::new();
+        for child in children {
+            if child.starts_with(last) {
+                let child = child.0.join(" ");
+                completions.push(child[last_len..].to_string());
+            }
+        }
+
+        Ok((last.end, completions))
+    }
 }
 
 impl Helper for &RacletteHelper {}

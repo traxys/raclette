@@ -229,6 +229,30 @@ pub enum Token {
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct Variable(pub Vec<Arc<str>>);
 
+impl Variable {
+    pub fn starts_with(&self, prefix: &Self) -> bool {
+        let mut words = prefix.0.iter().peekable();
+        let mut var = self.0.iter();
+
+        while let Some(word) = words.next() {
+            let Some(var_word) = var.next() else {
+                return false;
+            };
+
+            match words.peek().is_some() {
+                true => {
+                    if word != var_word {
+                        return false;
+                    }
+                }
+                false => return var_word.starts_with(&**word),
+            }
+        }
+
+        true
+    }
+}
+
 impl std::fmt::Debug for Variable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "< ")?;

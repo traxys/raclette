@@ -715,12 +715,7 @@ impl Runner {
             })
     }
 
-    fn resolve_path<'a>(
-        &self,
-        path: &'a [SpannedValue<Variable>],
-    ) -> Result<(VarSet, &'a SpannedValue<Variable>), RunnerError> {
-        let (last, path) = path.split_last().unwrap();
-
+    fn resolve_set(&self, path: &[SpannedValue<Variable>]) -> Result<VarSet, RunnerError> {
         let mut varset = VarSet::Base;
         for p in path {
             let span = p.span();
@@ -728,7 +723,25 @@ impl Runner {
             varset = next.spanned(&span).cast()?;
         }
 
-        Ok((varset, last))
+        Ok(varset)
+    }
+
+    pub fn path_variables(
+        &self,
+        path: &[SpannedValue<Variable>],
+    ) -> Result<Vec<Variable>, RunnerError> {
+        let set = self.resolve_set(path)?;
+
+        Ok(self.varset_children(&set))
+    }
+
+    fn resolve_path<'a>(
+        &self,
+        path: &'a [SpannedValue<Variable>],
+    ) -> Result<(VarSet, &'a SpannedValue<Variable>), RunnerError> {
+        let (last, path) = path.split_last().unwrap();
+
+        Ok((self.resolve_set(path)?, last))
     }
 
     fn assign_config(
