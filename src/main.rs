@@ -2,7 +2,10 @@ use clap::Parser;
 use itertools::Itertools;
 use lalrpop_util::lalrpop_mod;
 use miette::{Context, Diagnostic, IntoDiagnostic, Result, SourceCode, SourceSpan};
-use rustyline::{Editor, config::Configurer, error::ReadlineError, history::FileHistory};
+use rustyline::{
+    Editor, Helper, completion::Completer, config::Configurer, error::ReadlineError,
+    highlight::Highlighter, hint::Hinter, history::FileHistory, validate::Validator,
+};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -116,6 +119,22 @@ impl<T> ParseDiagnosticExt<T> for Result<T, LalrpopParseError> {
     }
 }
 
+struct RacletteHelper;
+
+impl Hinter for RacletteHelper {
+    type Hint = String;
+}
+
+impl Validator for RacletteHelper {}
+
+impl Highlighter for RacletteHelper {}
+
+impl Completer for RacletteHelper {
+    type Candidate = String;
+}
+
+impl Helper for RacletteHelper {}
+
 fn main() -> Result<()> {
     let args = Args::parse();
 
@@ -152,8 +171,9 @@ fn main() -> Result<()> {
                 })
                 .unwrap_or_else(|| "raclette-history".into());
 
-            let mut rl = Editor::<(), FileHistory>::new().into_diagnostic()?;
+            let mut rl = Editor::<RacletteHelper, FileHistory>::new().into_diagnostic()?;
             rl.set_max_history_size(1024).into_diagnostic()?;
+            rl.set_helper(Some(RacletteHelper));
 
             if let Err(e) = rl.load_history(&path)
                 && path.exists()
