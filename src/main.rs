@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use clap::Parser;
 use itertools::Itertools;
 use lalrpop_util::lalrpop_mod;
@@ -119,35 +121,42 @@ impl<T> ParseDiagnosticExt<T> for Result<T, LalrpopParseError> {
     }
 }
 
-struct RacletteHelper;
+struct RacletteHelper {
+    parser: calc::InputStatementParser,
+    runner: RefCell<runner::Runner>,
+}
 
-impl Hinter for RacletteHelper {
+impl Hinter for &RacletteHelper {
     type Hint = String;
 }
 
-impl Validator for RacletteHelper {}
+impl Validator for &RacletteHelper {}
 
-impl Highlighter for RacletteHelper {}
+impl Highlighter for &RacletteHelper {}
 
-impl Completer for RacletteHelper {
+impl Completer for &RacletteHelper {
     type Candidate = String;
 }
 
-impl Helper for RacletteHelper {}
+impl Helper for &RacletteHelper {}
 
 fn main() -> Result<()> {
     let args = Args::parse();
 
-    let parser = calc::InputStatementParser::new();
-    let mut runner = runner::Runner::new();
+    let state = RacletteHelper {
+        parser: calc::InputStatementParser::new(),
+        runner: RefCell::new(runner::Runner::new()),
+    };
 
     match args.expr.is_empty() {
         false => {
             let expr = args.expr.iter().join(" ");
-            let parsed = parser
+            let parsed = state
+                .parser
                 .parse(&expr.as_str().into(), ast::lexer(&expr))
                 .into_report(expr.clone())?;
 
+            let mut runner = state.runner.borrow_mut();
             if let Some(value) = runner.eval_input_statement(parsed)? {
                 println!("{}", runner.display_value(value, true, 0))
             }
@@ -171,9 +180,9 @@ fn main() -> Result<()> {
                 })
                 .unwrap_or_else(|| "raclette-history".into());
 
-            let mut rl = Editor::<RacletteHelper, FileHistory>::new().into_diagnostic()?;
+            let mut rl = Editor::<_, FileHistory>::new().into_diagnostic()?;
             rl.set_max_history_size(1024).into_diagnostic()?;
-            rl.set_helper(Some(RacletteHelper));
+            rl.set_helper(Some(&state));
 
             if let Err(e) = rl.load_history(&path)
                 && path.exists()
@@ -188,7 +197,8 @@ fn main() -> Result<()> {
                             println!("History error: {e:?}");
                         };
 
-                        let parsed = match parser
+                        let parsed = match state
+                            .parser
                             .parse(&line.as_str().into(), ast::lexer(&line))
                             .into_report(line.clone())
                         {
@@ -198,6 +208,8 @@ fn main() -> Result<()> {
                                 continue;
                             }
                         };
+
+                        let mut runner = state.runner.borrow_mut();
                         match runner.eval_input_statement(parsed) {
                             Err(e) => {
                                 println!("Runtime error:\n{e:?}");
