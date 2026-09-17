@@ -1,5 +1,6 @@
-use std::{borrow::Cow, collections::HashMap, fmt::Debug, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, fmt::Debug};
 
+use arcstr::ArcStr;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
 
@@ -127,7 +128,7 @@ where
 
 impl From<Vec<&str>> for Variable {
     fn from(value: Vec<&str>) -> Self {
-        Variable(value.into_iter().map(Arc::from).collect())
+        Variable(value.into_iter().map(ArcStr::from).collect())
     }
 }
 

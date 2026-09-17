@@ -1,7 +1,10 @@
 use std::{
-    num::{ParseFloatError, ParseIntError}, ops::Range, rc::Rc, sync::Arc,
+    num::{ParseFloatError, ParseIntError},
+    ops::Range,
+    rc::Rc,
 };
 
+use arcstr::ArcStr;
 use logos::Logos;
 
 use crate::span::SpannedValue;
@@ -38,7 +41,7 @@ impl std::fmt::Display for DecimalLiteral {
     }
 }
 
-fn parse_string(s: &str) -> Result<Arc<str>, TokenError> {
+fn parse_string(s: &str) -> Result<ArcStr, TokenError> {
     let mut inner = &s[1..s.len() - 1];
     let mut output = String::new();
 
@@ -209,18 +212,18 @@ pub enum Token {
     })]
     #[display("<decimal:{}>", _0)]
     Decimal(DecimalLiteral),
-    #[regex("[a-zA-Z][a-zA-Z0-9_]*", callback = |lex| Arc::from(lex.slice()))]
+    #[regex("[a-zA-Z][a-zA-Z0-9_]*", callback = |lex| ArcStr::from(lex.slice()))]
     #[display("identifier({})", _0)]
-    Ident(Arc<str>),
-    #[regex("\\$[a-zA-Z][a-zA-Z0-9_]*", callback = |lex| Arc::from(&lex.slice()[1..]))]
+    Ident(ArcStr),
+    #[regex("\\$[a-zA-Z][a-zA-Z0-9_]*", callback = |lex| ArcStr::from(&lex.slice()[1..]))]
     #[display("identifier({})", _0)]
-    Binding(Arc<str>),
-    #[regex("('|,)[a-zA-Z]+", callback = |lex| Arc::from(&lex.slice()[1..]))]
+    Binding(ArcStr),
+    #[regex("('|,)[a-zA-Z]+", callback = |lex| ArcStr::from(&lex.slice()[1..]))]
     #[display("unit({})", _0)]
-    Unit(Arc<str>),
+    Unit(ArcStr),
     #[regex(r#""([^"\\\x00-\x1F]|\\(["\\nrt/]|u[a-fA-F0-9]{4}))*""#, |lex| parse_string(lex.slice()))]
     #[display("{}", display_string(_0))]
-    String(Arc<str>),
+    String(ArcStr),
     #[token("true")]
     True,
     #[token("false")]
@@ -228,7 +231,7 @@ pub enum Token {
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
-pub struct Variable(pub Vec<Arc<str>>);
+pub struct Variable(pub Vec<ArcStr>);
 
 impl Variable {
     pub fn starts_with(&self, prefix: &Self) -> bool {
@@ -282,9 +285,9 @@ impl std::fmt::Display for Variable {
 pub enum Literal {
     Number(i128),
     Decimal(DecimalLiteral),
-    Atom(Arc<str>),
+    Atom(ArcStr),
     Bool(bool),
-    String(Arc<str>),
+    String(ArcStr),
 }
 
 impl std::fmt::Debug for Literal {
@@ -418,7 +421,7 @@ impl std::fmt::Debug for UnaryOp {
 
 pub struct DimensionedExpr {
     pub expr: SpannedValue<Expr>,
-    pub unit: Vec<SpannedValue<(Arc<str>, i64)>>,
+    pub unit: Vec<SpannedValue<(ArcStr, i64)>>,
 }
 
 impl std::fmt::Debug for DimensionedExpr {

@@ -1,5 +1,6 @@
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
+use arcstr::ArcStr;
 use either::Either;
 use itertools::Itertools;
 use miette::{Context, Diagnostic, SourceSpan};
@@ -269,7 +270,8 @@ fn atom_or<V, F>(v: Option<V>, f: F) -> Value
 where
     F: Fn(V) -> Value,
 {
-    v.map(f).unwrap_or_else(|| Value::Atom(Arc::from("none")))
+    v.map(f)
+        .unwrap_or_else(|| Value::Atom(ArcStr::from("none")))
 }
 
 fn atom_int_or(v: Option<i128>) -> Value {
@@ -621,7 +623,7 @@ impl Runner {
 
     fn resolve_units(
         &self,
-        units: &[SpannedValue<(Arc<str>, i64)>],
+        units: &[SpannedValue<(ArcStr, i64)>],
     ) -> Result<(ValueMagnitude, Unit), RunnerError> {
         let mut multiplier = ValueMagnitude::new(1);
         let mut unit_acc = Unit::dimensionless();

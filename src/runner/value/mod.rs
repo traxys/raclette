@@ -2,7 +2,7 @@ mod magnitude;
 mod numeric;
 mod unit;
 
-use std::{borrow::Cow, sync::Arc};
+use std::borrow::Cow;
 
 use super::{CastError, RunnerError};
 use crate::{
@@ -11,6 +11,7 @@ use crate::{
     span::{Span, SpannedValue, SpanningExt},
 };
 
+use arcstr::ArcStr;
 pub use magnitude::ValueMagnitude;
 pub use numeric::NumericValue;
 pub use unit::{
@@ -40,7 +41,7 @@ pub enum Value {
     Numeric(NumericValue),
     Str(String),
     Bool(bool),
-    Atom(Arc<str>),
+    Atom(ArcStr),
     Config,
     Functions,
     Units,

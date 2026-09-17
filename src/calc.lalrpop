@@ -17,7 +17,8 @@ use crate::{
 	},
 	span::SpannedValue,
 };
-use std::{sync::Arc, rc::Rc};
+use arcstr::ArcStr;
+use std::rc::Rc;
 
 use lalrpop_util::ParseError;
 
@@ -63,10 +64,10 @@ extern {
 		"->" => Token::Arrow,
 		num => Token::Number(<i128>),
 		decimal => Token::Decimal(<DecimalLiteral>),
-		ident => Token::Ident(<Arc<str>>),
-		unit => Token::Unit(<Arc<str>>),
-		binding => Token::Binding(<Arc<str>>),
-		str => Token::String(<Arc<str>>)
+		ident => Token::Ident(<ArcStr>),
+		unit => Token::Unit(<ArcStr>),
+		binding => Token::Binding(<ArcStr>),
+		str => Token::String(<ArcStr>)
 	}
 }
 
@@ -236,13 +237,13 @@ I64: i64 = <n:Spn<num>> =>? match (*n).try_into() {
 	Ok(n) => Ok(n),
 };
 
-Unit: (Arc<str>, i64) = {
+Unit: (ArcStr, i64) = {
 	unit => (<>, 1),
 	<u:unit> <n:I64> => (<>),
 	"(" <u:unit> "-" <e:I64> ")"=> (u, -e),
 };
 
-UnitId: (Arc<str>, i64) = {
+UnitId: (ArcStr, i64) = {
 	ident => (<>, 1),
 	ident I64 => (<>),
 	<u:ident> "-" <e:I64> => (u, (-e)),
@@ -250,7 +251,7 @@ UnitId: (Arc<str>, i64) = {
 	"/" <u:ident> <e:I64> => (u, (-e)),
 };
 
-ManyUnit: Vec<SpannedValue<(Arc<str>, i64)>> = {
+ManyUnit: Vec<SpannedValue<(ArcStr, i64)>> = {
 	Spn<Unit>+ => <>,
 	"'(" <Spn<UnitId>+> ")" => <>,
 };
@@ -288,7 +289,7 @@ ExprLiteral: Expr = {
 	"(" <Expr> ")" => <>,
 };
 
-pub DimensionedLiteral: (SpannedValue<Literal>, Vec<SpannedValue<(Arc<str>, i64)>>) = {
+pub DimensionedLiteral: (SpannedValue<Literal>, Vec<SpannedValue<(ArcStr, i64)>>) = {
 	<expr:Spn<Literal>> <unit:ManyUnit> => (expr, unit),
 	<expr:Spn<Literal>> => (expr, Vec::new()),
 };

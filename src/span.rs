@@ -3,13 +3,14 @@ use std::{
     sync::Arc,
 };
 
+use arcstr::ArcStr;
 use derivative::Derivative;
 use miette::{NamedSource, SourceCode, SourceSpan};
 
 #[derive(Clone, Debug)]
 pub enum MaybeNamed {
     Named(Arc<NamedSource<String>>),
-    Unamed(Arc<str>),
+    Unamed(ArcStr),
     None,
 }
 
@@ -21,7 +22,7 @@ impl From<NamedSource<String>> for MaybeNamed {
 
 impl From<&str> for MaybeNamed {
     fn from(s: &str) -> Self {
-        MaybeNamed::Unamed(Arc::from(s))
+        MaybeNamed::Unamed(ArcStr::from(s))
     }
 }
 

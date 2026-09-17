@@ -1,5 +1,6 @@
-use std::{collections::HashMap, fmt::Display, sync::Arc};
+use std::{collections::HashMap, fmt::Display};
 
+use arcstr::ArcStr;
 use either::Either;
 use enum_map::{Enum, EnumMap};
 use itertools::Itertools;
@@ -198,10 +199,10 @@ impl ScaleType {
 
     pub fn atom(&self) -> Value {
         match self {
-            ScaleType::Metric => Value::Atom(Arc::from("metric")),
-            ScaleType::TimeMetric => Value::Atom(Arc::from("time")),
-            ScaleType::ShiftedMetric => Value::Atom(Arc::from("metric")),
-            ScaleType::Binary => Value::Atom(Arc::from("binary")),
+            ScaleType::Metric => Value::Atom(ArcStr::from("metric")),
+            ScaleType::TimeMetric => Value::Atom(ArcStr::from("time")),
+            ScaleType::ShiftedMetric => Value::Atom(ArcStr::from("metric")),
+            ScaleType::Binary => Value::Atom(ArcStr::from("binary")),
         }
     }
 }
