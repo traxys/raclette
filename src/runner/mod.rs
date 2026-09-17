@@ -10,7 +10,6 @@ use crate::{
     span::{MaybeNamed, Span, SpannedValue, SpanningExt},
 };
 
-use functions::ValueFn;
 use value::{
     BYTE_UNIT, KNOWN_UNITS, MASS_UNIT, ScaleRender, ScaleStep, ScaleType, TIME_UNIT, Unit,
     ValueMagnitude,
@@ -513,20 +512,6 @@ impl Runner {
         }
     }
 
-    fn resolve_function(
-        &self,
-        func: &ast::Function,
-    ) -> Result<&'static (dyn ValueFn + Send + Sync), RunnerError> {
-        match func {
-            ast::Function::Ref(name) => {
-                let (set, last) = self.resolve_path(name)?;
-                self.resolve_varset(&set, last)?
-                    .spanned(&name.span())
-                    .cast()
-            }
-        }
-    }
-
     fn display_numeric_value(&self, value: NumericValue, render_units: bool) -> String {
         if value.unit.is_dimensionless() {
             value.magnitude.to_string(&self.display_config)
@@ -860,7 +845,10 @@ impl Runner {
             ast::Expr::BinOp(b) => self.eval_bin_op(b),
             ast::Expr::UnaryOp(u) => self.eval_unary_op(u),
             ast::Expr::Call(c) => {
-                let f = self.resolve_function(&c.fun)?;
+                let f = self
+                    .eval_expr(&c.fun)?
+                    .spanned(&c.fun.span())
+                    .cast::<functions::Function>()?;
 
                 if f.is_help() {
                     if c.args.len() != 1 {
@@ -994,11 +982,28 @@ impl Runner {
         let span = expr.span();
         let value = match expr.value {
             ast::InputStatement::Expr(e) => self.eval_expr(&e)?,
-            ast::InputStatement::LastRedirect(func) => match &self.last {
+            ast::InputStatement::LastRedirect(func) => match self.last.take() {
                 None => Err(RunnerError::NoStoredValue)?,
                 Some(last) => {
-                    let f = self.resolve_function(&func)?;
-                    f.invoke(self, func.span(), span.clone(), vec![last.clone()])?
+                    let f = match (|| {
+                        Ok(self
+                            .eval_expr(&func)?
+                            .spanned(&func.span())
+                            .cast::<functions::Function>()?)
+                    })() {
+                        Ok(f) => f,
+                        Err(e) => {
+                            self.last = Some(last);
+                            return Err(e);
+                        }
+                    };
+                    match f.invoke(self, func.span(), span.clone(), vec![last.clone()]) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            self.last = Some(last);
+                            return Err(e.into());
+                        }
+                    }
                 }
             },
         };

@@ -9,7 +9,6 @@ use crate::{
 		UnaryOp,
 		UnaryOpKind,
 		InputStatement,
-		Function,
 		Call,
 		UserParseError,
 		DecimalLiteral,
@@ -99,8 +98,8 @@ InputStatementInner: InputStatement = {
 	SpnBox<DimensionedCast> => InputStatement::Expr(Expr::Dimensioned(<>)),
 };
 
-Function: Function = {
-	Spn<VariableChain> => Function::Ref(<>),
+Function: Expr = {
+	VariableChain => Expr::Variable(<>),
 };
 
 pub Expr: Expr = {
@@ -111,7 +110,7 @@ pub Expr: Expr = {
 Redirect: Call = <val:Spn<ExprPipe>> "|>" <fun:Spn<Function>> => Call {fun, args: vec![val]};
 
 ExprPipe: Expr = {
-	Spn<Redirect> => Expr::Call(<>),
+	SpnBox<Redirect> => Expr::Call(<>),
 	ExprBoolOr => <>,
 };
 
@@ -273,7 +272,7 @@ ExprLiteral: Expr = {
 	LiteralExpr => <>,
 	VariableChain => Expr::Variable(<>),
 	SpnBox<DimensionedExpr> => Expr::Dimensioned(<>),
-	Spn<Call> => Expr::Call(<>),
+	SpnBox<Call> => Expr::Call(<>),
 	"(" <Expr> ")" => <>,
 };
 

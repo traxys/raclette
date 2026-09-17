@@ -360,7 +360,7 @@ impl std::fmt::Debug for BinOp {
 
 pub enum InputStatement {
     Expr(Expr),
-    LastRedirect(SpannedValue<Function>),
+    LastRedirect(SpannedValue<Expr>),
 }
 
 impl std::fmt::Debug for InputStatement {
@@ -373,7 +373,7 @@ impl std::fmt::Debug for InputStatement {
 }
 
 pub struct Call {
-    pub fun: SpannedValue<Function>,
+    pub fun: SpannedValue<Expr>,
     pub args: Vec<SpannedValue<Expr>>,
 }
 
@@ -387,18 +387,6 @@ impl std::fmt::Debug for Call {
             }
         }
         write!(f, ")")
-    }
-}
-
-pub enum Function {
-    Ref(SpannedValue<Vec<SpannedValue<Variable>>>),
-}
-
-impl std::fmt::Debug for Function {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Function::Ref(a) => write!(f, "{:?}", a),
-        }
     }
 }
 
@@ -444,7 +432,7 @@ pub enum Expr {
     Variable(Vec<SpannedValue<Variable>>),
     Assign(Vec<SpannedValue<Variable>>, Box<SpannedValue<Expr>>),
     BinOp(SpannedValue<BinOp>),
-    Call(SpannedValue<Call>),
+    Call(Box<SpannedValue<Call>>),
     UnaryOp(SpannedValue<UnaryOp>),
 }
 

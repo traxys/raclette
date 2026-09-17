@@ -177,10 +177,7 @@ impl Completer for &RacletteHelper {
                 ast::Expr::BinOp(b) => {
                     get_chain_in_expr(pos, &b.lhs).or_else(|| get_chain_in_expr(pos, &b.rhs))
                 }
-                ast::Expr::Call(c) => match &c.fun.value {
-                    ast::Function::Ref(r) => get_chain(pos, r),
-                }
-                .or_else(|| {
+                ast::Expr::Call(c) => get_chain_in_expr(pos, &c.fun.value).or_else(|| {
                     for arg in &c.args {
                         match get_chain_in_expr(pos, arg) {
                             Some(v) => return Some(v),
@@ -196,9 +193,7 @@ impl Completer for &RacletteHelper {
 
         let Some(variable) = (match &parsed.value {
             InputStatement::Expr(expr) => get_chain_in_expr(pos, expr),
-            InputStatement::LastRedirect(v) => match &v.value {
-                ast::Function::Ref(c) => get_chain(pos, c),
-            },
+            InputStatement::LastRedirect(v) => get_chain_in_expr(pos, &v.value),
         }) else {
             return Ok((pos, vec![]));
         };
