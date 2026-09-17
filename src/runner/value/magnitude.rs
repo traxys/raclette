@@ -15,6 +15,7 @@ use malachite::{
         rounding_modes::RoundingMode,
     },
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{
     ast::DecimalLiteral,
@@ -22,7 +23,7 @@ use crate::{
     span::{NO_SPAN, Span, SpannedValue, SpanningExt},
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ValueMagnitude(malachite::Rational);
 
 impl TryFrom<SpannedValue<ValueMagnitude>> for Integer {

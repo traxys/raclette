@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::{
     runner::RunnerError,
     span::{Span, SpannedValue, SpanningExt},
@@ -5,7 +7,7 @@ use crate::{
 
 use super::{Unit, ValueMagnitude};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NumericValue {
     pub magnitude: ValueMagnitude,
     pub unit: Unit,

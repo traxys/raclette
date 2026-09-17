@@ -14,12 +14,45 @@ use crate::{
 use arcstr::ArcStr;
 pub use magnitude::ValueMagnitude;
 pub use numeric::NumericValue;
+use serde::{Deserialize, Serialize};
 pub use unit::{
     BYTE_UNIT, KNOWN_UNITS, MASS_UNIT, ScaleRender, ScaleStep, ScaleType, TIME_UNIT, Unit,
 };
 
-#[derive(Debug, Clone)]
+mod builtin_fn {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+
+    use crate::{
+        ast::Variable,
+        runner::functions::{self, Function},
+    };
+
+    pub fn serialize<S>(&v: &Function, s: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let (name, _) = functions::FUNCTIONS
+            .iter()
+            .find(|&(_, &f)| std::ptr::eq(v, f))
+            .expect("builtin function not found");
+
+        name.serialize(s)
+    }
+
+    pub fn deserialize<'de, D>(de: D) -> Result<Function, D::Error>
+    where
+        D: Deserializer<'de>,
+        D::Error: de::Error,
+    {
+        let name = Variable::deserialize(de)?;
+
+        Ok(*functions::FUNCTIONS.get(&name).ok_or_else(|| todo!())?)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Callable {
+    #[serde(with = "builtin_fn")]
     Func(Function),
     Lambda {
         f: Lambda,
@@ -36,7 +69,7 @@ impl Callable {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Value {
     Numeric(NumericValue),
     Str(String),

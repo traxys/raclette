@@ -5,6 +5,7 @@ use either::Either;
 use enum_map::{Enum, EnumMap};
 use itertools::Itertools;
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     runner::{
@@ -14,7 +15,7 @@ use crate::{
     span::Span,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Enum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Enum, Serialize, Deserialize)]
 pub enum Dimension {
     // Expressed in Bytes
     Byte,
@@ -43,7 +44,7 @@ impl Display for Dimension {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Unit {
     pub dimensions: EnumMap<Dimension, i64>,
 }
