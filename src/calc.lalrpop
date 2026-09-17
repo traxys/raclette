@@ -98,10 +98,6 @@ InputStatementInner: InputStatement = {
 	SpnBox<DimensionedCast> => InputStatement::Expr(Expr::Dimensioned(<>)),
 };
 
-Function: Expr = {
-	VariableChain => Expr::Variable(<>),
-};
-
 pub Expr: Expr = {
 	<VariableChain> "=" <SpnBox<Expr>> => Expr::Assign(<>),
 	ExprPipe => <>,
@@ -245,6 +241,10 @@ UnitId: (Arc<str>, i64) = {
 ManyUnit: Vec<SpannedValue<(Arc<str>, i64)>> = {
 	Spn<Unit>+ => <>,
 	"'(" <Spn<UnitId>+> ")" => <>,
+};
+
+Function: Expr = {
+	VariableChain => Expr::Variable(<>),
 };
 
 Call: Call = {
