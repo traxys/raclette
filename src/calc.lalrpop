@@ -93,7 +93,7 @@ pub InputStatement: SpannedValue<InputStatement> = Spn<InputStatementInner> => <
 DimensionedCast: DimensionedExpr = <expr:Spn<Expr>> "as" <unit:ManyUnit> => DimensionedExpr {<>};
 
 InputStatementInner: InputStatement = {
-	"|>" <Spn<Function>> => InputStatement::LastRedirect(<>),
+	"|>" <Spn<Expr>> => InputStatement::LastRedirect(<>),
 	Expr => InputStatement::Expr(<>),
 	SpnBox<DimensionedCast> => InputStatement::Expr(Expr::Dimensioned(<>)),
 };
@@ -107,7 +107,7 @@ pub Expr: Expr = {
 	ExprPipe => <>,
 };
 
-Redirect: Call = <val:Spn<ExprPipe>> "|>" <fun:Spn<Function>> => Call {fun, args: vec![val]};
+Redirect: Call = <val:Spn<ExprPipe>> "|>" <fun:Spn<ExprBoolOr>> => Call {fun, args: vec![val]};
 
 ExprPipe: Expr = {
 	SpnBox<Redirect> => Expr::Call(<>),
