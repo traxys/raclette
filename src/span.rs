@@ -6,12 +6,41 @@ use std::{
 use arcstr::ArcStr;
 use derivative::Derivative;
 use miette::{NamedSource, SourceCode, SourceSpan};
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug)]
 pub enum MaybeNamed {
     Named(Arc<NamedSource<String>>),
     Unamed(ArcStr),
     None,
+}
+
+impl Serialize for MaybeNamed {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let to = match self {
+            MaybeNamed::Named(named_source) => Some(named_source.inner().as_str()),
+            MaybeNamed::Unamed(arc_str) => Some(arc_str.as_str()),
+            MaybeNamed::None => None,
+        };
+
+        to.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for MaybeNamed {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de> {
+        let value: Option<ArcStr> = Deserialize::deserialize(deserializer)?;
+
+        Ok(match value {
+            Some(v) => MaybeNamed::Unamed(v),
+            None => MaybeNamed::None,
+        })
+    }
 }
 
 impl From<NamedSource<String>> for MaybeNamed {
@@ -41,7 +70,7 @@ impl SourceCode for MaybeNamed {
     }
 }
 
-#[derive(Debug, Clone, Derivative)]
+#[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
 #[derivative(PartialEq, Hash, Eq)]
 pub struct SpannedValue<T> {
     #[derivative(PartialEq = "ignore", Hash = "ignore")]

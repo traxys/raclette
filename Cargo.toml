@@ -6,7 +6,7 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-arcstr = "1.2.0"
+arcstr = { version = "1.2.0", features = ["serde"] }
 clap = { version = "4.6.7", features = ["derive"] }
 derivative = "2.2.0"
 derive_more = { version = "2.1.1", features = ["full"] }
@@ -21,6 +21,7 @@ malachite = { version = "0.11.0", default-features = false, features = ["natural
 miette = { version = "7.6.0", features = ["fancy"] }
 once_cell = "1.21.4"
 rustyline = "18.0.1"
+serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.20"
 
 [build-dependencies]

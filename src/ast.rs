@@ -6,6 +6,7 @@ use std::{
 
 use arcstr::ArcStr;
 use logos::Logos;
+use serde::{Deserialize, Serialize};
 
 use crate::span::SpannedValue;
 
@@ -22,7 +23,7 @@ pub enum TokenError {
     InvalidEscape(char),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DecimalLiteral {
     pub integer: i128,
     pub decimal_count: u64,
@@ -230,7 +231,7 @@ pub enum Token {
     False,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone)]
+#[derive(PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
 pub struct Variable(pub Vec<ArcStr>);
 
 impl Variable {
@@ -282,6 +283,7 @@ impl std::fmt::Display for Variable {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum Literal {
     Number(i128),
     Decimal(DecimalLiteral),
@@ -302,6 +304,7 @@ impl std::fmt::Debug for Literal {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum BinOpKind {
     Times,
     Modulo,
@@ -350,6 +353,7 @@ impl std::fmt::Debug for BinOpKind {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct BinOp {
     pub lhs: Box<SpannedValue<Expr>>,
     pub kind: BinOpKind,
@@ -376,6 +380,7 @@ impl std::fmt::Debug for InputStatement {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Call {
     pub fun: SpannedValue<Expr>,
     pub args: Vec<SpannedValue<Expr>>,
@@ -394,6 +399,7 @@ impl std::fmt::Debug for Call {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum UnaryOpKind {
     Minus,
     Plus,
@@ -408,6 +414,7 @@ impl std::fmt::Debug for UnaryOpKind {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct UnaryOp {
     pub operand: Box<SpannedValue<Expr>>,
     pub kind: UnaryOpKind,
@@ -419,6 +426,7 @@ impl std::fmt::Debug for UnaryOp {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct DimensionedExpr {
     pub expr: SpannedValue<Expr>,
     pub unit: Vec<SpannedValue<(ArcStr, i64)>>,
@@ -430,9 +438,55 @@ impl std::fmt::Debug for DimensionedExpr {
     }
 }
 
-#[derive(Clone)]
+mod rc_slice_serde {
+    use std::rc::Rc;
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S, T>(v: &Rc<[T]>, s: S) -> Result<S::Ok, S::Error>
+    where
+        T: Serialize,
+        S: Serializer,
+    {
+        (*v).serialize(s)
+    }
+
+    pub fn deserialize<'de, D, T>(de: D) -> Result<Rc<[T]>, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: Deserialize<'de>,
+    {
+        Ok(Vec::deserialize(de)?.into())
+    }
+}
+
+mod rc_serde {
+    use std::rc::Rc;
+
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S, T>(v: &Rc<T>, s: S) -> Result<S::Ok, S::Error>
+    where
+        T: Serialize,
+        S: Serializer,
+    {
+        v.serialize(s)
+    }
+
+    pub fn deserialize<'de, D, T>(de: D) -> Result<Rc<T>, D::Error>
+    where
+        D: Deserializer<'de>,
+        T: Deserialize<'de>,
+    {
+        Ok(Rc::new(T::deserialize(de)?))
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Lambda {
+    #[serde(with = "rc_slice_serde")]
     pub arguments: Rc<[SpannedValue<Variable>]>,
+    #[serde(with = "rc_serde")]
     pub body: Rc<SpannedValue<Expr>>,
 }
 
@@ -442,6 +496,7 @@ impl std::fmt::Debug for Lambda {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub enum Expr {
     Dimensioned(Box<SpannedValue<DimensionedExpr>>),
     Literal(SpannedValue<Literal>),
