@@ -7,6 +7,7 @@ use once_cell::sync::Lazy;
 
 use crate::{
     ast::{self, Expr, Variable},
+    runner::value::Callable,
     span::{MaybeNamed, Span, SpannedValue, SpanningExt},
 };
 
@@ -252,7 +253,7 @@ pub enum RunnerError {
 
 pub struct Runner {
     last: Option<SpannedValue<Value>>,
-    values: HashMap<Variable, Value>,
+    values: im::HashMap<Variable, Value>,
     scales: HashMap<Unit, ScaleType>,
     default_scale: ScaleType,
     display_config: DisplayConfig,
@@ -394,13 +395,13 @@ enum VarSet {
 
 impl Runner {
     pub fn new() -> Self {
-        let mut values = HashMap::new();
+        let mut values = im::HashMap::new();
         values.insert(vec!["config"].into(), Value::Config);
         values.insert(vec!["functions"].into(), Value::Functions);
         values.insert(vec!["units"].into(), Value::Units);
         values.insert(vec!["variables"].into(), Value::Variables);
         for (name, &func) in functions::FUNCTIONS.iter() {
-            values.insert(name.clone(), Value::Func(func));
+            values.insert(name.clone(), Value::Callable(Callable::Func(func)));
         }
 
         let mut scales = HashMap::new();
@@ -446,7 +447,9 @@ impl Runner {
         match set {
             VarSet::Base => self.values.get(name).cloned(),
             VarSet::Config => Some(self.get_config(Config::parse(name)?)),
-            VarSet::Functions => functions::FUNCTIONS.get(name).map(|&a| Value::Func(a)),
+            VarSet::Functions => functions::FUNCTIONS
+                .get(name)
+                .map(|&a| Value::Callable(Callable::Func(a))),
             VarSet::Units => {
                 if name.0.len() != 1 {
                     return None;
@@ -472,7 +475,8 @@ impl Runner {
             Value::Str(s) => s,
             Value::Atom(a) => format!(":{a}"),
             Value::Bool(v) => v.to_string(),
-            Value::Func(f) => {
+            Value::Callable(Callable::Lambda { .. }) => "<lambda>".to_string(),
+            Value::Callable(Callable::Func(f)) => {
                 let mut output = String::new();
                 for arg in f.arguments() {
                     if !output.is_empty() {
@@ -810,7 +814,42 @@ impl Runner {
         Ok(Value::Str(description))
     }
 
-    fn eval_expr(&mut self, expr: &ast::Expr) -> Result<Value, miette::Report> {
+    fn invoke(
+        &mut self,
+        callee: SpannedValue<Callable>,
+        call_site: Span,
+        args: Vec<SpannedValue<Value>>,
+    ) -> Result<Value, miette::Error> {
+        match callee.value {
+            Callable::Func(value_fn) => value_fn
+                .invoke(self, callee.span(), call_site, args)
+                .map_err(Into::into),
+            Callable::Lambda { f, scope } => {
+                if f.arguments.len() != args.len() {
+                    return Err(RunnerError::FunctionArity {
+                        provided: args.len(),
+                        arity: f.arguments.len(),
+                        f: (callee.start..callee.end).into(),
+                        src: callee.source,
+                    }
+                    .into());
+                }
+
+                let mut scope = scope.clone();
+                for (name, arg) in f.arguments.iter().zip(args) {
+                    scope.insert(name.value.clone(), arg.value);
+                }
+
+                std::mem::swap(&mut self.values, &mut scope);
+                let result = self.eval_expr(&f.body);
+                self.values = scope;
+
+                result
+            }
+        }
+    }
+
+    fn eval_expr(&mut self, expr: &ast::Expr) -> Result<Value, miette::Error> {
         match expr {
             ast::Expr::Literal(l) => Ok(eval_literal(l)),
             ast::Expr::Dimensioned(d) => {
@@ -848,9 +887,11 @@ impl Runner {
                 let f = self
                     .eval_expr(&c.fun)?
                     .spanned(&c.fun.span())
-                    .cast::<functions::Function>()?;
+                    .cast::<Callable>()?;
 
-                if f.is_help() {
+                if let Callable::Func(f) = f
+                    && f.is_help()
+                {
                     if c.args.len() != 1 {
                         return Err(RunnerError::FunctionArity {
                             provided: c.args.len(),
@@ -880,10 +921,14 @@ impl Runner {
                             self.eval_expr(e).map(|v| v.spanned(&span))
                         })
                         .collect::<Result<_, _>>()?;
-                    f.invoke(self, c.fun.span(), c.span(), args)
-                        .map_err(Into::into)
+
+                    self.invoke(f.spanned(&c.fun), c.span(), args)
                 }
             }
+            ast::Expr::Lambda(l) => Ok(Value::Callable(Callable::Lambda {
+                f: l.clone(),
+                scope: self.values.clone(),
+            })),
         }
     }
 
@@ -989,7 +1034,7 @@ impl Runner {
                         Ok(self
                             .eval_expr(&func)?
                             .spanned(&func.span())
-                            .cast::<functions::Function>()?)
+                            .cast::<Callable>()?)
                     })() {
                         Ok(f) => f,
                         Err(e) => {
@@ -997,11 +1042,11 @@ impl Runner {
                             return Err(e);
                         }
                     };
-                    match f.invoke(self, func.span(), span.clone(), vec![last.clone()]) {
+                    match self.invoke(f.spanned(&span), func.span(), vec![last.clone()]) {
                         Ok(v) => v,
                         Err(e) => {
                             self.last = Some(last);
-                            return Err(e.into());
+                            return Err(e);
                         }
                     }
                 }

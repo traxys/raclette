@@ -1,7 +1,5 @@
 use std::{
-    num::{ParseFloatError, ParseIntError},
-    ops::Range,
-    sync::Arc,
+    num::{ParseFloatError, ParseIntError}, ops::Range, rc::Rc, sync::Arc,
 };
 
 use logos::Logos;
@@ -96,6 +94,9 @@ pub enum Token {
     #[token("|>")]
     #[display("|>")]
     Redirect,
+    #[token("->")]
+    #[display("->")]
+    Arrow,
     #[token("||")]
     #[display("||")]
     LOr,
@@ -426,6 +427,18 @@ impl std::fmt::Debug for DimensionedExpr {
     }
 }
 
+#[derive(Clone)]
+pub struct Lambda {
+    pub arguments: Rc<[SpannedValue<Variable>]>,
+    pub body: Rc<SpannedValue<Expr>>,
+}
+
+impl std::fmt::Debug for Lambda {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} -> {:?}", self.arguments, *self.body)
+    }
+}
+
 pub enum Expr {
     Dimensioned(Box<SpannedValue<DimensionedExpr>>),
     Literal(SpannedValue<Literal>),
@@ -434,12 +447,14 @@ pub enum Expr {
     BinOp(SpannedValue<BinOp>),
     Call(Box<SpannedValue<Call>>),
     UnaryOp(SpannedValue<UnaryOp>),
+    Lambda(Lambda),
 }
 
 impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Dimensioned(d) => d.fmt(f),
+            Self::Lambda(l) => l.fmt(f),
             Self::Literal(arg0) => write!(f, "{:?}", **arg0),
             Self::Variable(arg0) => f.debug_tuple("&").field(&arg0).finish(),
             Self::Assign(arg0, arg1) => write!(f, "{:?} = ({:?})", arg0, ***arg1),

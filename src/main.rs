@@ -188,6 +188,7 @@ impl Completer for &RacletteHelper {
                     None
                 }),
                 ast::Expr::UnaryOp(u) => get_chain_in_expr(pos, &u.operand),
+                ast::Expr::Lambda(_) => None,
             }
         }
 

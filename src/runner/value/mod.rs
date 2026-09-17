@@ -6,10 +6,8 @@ use std::{borrow::Cow, sync::Arc};
 
 use super::{CastError, RunnerError};
 use crate::{
-    runner::{
-        VarSet,
-        functions::{self, Function},
-    },
+    ast::{Lambda, Variable},
+    runner::{VarSet, functions::Function},
     span::{Span, SpannedValue, SpanningExt},
 };
 
@@ -18,6 +16,24 @@ pub use numeric::NumericValue;
 pub use unit::{
     BYTE_UNIT, KNOWN_UNITS, MASS_UNIT, ScaleRender, ScaleStep, ScaleType, TIME_UNIT, Unit,
 };
+
+#[derive(Debug, Clone)]
+pub enum Callable {
+    Func(Function),
+    Lambda {
+        f: Lambda,
+        scope: im::HashMap<Variable, Value>,
+    },
+}
+
+impl Callable {
+    pub fn help(&self) -> String {
+        match self {
+            Callable::Func(f) => f.help(),
+            Callable::Lambda { f, .. } => format!("lambda ({} arguments)", f.arguments.len()),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub enum Value {
@@ -29,7 +45,7 @@ pub enum Value {
     Functions,
     Units,
     Variables,
-    Func(Function),
+    Callable(Callable),
 }
 
 impl Value {
@@ -43,7 +59,7 @@ impl Value {
             Value::Functions => "available functions".into(),
             Value::Units => "known units".into(),
             Value::Variables => "known variables".into(),
-            Value::Func(f) => f.help(),
+            Value::Callable(c) => c.help(),
         }
     }
 
@@ -55,7 +71,7 @@ impl Value {
             | Value::Bool(_)
             | Value::Config
             | Value::Functions
-            | Value::Func(_)
+            | Value::Callable(_)
             | Value::Units
             | Value::Variables => false,
         }
@@ -69,7 +85,7 @@ impl Value {
             Value::Atom(_) => "atom",
             Value::Config => "config",
             Value::Functions => "functions",
-            Value::Func(_) => "function",
+            Value::Callable(_) => "function",
             Value::Units => "units",
             Value::Variables => "variables",
         }
@@ -576,14 +592,14 @@ impl ValueCast for VarSet {
     }
 }
 
-impl ValueCast for functions::Function {
+impl ValueCast for Callable {
     fn name() -> Cow<'static, str> {
         "function".into()
     }
 
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
         match v.value {
-            Value::Func(f) => Ok(f),
+            Value::Callable(f) => Ok(f),
             _ => Err(v.raise_cast::<Self>()),
         }
     }

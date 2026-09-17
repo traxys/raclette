@@ -10,13 +10,14 @@ use crate::{
 		UnaryOpKind,
 		InputStatement,
 		Call,
+		Lambda,
 		UserParseError,
 		DecimalLiteral,
 		DimensionedExpr,
 	},
 	span::SpannedValue,
 };
-use std::sync::Arc;
+use std::{sync::Arc, rc::Rc};
 
 use lalrpop_util::ParseError;
 
@@ -59,6 +60,7 @@ extern {
 		"<=" => Token::LesserOrEqual,
 		">" => Token::Greater,
 		"<" => Token::Lesser,
+		"->" => Token::Arrow,
 		num => Token::Number(<i128>),
 		decimal => Token::Decimal(<DecimalLiteral>),
 		ident => Token::Ident(<Arc<str>>),
@@ -103,10 +105,20 @@ pub Expr: Expr = {
 	ExprPipe => <>,
 };
 
-Redirect: Call = <val:Spn<ExprPipe>> "|>" <fun:Spn<ExprBoolOr>> => Call {fun, args: vec![val]};
+Redirect: Call = <val:Spn<ExprPipe>> "|>" <fun:Spn<ExprLambda>> => Call {fun, args: vec![val]};
 
 ExprPipe: Expr = {
 	SpnBox<Redirect> => Expr::Call(<>),
+	ExprLambda => <>,
+};
+
+Lambda: Lambda = {
+	<n:Spn<Name>> "->" <b:Spn<ExprLambda>> => Lambda {arguments: vec![n].into(), body: Rc::new(b)},
+	"\\" <a:Comma<Spn<Name>>> "->" <b:Spn<ExprLambda>> => Lambda {arguments: a.into(), body: Rc::new(b)},
+};
+
+ExprLambda: Expr = {
+	Lambda => Expr::Lambda(<>),
 	ExprBoolOr => <>,
 };
 
