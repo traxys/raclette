@@ -231,7 +231,7 @@ pub enum Token {
     False,
 }
 
-#[derive(PartialEq, Eq, Hash, Clone, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Hash, Clone, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct Variable(pub Vec<ArcStr>);
 
 impl Variable {

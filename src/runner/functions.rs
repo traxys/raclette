@@ -1,4 +1,10 @@
-use std::{borrow::Cow, collections::HashMap, fmt::Debug, fs::OpenOptions, io::Write};
+use std::{
+    borrow::Cow,
+    collections::{BTreeMap, HashMap},
+    fmt::Debug,
+    fs::OpenOptions,
+    io::Write,
+};
 
 use arcstr::ArcStr;
 use itertools::Itertools;
@@ -21,7 +27,7 @@ type ValueResult = Result<Value, RunnerError>;
 pub trait ValueFn: Debug {
     fn invoke(
         &self,
-        runner: &Runner,
+        runner: &mut Runner,
         callee: SpannedValue<()>,
         call_site: SpannedValue<()>,
         args: Vec<SpannedValue<Value>>,
@@ -63,14 +69,14 @@ pub trait ValueFn: Debug {
     fn arguments(&self) -> Vec<Cow<'static, str>>;
     fn invoke_inner(
         &self,
-        runner: &Runner,
+        runner: &mut Runner,
         call_site: SpannedValue<()>,
         args: Vec<SpannedValue<Value>>,
     ) -> ValueResult;
 }
 
 type VFn1<T, H> = fn(T, H) -> ValueResult;
-type RunVFn1<T, H> = fn(&Runner, T, H) -> ValueResult;
+type RunVFn1<T, H> = fn(&mut Runner, T, H) -> ValueResult;
 
 trait HelpProvider: Default {
     fn help() -> &'static str;
@@ -91,7 +97,7 @@ where
 
     fn invoke_inner(
         &self,
-        _: &Runner,
+        _: &mut Runner,
         _: SpannedValue<()>,
         args: Vec<SpannedValue<Value>>,
     ) -> ValueResult {
@@ -116,7 +122,7 @@ where
 
     fn invoke_inner(
         &self,
-        runner: &Runner,
+        runner: &mut Runner,
         _: SpannedValue<()>,
         args: Vec<SpannedValue<Value>>,
     ) -> ValueResult {
@@ -145,7 +151,7 @@ impl ValueFn for Help {
 
     fn invoke_inner(
         &self,
-        _: &Runner,
+        _: &mut Runner,
         _: SpannedValue<()>,
         _: Vec<SpannedValue<Value>>,
     ) -> ValueResult {
@@ -184,7 +190,9 @@ pub static FUNCTIONS: Lazy<HashMap<Variable, Function>> = Lazy::new(|| {
     funcs.insert(vec!["parse"].into(), &(parse as RunVFn1<_, _>));
 
     funcs.insert(vec!["help"].into(), &HELP);
+
     funcs.insert(vec!["save"].into(), &(save as RunVFn1<_, _>));
+    funcs.insert(vec!["restore"].into(), &(restore as RunVFn1<_, _>));
 
     funcs
 });
@@ -251,7 +259,7 @@ fn length(v: String, _: Length) -> ValueResult {
 }
 
 help!(Parse, "parse the input string as a raclette literral");
-fn parse(runner: &Runner, value: SpannedValue<String>, _: Parse) -> ValueResult {
+fn parse(runner: &mut Runner, value: SpannedValue<String>, _: Parse) -> ValueResult {
     let parser = crate::calc::DimensionedLiteralParser::new();
 
     let sub_input = value.as_str().into();
@@ -307,7 +315,7 @@ fn parse(runner: &Runner, value: SpannedValue<String>, _: Parse) -> ValueResult 
 }
 
 help!(Save, "save the environement to the specified path");
-fn save(runner: &Runner, value: String, _: Save) -> ValueResult {
+fn save(runner: &mut Runner, value: String, _: Save) -> ValueResult {
     let mut file = OpenOptions::new()
         .write(true)
         .truncate(true)
@@ -317,6 +325,18 @@ fn save(runner: &Runner, value: String, _: Save) -> ValueResult {
     let out = ron::to_string(&runner.values)?;
 
     file.write_all(out.as_bytes())?;
+
+    Ok(Value::Atom(ArcStr::from("ok")))
+}
+
+help!(
+    Restore,
+    "restore a saved environement from the specified path"
+);
+fn restore(runner: &mut Runner, value: String, _: Restore) -> ValueResult {
+    let values: BTreeMap<Variable, Value> = ron::from_str(&std::fs::read_to_string(value)?)?;
+
+    runner.values.extend(values);
 
     Ok(Value::Atom(ArcStr::from("ok")))
 }

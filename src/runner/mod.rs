@@ -253,7 +253,9 @@ pub enum RunnerError {
     #[error("i/o error")]
     Io(#[from] std::io::Error),
     #[error("serialization error")]
-    Ron(#[from] ron::Error),
+    RonSer(#[from] ron::Error),
+    #[error("deserialization error")]
+    RonDe(#[from] ron::de::SpannedError),
 }
 
 pub struct Runner {
