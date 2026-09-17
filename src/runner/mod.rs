@@ -250,6 +250,10 @@ pub enum RunnerError {
     #[error("Could not cast value")]
     #[diagnostic(transparent)]
     Cast(#[from] CastError),
+    #[error("i/o error")]
+    Io(#[from] std::io::Error),
+    #[error("serialization error")]
+    Ron(#[from] ron::Error),
 }
 
 pub struct Runner {

@@ -24,6 +24,7 @@ malachite = { version = "0.11.0", default-features = false, features = [
 ] }
 miette = { version = "7.6.0", features = ["fancy"] }
 once_cell = "1.21.4"
+ron = { version = "0.12.2", features = ["integer128"] }
 rustyline = "18.0.1"
 serde = { version = "1.0.229", features = ["derive"] }
 thiserror = "2.0.20"

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, fmt::Debug};
+use std::{borrow::Cow, collections::HashMap, fmt::Debug, fs::OpenOptions, io::Write};
 
 use arcstr::ArcStr;
 use itertools::Itertools;
@@ -184,6 +184,7 @@ pub static FUNCTIONS: Lazy<HashMap<Variable, Function>> = Lazy::new(|| {
     funcs.insert(vec!["parse"].into(), &(parse as RunVFn1<_, _>));
 
     funcs.insert(vec!["help"].into(), &HELP);
+    funcs.insert(vec!["save"].into(), &(save as RunVFn1<_, _>));
 
     funcs
 });
@@ -303,4 +304,19 @@ fn parse(runner: &Runner, value: SpannedValue<String>, _: Parse) -> ValueResult 
             },
         )))),
     }
+}
+
+help!(Save, "save the environement to the specified path");
+fn save(runner: &Runner, value: String, _: Save) -> ValueResult {
+    let mut file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open(value)?;
+
+    let out = ron::to_string(&runner.values)?;
+
+    file.write_all(out.as_bytes())?;
+
+    Ok(Value::Atom(ArcStr::from("ok")))
 }
