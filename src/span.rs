@@ -147,7 +147,21 @@ impl<T> SpannedValue<T> {
         self.end = span.span().end;
     }
 
-    pub fn map<F, U>(self, f: F) -> SpannedValue<U>
+    pub fn wrap<F, U>(self, f: F) -> SpannedValue<U>
+    where
+        F: FnOnce(Self) -> U,
+    {
+        SpannedValue {
+            source: self.source.clone(),
+            start: self.start,
+            end: self.end,
+            value: f(self),
+        }
+    }
+}
+
+impl<T, Src> SpannedValue<T, Src> {
+    pub fn map<F, U>(self, f: F) -> SpannedValue<U, Src>
     where
         F: FnOnce(T) -> U,
     {
@@ -165,20 +179,18 @@ impl<T> SpannedValue<T> {
         }
     }
 
-    pub fn wrap<F, U>(self, f: F) -> SpannedValue<U>
+    pub fn map_source<F, New>(self, mut f: F) -> SpannedValue<T, New>
     where
-        F: FnOnce(Self) -> U,
+        F: FnMut(Src) -> New,
     {
         SpannedValue {
-            source: self.source.clone(),
             start: self.start,
             end: self.end,
-            value: f(self),
+            value: self.value,
+            source: f(self.source),
         }
     }
 }
-
-impl<T> SpannedValue<T> {}
 
 impl<T, S> Deref for SpannedValue<T, S> {
     type Target = T;

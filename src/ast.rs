@@ -284,7 +284,7 @@ impl std::fmt::Display for Variable {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum Literal {
     Number(i128),
     Decimal(DecimalLiteral),
@@ -305,7 +305,7 @@ impl Debug for Literal {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub enum BinOpKind {
     Times,
     Modulo,
@@ -354,12 +354,25 @@ impl Debug for BinOpKind {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize")]
 pub struct BinOp<Src = MaybeNamed> {
     pub lhs: Box<SpannedValue<Expr<Src>, Src>>,
     pub kind: BinOpKind,
     pub rhs: Box<SpannedValue<Expr<Src>, Src>>,
+}
+
+impl<Src: Clone> BinOp<Src> {
+    pub fn map_source<New, F>(self, mut f: F) -> BinOp<New>
+    where
+        F: FnMut(Src) -> New,
+    {
+        BinOp {
+            lhs: Box::new(self.lhs.map(|v| v.map_source(&mut f)).map_source(&mut f)),
+            kind: self.kind,
+            rhs: Box::new(self.rhs.map(|v| v.map_source(&mut f)).map_source(&mut f)),
+        }
+    }
 }
 
 impl<Src> Debug for BinOp<Src>
@@ -385,11 +398,27 @@ impl Debug for InputStatement {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize")]
 pub struct Call<Src = MaybeNamed> {
     pub fun: SpannedValue<Expr<Src>, Src>,
     pub args: Vec<SpannedValue<Expr<Src>, Src>>,
+}
+
+impl<Src: Clone> Call<Src> {
+    pub fn map_source<New, F>(self, mut f: F) -> Call<New>
+    where
+        F: FnMut(Src) -> New,
+    {
+        Call {
+            fun: self.fun.map(|v| v.map_source(&mut f)).map_source(&mut f),
+            args: self
+                .args
+                .into_iter()
+                .map(|v| v.map(|v| v.map_source(&mut f)).map_source(&mut f))
+                .collect(),
+        }
+    }
 }
 
 impl<Src> Debug for Call<Src>
@@ -408,7 +437,7 @@ where
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone, Copy)]
 pub enum UnaryOpKind {
     Minus,
     Plus,
@@ -423,11 +452,23 @@ impl Debug for UnaryOpKind {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize")]
 pub struct UnaryOp<Src = MaybeNamed> {
     pub operand: Box<SpannedValue<Expr<Src>, Src>>,
     pub kind: UnaryOpKind,
+}
+
+impl<Src: Clone> UnaryOp<Src> {
+    pub fn map_source<New, F>(self, mut f: F) -> UnaryOp<New>
+    where
+        F: FnMut(Src) -> New,
+    {
+        UnaryOp {
+            operand: Box::new(self.operand.map(|v| v.map_source(&mut f)).map_source(f)),
+            kind: self.kind,
+        }
+    }
 }
 
 impl<Src> Debug for UnaryOp<Src>
@@ -439,11 +480,27 @@ where
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize")]
 pub struct DimensionedExpr<Src = MaybeNamed> {
     pub expr: SpannedValue<Expr<Src>, Src>,
     pub unit: Vec<SpannedValue<(ArcStr, i64), Src>>,
+}
+
+impl<Src: Clone> DimensionedExpr<Src> {
+    pub fn map_source<New, F>(self, mut f: F) -> DimensionedExpr<New>
+    where
+        F: FnMut(Src) -> New,
+    {
+        DimensionedExpr {
+            expr: self.expr.map(|v| v.map_source(&mut f)).map_source(&mut f),
+            unit: self
+                .unit
+                .into_iter()
+                .map(|v| v.map_source(&mut f))
+                .collect(),
+        }
+    }
 }
 
 impl<Src> Debug for DimensionedExpr<Src>
@@ -508,6 +565,27 @@ pub struct Lambda<Src = MaybeNamed> {
     pub body: Rc<SpannedValue<Expr<Src>, Src>>,
 }
 
+impl<Src: Clone> Lambda<Src> {
+    pub fn map_source<New, F>(self, mut f: F) -> Lambda<New>
+    where
+        F: FnMut(Src) -> New,
+    {
+        Lambda {
+            arguments: self
+                .arguments
+                .iter()
+                .map(|v| v.clone().map_source(&mut f))
+                .collect(),
+            body: Rc::new(
+                (*self.body)
+                    .clone()
+                    .map(|v| v.map_source(&mut f))
+                    .map_source(f),
+            ),
+        }
+    }
+}
+
 impl<Src> Debug for Lambda<Src>
 where
     Src: Debug,
@@ -517,7 +595,7 @@ where
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 #[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize")]
 pub enum Expr<Src = MaybeNamed> {
     Dimensioned(Box<SpannedValue<DimensionedExpr<Src>, Src>>),
@@ -531,6 +609,31 @@ pub enum Expr<Src = MaybeNamed> {
     Call(Box<SpannedValue<Call<Src>, Src>>),
     UnaryOp(SpannedValue<UnaryOp<Src>, Src>),
     Lambda(Lambda<Src>),
+}
+
+impl<Src: Clone> Expr<Src> {
+    pub fn map_source<New, F>(self, mut f: F) -> Expr<New>
+    where
+        F: FnMut(Src) -> New,
+    {
+        match self {
+            Expr::Dimensioned(v) => {
+                Expr::Dimensioned(Box::new(v.map(|v| v.map_source(&mut f)).map_source(f)))
+            }
+            Expr::Literal(v) => Expr::Literal(v.map_source(f)),
+            Expr::Variable(v) => {
+                Expr::Variable(v.into_iter().map(|v| v.map_source(&mut f)).collect())
+            }
+            Expr::Assign(a, b) => Expr::Assign(
+                a.into_iter().map(|v| v.map_source(&mut f)).collect(),
+                Box::new(b.map(|v| v.map_source(&mut f)).map_source(&mut f)),
+            ),
+            Expr::BinOp(v) => Expr::BinOp(v.map(|v| v.map_source(&mut f)).map_source(f)),
+            Expr::Call(v) => Expr::Call(Box::new(v.map(|v| v.map_source(&mut f)).map_source(f))),
+            Expr::UnaryOp(v) => Expr::UnaryOp(v.map(|v| v.map_source(&mut f)).map_source(f)),
+            Expr::Lambda(lambda) => Expr::Lambda(lambda.map_source(f)),
+        }
+    }
 }
 
 impl<Src> Debug for Expr<Src>
