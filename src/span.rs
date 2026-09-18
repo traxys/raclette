@@ -15,35 +15,6 @@ pub enum MaybeNamed {
     None,
 }
 
-impl Serialize for MaybeNamed {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        let to = match self {
-            MaybeNamed::Named(named_source) => Some(named_source.inner().as_str()),
-            MaybeNamed::Unamed(arc_str) => Some(arc_str.as_str()),
-            MaybeNamed::None => None,
-        };
-
-        to.serialize(serializer)
-    }
-}
-
-impl<'de> Deserialize<'de> for MaybeNamed {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        let value: Option<ArcStr> = Deserialize::deserialize(deserializer)?;
-
-        Ok(match value {
-            Some(v) => MaybeNamed::Unamed(v),
-            None => MaybeNamed::None,
-        })
-    }
-}
-
 impl From<NamedSource<String>> for MaybeNamed {
     fn from(n: NamedSource<String>) -> Self {
         MaybeNamed::Named(Arc::new(n))

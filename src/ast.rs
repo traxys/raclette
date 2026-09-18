@@ -566,16 +566,15 @@ pub struct Lambda<Src = MaybeNamed> {
 }
 
 impl<Src: Clone> Lambda<Src> {
-    pub fn map_source<New, F>(self, mut f: F) -> Lambda<New>
-    where
-        F: FnMut(Src) -> New,
-    {
+    pub fn map_source<New>(self, mut f: &mut dyn FnMut(Src) -> New) -> Lambda<New> {
+        let arguments: Vec<SpannedValue<Variable, New>> = self
+            .arguments
+            .iter()
+            .map(|v| v.clone().map_source(&mut f))
+            .collect();
+
         Lambda {
-            arguments: self
-                .arguments
-                .iter()
-                .map(|v| v.clone().map_source(&mut f))
-                .collect(),
+            arguments: arguments.into(),
             body: Rc::new(
                 (*self.body)
                     .clone()
@@ -612,10 +611,7 @@ pub enum Expr<Src = MaybeNamed> {
 }
 
 impl<Src: Clone> Expr<Src> {
-    pub fn map_source<New, F>(self, mut f: F) -> Expr<New>
-    where
-        F: FnMut(Src) -> New,
-    {
+    pub fn map_source<New>(self, mut f: &mut dyn FnMut(Src) -> New) -> Expr<New> {
         match self {
             Expr::Dimensioned(v) => {
                 Expr::Dimensioned(Box::new(v.map(|v| v.map_source(&mut f)).map_source(f)))

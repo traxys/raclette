@@ -62,10 +62,9 @@ pub enum Callable<Src = MaybeNamed> {
 }
 
 impl<Src: Clone> Callable<Src> {
-    pub fn map_source<New, F>(self, mut map: F) -> Callable<New>
+    pub fn map_source<New>(self, mut map: &mut dyn FnMut(Src) -> New) -> Callable<New>
     where
         New: Clone,
-        F: FnMut(Src) -> New,
     {
         match self {
             Callable::Func(value_fn) => Callable::Func(value_fn),
@@ -104,7 +103,7 @@ pub enum Value<Src = MaybeNamed> {
 }
 
 impl<Src: Clone> Value<Src> {
-    pub fn map_source<New, F>(self, f: F) -> Value<New>
+    pub fn map_source<New, F>(self, mut f: F) -> Value<New>
     where
         New: Clone,
         F: FnMut(Src) -> New,
@@ -118,7 +117,7 @@ impl<Src: Clone> Value<Src> {
             Value::Functions => Value::Functions,
             Value::Units => Value::Units,
             Value::Variables => Value::Variables,
-            Value::Callable(callable) => Value::Callable(callable.map_source(f)),
+            Value::Callable(callable) => Value::Callable(callable.map_source(&mut f)),
         }
     }
 }

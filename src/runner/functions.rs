@@ -1,20 +1,15 @@
-use std::{
-    borrow::Cow,
-    collections::{BTreeMap, HashMap},
-    fmt::Debug,
-    fs::OpenOptions,
-    io::Write,
-};
+use std::{borrow::Cow, collections::HashMap, fmt::Debug, fs::OpenOptions, io::Write};
 
 use arcstr::ArcStr;
 use itertools::Itertools;
 use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     ParseDiagnosticExt,
     ast::Variable,
     runner::{BoxedDiagnostic, Runner, RunnerParseError, eval_literal, value::ValueCast},
-    span::{Span, SpannedValue, SpanningExt},
+    span::{MaybeNamed, Span, SpannedValue, SpanningExt},
 };
 
 use super::{
@@ -314,6 +309,45 @@ fn parse(runner: &mut Runner, value: SpannedValue<String>, _: Parse) -> ValueRes
     }
 }
 
+#[derive(Serialize, Deserialize)]
+struct Saved {
+    values: HashMap<Variable, Value<Option<ArcStr>>>,
+}
+
+impl Saved {
+    pub fn new(runner: &Runner) -> Self {
+        Self {
+            values: runner
+                .values
+                .iter()
+                .map(|(n, v)| {
+                    (
+                        n.clone(),
+                        v.clone().map_source(|m| match m {
+                            crate::span::MaybeNamed::Named(named_source) => {
+                                Some(ArcStr::from(named_source.inner()))
+                            }
+                            crate::span::MaybeNamed::Unamed(arc_str) => Some(arc_str),
+                            crate::span::MaybeNamed::None => None,
+                        }),
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    pub fn restore(self, runner: &mut Runner) {
+        for (name, value) in self.values {
+            let value = value.map_source(|f| match f {
+                Some(n) => MaybeNamed::Unamed(n),
+                None => MaybeNamed::None,
+            });
+
+            runner.values.insert(name, value);
+        }
+    }
+}
+
 help!(Save, "save the environement to the specified path");
 fn save(runner: &mut Runner, value: String, _: Save) -> ValueResult {
     let mut file = OpenOptions::new()
@@ -322,7 +356,7 @@ fn save(runner: &mut Runner, value: String, _: Save) -> ValueResult {
         .create(true)
         .open(value)?;
 
-    let out = ron::to_string(&runner.values)?;
+    let out = ron::to_string(&Saved::new(runner))?;
 
     file.write_all(out.as_bytes())?;
 
@@ -334,9 +368,9 @@ help!(
     "restore a saved environement from the specified path"
 );
 fn restore(runner: &mut Runner, value: String, _: Restore) -> ValueResult {
-    let values: BTreeMap<Variable, Value> = ron::from_str(&std::fs::read_to_string(value)?)?;
+    let values: Saved = ron::from_str(&std::fs::read_to_string(value)?)?;
 
-    runner.values.extend(values);
+    values.restore(runner);
 
     Ok(Value::Atom(ArcStr::from("ok")))
 }
