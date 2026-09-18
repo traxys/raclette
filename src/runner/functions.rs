@@ -311,11 +311,14 @@ fn parse(runner: &mut Runner, value: SpannedValue<String>, _: Parse) -> ValueRes
 
 #[derive(Serialize, Deserialize)]
 struct Saved {
-    values: HashMap<Variable, Value<Option<ArcStr>>>,
+    sources: Vec<Option<ArcStr>>,
+    values: HashMap<Variable, Value<usize>>,
 }
 
 impl Saved {
     pub fn new(runner: &Runner) -> Self {
+        let mut sources = Vec::new();
+
         Self {
             values: runner
                 .values
@@ -323,23 +326,34 @@ impl Saved {
                 .map(|(n, v)| {
                     (
                         n.clone(),
-                        v.clone().map_source(|m| match m {
-                            crate::span::MaybeNamed::Named(named_source) => {
-                                Some(ArcStr::from(named_source.inner()))
+                        v.clone().map_source(|m| {
+                            let packed = match m {
+                                crate::span::MaybeNamed::Named(named_source) => {
+                                    Some(ArcStr::from(named_source.inner()))
+                                }
+                                crate::span::MaybeNamed::Unamed(arc_str) => Some(arc_str),
+                                crate::span::MaybeNamed::None => None,
+                            };
+
+                            match sources.iter().enumerate().find(|(_, s)| packed == **s) {
+                                Some((i, _)) => i,
+                                None => {
+                                    sources.push(packed);
+                                    sources.len() - 1
+                                }
                             }
-                            crate::span::MaybeNamed::Unamed(arc_str) => Some(arc_str),
-                            crate::span::MaybeNamed::None => None,
                         }),
                     )
                 })
                 .collect(),
+            sources,
         }
     }
 
     pub fn restore(self, runner: &mut Runner) {
         for (name, value) in self.values {
-            let value = value.map_source(|f| match f {
-                Some(n) => MaybeNamed::Unamed(n),
+            let value = value.map_source(|f| match &self.sources[f] {
+                Some(n) => MaybeNamed::Unamed(n.clone()),
                 None => MaybeNamed::None,
             });
 
