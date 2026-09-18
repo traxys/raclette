@@ -8,7 +8,7 @@ use super::{CastError, RunnerError};
 use crate::{
     ast::{Lambda, Variable},
     runner::{VarSet, functions::Function},
-    span::{Span, SpannedValue, SpanningExt},
+    span::{MaybeNamed, Span, SpannedValue, SpanningExt},
 };
 
 use arcstr::ArcStr;
@@ -51,12 +51,13 @@ mod builtin_fn {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Callable {
+#[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize + Clone")]
+pub enum Callable<Src = MaybeNamed> {
     #[serde(with = "builtin_fn")]
     Func(Function),
     Lambda {
-        f: Lambda,
-        scope: im::HashMap<Variable, Value>,
+        f: Lambda<Src>,
+        scope: im::HashMap<Variable, Value<Src>>,
     },
 }
 
@@ -70,7 +71,8 @@ impl Callable {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum Value {
+#[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize + Clone")]
+pub enum Value<Src = MaybeNamed> {
     Numeric(NumericValue),
     Str(String),
     Bool(bool),
@@ -79,7 +81,7 @@ pub enum Value {
     Functions,
     Units,
     Variables,
-    Callable(Callable),
+    Callable(Callable<Src>),
 }
 
 impl Value {

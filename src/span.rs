@@ -33,7 +33,8 @@ impl Serialize for MaybeNamed {
 impl<'de> Deserialize<'de> for MaybeNamed {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: serde::Deserializer<'de> {
+        D: serde::Deserializer<'de>,
+    {
         let value: Option<ArcStr> = Deserialize::deserialize(deserializer)?;
 
         Ok(match value {
@@ -72,13 +73,13 @@ impl SourceCode for MaybeNamed {
 
 #[derive(Debug, Clone, Derivative, Serialize, Deserialize)]
 #[derivative(PartialEq, Hash, Eq)]
-pub struct SpannedValue<T> {
+pub struct SpannedValue<T, Src = MaybeNamed> {
     #[derivative(PartialEq = "ignore", Hash = "ignore")]
     pub start: usize,
     #[derivative(PartialEq = "ignore", Hash = "ignore")]
     pub end: usize,
     #[derivative(PartialEq = "ignore", Hash = "ignore")]
-    pub source: MaybeNamed,
+    pub source: Src,
     pub value: T,
 }
 
@@ -179,7 +180,7 @@ impl<T> SpannedValue<T> {
 
 impl<T> SpannedValue<T> {}
 
-impl<T> Deref for SpannedValue<T> {
+impl<T, S> Deref for SpannedValue<T, S> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -187,7 +188,7 @@ impl<T> Deref for SpannedValue<T> {
     }
 }
 
-impl<T> DerefMut for SpannedValue<T> {
+impl<T, S> DerefMut for SpannedValue<T, S> {
     fn deref_mut(&mut self) -> &mut T {
         &mut self.value
     }

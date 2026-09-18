@@ -1,4 +1,5 @@
 use std::{
+    fmt::Debug,
     num::{ParseFloatError, ParseIntError},
     ops::Range,
     rc::Rc,
@@ -8,7 +9,7 @@ use arcstr::ArcStr;
 use logos::Logos;
 use serde::{Deserialize, Serialize};
 
-use crate::span::SpannedValue;
+use crate::span::{MaybeNamed, SpannedValue};
 
 #[derive(thiserror::Error, Debug, Clone, PartialEq, Eq, Default)]
 pub enum TokenError {
@@ -258,7 +259,7 @@ impl Variable {
     }
 }
 
-impl std::fmt::Debug for Variable {
+impl Debug for Variable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "< ")?;
         for word in &self.0 {
@@ -292,7 +293,7 @@ pub enum Literal {
     String(ArcStr),
 }
 
-impl std::fmt::Debug for Literal {
+impl Debug for Literal {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Number(arg0) => write!(f, "{}", arg0),
@@ -327,7 +328,7 @@ pub enum BinOpKind {
     Power,
 }
 
-impl std::fmt::Debug for BinOpKind {
+impl Debug for BinOpKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Times => write!(f, "*"),
@@ -354,13 +355,17 @@ impl std::fmt::Debug for BinOpKind {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct BinOp {
-    pub lhs: Box<SpannedValue<Expr>>,
+#[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize")]
+pub struct BinOp<Src = MaybeNamed> {
+    pub lhs: Box<SpannedValue<Expr<Src>, Src>>,
     pub kind: BinOpKind,
-    pub rhs: Box<SpannedValue<Expr>>,
+    pub rhs: Box<SpannedValue<Expr<Src>, Src>>,
 }
 
-impl std::fmt::Debug for BinOp {
+impl<Src> Debug for BinOp<Src>
+where
+    Src: Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({:?}) {:?} ({:?})", **self.lhs, self.kind, **self.rhs)
     }
@@ -371,7 +376,7 @@ pub enum InputStatement {
     LastRedirect(SpannedValue<Expr>),
 }
 
-impl std::fmt::Debug for InputStatement {
+impl Debug for InputStatement {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Expr(arg0) => write!(f, "{arg0:?}"),
@@ -381,12 +386,16 @@ impl std::fmt::Debug for InputStatement {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Call {
-    pub fun: SpannedValue<Expr>,
-    pub args: Vec<SpannedValue<Expr>>,
+#[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize")]
+pub struct Call<Src = MaybeNamed> {
+    pub fun: SpannedValue<Expr<Src>, Src>,
+    pub args: Vec<SpannedValue<Expr<Src>, Src>>,
 }
 
-impl std::fmt::Debug for Call {
+impl<Src> Debug for Call<Src>
+where
+    Src: Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "({:?})(", self.fun)?;
         if !self.args.is_empty() {
@@ -405,7 +414,7 @@ pub enum UnaryOpKind {
     Plus,
 }
 
-impl std::fmt::Debug for UnaryOpKind {
+impl Debug for UnaryOpKind {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Minus => write!(f, "-"),
@@ -415,24 +424,32 @@ impl std::fmt::Debug for UnaryOpKind {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct UnaryOp {
-    pub operand: Box<SpannedValue<Expr>>,
+#[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize")]
+pub struct UnaryOp<Src = MaybeNamed> {
+    pub operand: Box<SpannedValue<Expr<Src>, Src>>,
     pub kind: UnaryOpKind,
 }
 
-impl std::fmt::Debug for UnaryOp {
+impl<Src> Debug for UnaryOp<Src>
+where
+    Src: Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?} {:?}", self.kind, self.operand)
     }
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct DimensionedExpr {
-    pub expr: SpannedValue<Expr>,
-    pub unit: Vec<SpannedValue<(ArcStr, i64)>>,
+#[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize")]
+pub struct DimensionedExpr<Src = MaybeNamed> {
+    pub expr: SpannedValue<Expr<Src>, Src>,
+    pub unit: Vec<SpannedValue<(ArcStr, i64), Src>>,
 }
 
-impl std::fmt::Debug for DimensionedExpr {
+impl<Src> Debug for DimensionedExpr<Src>
+where
+    Src: Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?}_{:?}", *self.expr, self.unit)
     }
@@ -483,32 +500,43 @@ mod rc_serde {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Lambda {
+#[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize")]
+pub struct Lambda<Src = MaybeNamed> {
     #[serde(with = "rc_slice_serde")]
-    pub arguments: Rc<[SpannedValue<Variable>]>,
+    pub arguments: Rc<[SpannedValue<Variable, Src>]>,
     #[serde(with = "rc_serde")]
-    pub body: Rc<SpannedValue<Expr>>,
+    pub body: Rc<SpannedValue<Expr<Src>, Src>>,
 }
 
-impl std::fmt::Debug for Lambda {
+impl<Src> Debug for Lambda<Src>
+where
+    Src: Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{:?} -> {:?}", self.arguments, *self.body)
     }
 }
 
 #[derive(Serialize, Deserialize)]
-pub enum Expr {
-    Dimensioned(Box<SpannedValue<DimensionedExpr>>),
-    Literal(SpannedValue<Literal>),
-    Variable(Vec<SpannedValue<Variable>>),
-    Assign(Vec<SpannedValue<Variable>>, Box<SpannedValue<Expr>>),
-    BinOp(SpannedValue<BinOp>),
-    Call(Box<SpannedValue<Call>>),
-    UnaryOp(SpannedValue<UnaryOp>),
-    Lambda(Lambda),
+#[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize")]
+pub enum Expr<Src = MaybeNamed> {
+    Dimensioned(Box<SpannedValue<DimensionedExpr<Src>, Src>>),
+    Literal(SpannedValue<Literal, Src>),
+    Variable(Vec<SpannedValue<Variable, Src>>),
+    Assign(
+        Vec<SpannedValue<Variable, Src>>,
+        Box<SpannedValue<Expr<Src>, Src>>,
+    ),
+    BinOp(SpannedValue<BinOp<Src>, Src>),
+    Call(Box<SpannedValue<Call<Src>, Src>>),
+    UnaryOp(SpannedValue<UnaryOp<Src>, Src>),
+    Lambda(Lambda<Src>),
 }
 
-impl std::fmt::Debug for Expr {
+impl<Src> Debug for Expr<Src>
+where
+    Src: Debug,
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Dimensioned(d) => d.fmt(f),
