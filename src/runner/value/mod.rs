@@ -61,6 +61,25 @@ pub enum Callable<Src = MaybeNamed> {
     },
 }
 
+impl<Src: Clone> Callable<Src> {
+    pub fn map_source<New, F>(self, mut map: F) -> Callable<New>
+    where
+        New: Clone,
+        F: FnMut(Src) -> New,
+    {
+        match self {
+            Callable::Func(value_fn) => Callable::Func(value_fn),
+            Callable::Lambda { f, scope } => Callable::Lambda {
+                f: f.map_source(&mut map),
+                scope: scope
+                    .into_iter()
+                    .map(|(n, v)| (n, v.map_source(&mut map)))
+                    .collect(),
+            },
+        }
+    }
+}
+
 impl Callable {
     pub fn help(&self) -> String {
         match self {
@@ -82,6 +101,26 @@ pub enum Value<Src = MaybeNamed> {
     Units,
     Variables,
     Callable(Callable<Src>),
+}
+
+impl<Src: Clone> Value<Src> {
+    pub fn map_source<New, F>(self, f: F) -> Value<New>
+    where
+        New: Clone,
+        F: FnMut(Src) -> New,
+    {
+        match self {
+            Value::Numeric(numeric_value) => Value::Numeric(numeric_value),
+            Value::Str(s) => Value::Str(s),
+            Value::Bool(b) => Value::Bool(b),
+            Value::Atom(arc_str) => Value::Atom(arc_str),
+            Value::Config => Value::Config,
+            Value::Functions => Value::Functions,
+            Value::Units => Value::Units,
+            Value::Variables => Value::Variables,
+            Value::Callable(callable) => Value::Callable(callable.map_source(f)),
+        }
+    }
 }
 
 impl Value {
