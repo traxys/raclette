@@ -483,6 +483,18 @@ impl Runner {
             Value::Str(s) => s,
             Value::Atom(a) => format!(":{a}"),
             Value::Bool(v) => v.to_string(),
+            Value::List(l) => {
+                let mut output = "[".to_string();
+                for v in l {
+                    if output.len() > 1 {
+                        output += ", ";
+                    }
+
+                    output += &self.display_value(v, render_units, indent);
+                }
+                output += "]";
+                output
+            }
             Value::Callable(Callable::Lambda { .. }) => "<lambda>".to_string(),
             Value::Callable(Callable::Func(f)) => {
                 let mut output = String::new();
@@ -937,6 +949,11 @@ impl Runner {
                 f: l.clone(),
                 scope: self.values.clone(),
             })),
+            ast::Expr::List(l) => Ok(Value::List(
+                l.iter()
+                    .map(|v| self.eval_expr(v))
+                    .collect::<Result<_, _>>()?,
+            )),
         }
     }
 

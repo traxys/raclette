@@ -51,8 +51,11 @@ mod builtin_fn {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize + Clone")]
-pub enum Callable<Src = MaybeNamed> {
+#[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize")]
+pub enum Callable<Src = MaybeNamed>
+where
+    Src: Clone,
+{
     #[serde(with = "builtin_fn")]
     Func(Function),
     Lambda {
@@ -89,8 +92,11 @@ impl Callable {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize + Clone")]
-pub enum Value<Src = MaybeNamed> {
+#[serde(bound = "Src: for<'d> serde::de::Deserialize<'d> + Serialize")]
+pub enum Value<Src = MaybeNamed>
+where
+    Src: Clone,
+{
     Numeric(NumericValue),
     Str(String),
     Bool(bool),
@@ -100,6 +106,7 @@ pub enum Value<Src = MaybeNamed> {
     Units,
     Variables,
     Callable(Callable<Src>),
+    List(im::Vector<Value<Src>>),
 }
 
 impl<Src: Clone> Value<Src> {
@@ -118,6 +125,11 @@ impl<Src: Clone> Value<Src> {
             Value::Units => Value::Units,
             Value::Variables => Value::Variables,
             Value::Callable(callable) => Value::Callable(callable.map_source(&mut f)),
+            Value::List(l) => Value::List(
+                l.into_iter()
+                    .map(|v| v.map_source(&mut f as &mut dyn FnMut(Src) -> New))
+                    .collect(),
+            ),
         }
     }
 }
@@ -133,6 +145,7 @@ impl Value {
             Value::Functions => "available functions".into(),
             Value::Units => "known units".into(),
             Value::Variables => "known variables".into(),
+            Value::List(_) => "list".into(),
             Value::Callable(c) => c.help(),
         }
     }
@@ -147,7 +160,8 @@ impl Value {
             | Value::Functions
             | Value::Callable(_)
             | Value::Units
-            | Value::Variables => false,
+            | Value::Variables
+            | Value::List(_) => false,
         }
     }
 
@@ -162,6 +176,7 @@ impl Value {
             Value::Callable(_) => "function",
             Value::Units => "units",
             Value::Variables => "variables",
+            Value::List(_) => "list",
         }
     }
 

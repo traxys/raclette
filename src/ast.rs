@@ -96,6 +96,12 @@ pub enum Token {
     #[token(")")]
     #[display(")")]
     RParen,
+    #[token("[")]
+    #[display("[")]
+    LBracket,
+    #[token("]")]
+    #[display("]")]
+    RBracket,
     #[token("|>")]
     #[display("|>")]
     Redirect,
@@ -603,6 +609,7 @@ pub enum Expr<Src = MaybeNamed> {
     Dimensioned(Box<SpannedValue<DimensionedExpr<Src>, Src>>),
     Literal(SpannedValue<Literal, Src>),
     Variable(Vec<SpannedValue<Variable, Src>>),
+    List(Vec<SpannedValue<Expr<Src>, Src>>),
     Assign(
         Vec<SpannedValue<Variable, Src>>,
         Box<SpannedValue<Expr<Src>, Src>>,
@@ -627,6 +634,11 @@ impl<Src: Clone> Expr<Src> {
                 a.into_iter().map(|v| v.map_source(&mut f)).collect(),
                 Box::new(b.map(|v| v.map_source(&mut f)).map_source(&mut f)),
             ),
+            Expr::List(v) => Expr::List(
+                v.into_iter()
+                    .map(|v| v.map(|v| v.map_source(&mut f)).map_source(&mut f))
+                    .collect(),
+            ),
             Expr::BinOp(v) => Expr::BinOp(v.map(|v| v.map_source(&mut f)).map_source(f)),
             Expr::Call(v) => Expr::Call(Box::new(v.map(|v| v.map_source(&mut f)).map_source(f))),
             Expr::UnaryOp(v) => Expr::UnaryOp(v.map(|v| v.map_source(&mut f)).map_source(f)),
@@ -649,6 +661,7 @@ where
             Self::BinOp(arg0) => write!(f, "({:?})", arg0),
             Self::Call(arg0) => write!(f, "{arg0:?}"),
             Self::UnaryOp(arg0) => write!(f, "({arg0:?}"),
+            Self::List(arg0) => write!(f, "[{arg0:?}]"),
         }
     }
 }
