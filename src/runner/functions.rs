@@ -189,6 +189,8 @@ pub static FUNCTIONS: Lazy<HashMap<Variable, Function>> = Lazy::new(|| {
     funcs.insert(vec!["save"].into(), &(save as RunVFn1<_, _>));
     funcs.insert(vec!["restore"].into(), &(restore as RunVFn1<_, _>));
 
+    funcs.insert(vec!["split"].into(), &(split as VFn1<_, _>));
+
     funcs
 });
 
@@ -387,4 +389,14 @@ fn restore(runner: &mut Runner, value: String, _: Restore) -> ValueResult {
     values.restore(runner);
 
     Ok(Value::Atom(ArcStr::from("ok")))
+}
+
+help!(Split, "split a string on spaces");
+fn split(value: String, _: Split) -> ValueResult {
+    let split = value
+        .split_whitespace()
+        .map(|v| Value::Str(v.into()))
+        .collect();
+
+    Ok(Value::List(split))
 }
