@@ -262,6 +262,7 @@ Function: Expr = {
 
 Call: Call = {
 	<fun:Spn<Function>> "(" <args:Comma<Spn<Expr>>> ")" => Call { <> },
+	"\\" "(" <fun:Spn<Expr>> ")" "(" <args:Comma<Spn<Expr>>> ")" => Call { <> },
 };
 
 LiteralExpr: Expr = {
