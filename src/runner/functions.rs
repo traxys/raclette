@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     ParseDiagnosticExt,
     ast::Variable,
-    runner::{BoxedDiagnostic, Runner, RunnerParseError, eval_literal, value::ValueCast},
+    runner::{
+        BoxedDiagnostic, Runner, RunnerParseError, eval_literal,
+        value::{Callable, ValueCast},
+    },
     span::{MaybeNamed, Span, SpannedValue, SpanningExt},
 };
 
@@ -190,6 +193,8 @@ pub static FUNCTIONS: Lazy<HashMap<Variable, Function>> = Lazy::new(|| {
     funcs.insert(vec!["restore"].into(), &(restore as RunVFn1<_, _>));
 
     funcs.insert(vec!["split"].into(), &(split as VFn1<_, _>));
+
+    funcs.insert(vec!["map"].into(), &(map as VFn1<_, _>));
 
     funcs
 });
@@ -399,4 +404,12 @@ fn split(value: String, _: Split) -> ValueResult {
         .collect();
 
     Ok(Value::List(split))
+}
+
+help!(
+    Map,
+    "returns a function which will map elements from a list"
+);
+fn map(cb: Callable, _: Map) -> ValueResult {
+    Ok(Value::Callable(Callable::Map(Box::new(cb))))
 }

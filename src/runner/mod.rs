@@ -495,7 +495,7 @@ impl Runner {
                 output += "]";
                 output
             }
-            Value::Callable(Callable::Lambda { .. }) => "<lambda>".to_string(),
+            Value::Callable(Callable::Lambda { .. } | Callable::Map(_)) => "<lambda>".to_string(),
             Value::Callable(Callable::Func(f)) => {
                 let mut output = String::new();
                 for arg in f.arguments() {
@@ -840,10 +840,37 @@ impl Runner {
         call_site: Span,
         args: Vec<SpannedValue<Value>>,
     ) -> Result<Value, miette::Error> {
+        let callee_span = callee.span();
         match callee.value {
             Callable::Func(value_fn) => value_fn
                 .invoke(self, callee.span(), call_site, args)
                 .map_err(Into::into),
+            Callable::Map(m) => {
+                if args.len() != 1 {
+                    return Err(RunnerError::FunctionArity {
+                        provided: args.len(),
+                        arity: 1,
+                        f: (callee.start..callee.end).into(),
+                        src: callee.source,
+                    }
+                    .into());
+                }
+
+                let list_span = args[0].span();
+                let list: im::Vector<_> = args.into_iter().next().unwrap().cast()?;
+
+                Ok(Value::List(
+                    list.into_iter()
+                        .map(|v| {
+                            self.invoke(
+                                (*m).clone().spanned(&callee_span),
+                                call_site.clone(),
+                                vec![v.spanned(&list_span)],
+                            )
+                        })
+                        .collect::<Result<_, _>>()?,
+                ))
+            }
             Callable::Lambda { f, scope } => {
                 if f.arguments.len() != args.len() {
                     return Err(RunnerError::FunctionArity {

@@ -58,6 +58,7 @@ where
 {
     #[serde(with = "builtin_fn")]
     Func(Function),
+    Map(Box<Callable<Src>>),
     Lambda {
         f: Lambda<Src>,
         scope: im::HashMap<Variable, Value<Src>>,
@@ -78,6 +79,7 @@ impl<Src: Clone> Callable<Src> {
                     .map(|(n, v)| (n, v.map_source(&mut map)))
                     .collect(),
             },
+            Callable::Map(value) => Callable::Map(Box::new(value.map_source(map))),
         }
     }
 }
@@ -87,6 +89,7 @@ impl Callable {
         match self {
             Callable::Func(f) => f.help(),
             Callable::Lambda { f, .. } => format!("lambda ({} arguments)", f.arguments.len()),
+            Callable::Map(_) => "lambda (1 arguments)".into(),
         }
     }
 }
@@ -689,6 +692,19 @@ impl ValueCast for Callable {
     fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
         match v.value {
             Value::Callable(f) => Ok(f),
+            _ => Err(v.raise_cast::<Self>()),
+        }
+    }
+}
+
+impl ValueCast for im::Vector<Value> {
+    fn name() -> Cow<'static, str> {
+        "list".into()
+    }
+
+    fn convert(v: SpannedValue<Value>) -> Result<Self, RunnerError> {
+        match v.value {
+            Value::List(l) => Ok(l),
             _ => Err(v.raise_cast::<Self>()),
         }
     }
