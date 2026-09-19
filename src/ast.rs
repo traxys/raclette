@@ -99,6 +99,9 @@ pub enum Token {
     #[token("|>")]
     #[display("|>")]
     Redirect,
+    #[token("<|")]
+    #[display("<|")]
+    Inject,
     #[token("->")]
     #[display("->")]
     Arrow,

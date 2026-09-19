@@ -32,6 +32,7 @@ extern {
 		"(" => Token::LParen,
 		")" => Token::RParen,
 		"|>" => Token::Redirect,
+		"<|" => Token::Inject,
 		"||" => Token::LOr,
 		"&&" => Token::LAnd,
 		"|" => Token::BOr,
@@ -106,10 +107,17 @@ pub Expr: Expr = {
 	ExprPipe => <>,
 };
 
-Redirect: Call = <val:Spn<ExprPipe>> "|>" <fun:Spn<ExprLambda>> => Call {fun, args: vec![val]};
+Redirect: Call = <val:Spn<ExprPipe>> "|>" <fun:Spn<ExprInject>> => Call {fun, args: vec![val]};
 
 ExprPipe: Expr = {
 	SpnBox<Redirect> => Expr::Call(<>),
+	ExprInject => <>,
+};
+
+Inject: Call = <fun:Spn<ExprInject>> "<|" <val:Spn<ExprLambda>> => Call {fun, args: vec![val]};
+
+ExprInject: Expr = {
+	SpnBox<Inject> => Expr::Call(<>),
 	ExprLambda => <>,
 };
 
